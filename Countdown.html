@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Family Countdown Widget</title>
+  
+  <!-- 1. Link to the main app's stylesheet to inherit CSS variables -->
+  <link rel="stylesheet" href="/index.css">
+
+  <style>
+    /* Make the widget's body transparent to show the app background */
+    body {
+      background: transparent;
+      color: var(--text-color); /* Use CSS variable for text color */
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 0;
+      margin: 0;
+      font-family: 'Segoe UI', Arial, sans-serif;
+      box-sizing: border-box;
+    }
+
+    /* Use card variables from index.css for the main container */
+    .widget-box {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      box-shadow: var(--shadow);
+      backdrop-filter: var(--backdrop-blur);
+      border-radius: 12px; /* Match app's card style */
+      padding: var(--dynamic-card-padding, 20px); /* Use dynamic padding */
+      text-align: center;
+      max-width: var(--dynamic-card-width, 300px); /* Use dynamic width */
+      width: 100%;
+    }
+
+    h1 {
+      margin: 0 0 12px 0;
+      font-size: 2rem;
+      letter-spacing: 1px;
+      color: var(--text-color); /* Ensure text color is applied */
+    }
+
+    .event-label {
+      font-size: 1.1rem;
+      margin-bottom: 18px;
+      opacity: 0.9;
+    }
+
+    .countdown {
+      font-size: 2.2rem;
+      font-weight: bold;
+      margin-bottom: 10px;
+      letter-spacing: 2px;
+    }
+
+    /* The <button> elements will be styled automatically by the linked index.css */
+
+    .edit-form {
+      margin-top: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      align-items: center;
+    }
+
+    /* Style form inputs to match the app's theme */
+    .edit-form input[type="text"], .edit-form input[type="date"] {
+      padding: 6px 10px;
+      border-radius: 5px;
+      border: 1px solid var(--card-border);
+      background-color: var(--background);
+      color: var(--text-color);
+      font-size: 1rem;
+      width: 180px;
+    }
+
+    .celebrate {
+      font-size: 2.2rem;
+      color: var(--accent); /* Use accent color for celebration text */
+      margin-top: 10px;
+      animation: pop 0.7s;
+    }
+
+    @keyframes pop {
+      0% { transform: scale(0.7); }
+      70% { transform: scale(1.2); }
+      100% { transform: scale(1); }
+    }
+  </style>
+</head>
+<body>
+  <div class="widget-box">
+    <h1>🎉 Family Countdown</h1>
+    <div class="event-label" id="eventLabel"></div>
+    <div class="countdown" id="countdown"></div>
+    <button id="editBtn">Edit Event</button>
+    <form class="edit-form" id="editForm" style="display:none;">
+      <input type="text" id="eventInput" placeholder="Event name" required />
+      <input type="date" id="dateInput" required />
+      <button type="submit">Save</button>
+    </form>
+    <div class="celebrate" id="celebrate" style="display:none;">🎊 It's here! 🎊</div>
+  </div>
+
+  <!-- 2. Script to set the theme and transparency based on the URL parameters -->
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        
+        // Handle Theme
+        const theme = params.get('theme');
+        if (theme === 'dark' || theme === 'light') {
+          document.documentElement.setAttribute('data-theme', theme);
+        }
+
+        // Handle Transparency
+        const isTransparent = params.get('transparent') === 'true';
+        if (isTransparent) {
+          const widgetBox = document.querySelector('.widget-box');
+          if (widgetBox) {
+            widgetBox.style.background = 'transparent';
+            widgetBox.style.boxShadow = 'none';
+            widgetBox.style.backdropFilter = 'none';
+            widgetBox.style.border = 'none'; // <-- THIS LINE WAS ADDED
+          }
+        }
+      } catch (e) {
+        console.error('Error setting widget theme/transparency:', e);
+      }
+    });
+
+    // --- WIDGET LOGIC (No changes below) ---
+    const EVENT_KEY = 'familyCountdownEvent';
+    const DATE_KEY = 'familyCountdownDate';
+
+    const eventLabel = document.getElementById('eventLabel');
+    const countdown = document.getElementById('countdown');
+    const editBtn = document.getElementById('editBtn');
+    const editForm = document.getElementById('editForm');
+    const eventInput = document.getElementById('eventInput');
+    const dateInput = document.getElementById('dateInput');
+    const celebrate = document.getElementById('celebrate');
+
+    let eventName = localStorage.getItem(EVENT_KEY) || "Next Family Event";
+    let eventDate = localStorage.getItem(DATE_KEY) || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+    let intervalId;
+
+    function updateDisplay() {
+      eventLabel.textContent = `Countdown to: ${eventName}`;
+      const now = new Date();
+      const target = new Date(eventDate + "T00:00:00");
+      const diff = target - now;
+
+      if (diff > 0) {
+        celebrate.style.display = 'none';
+        countdown.style.display = '';
+        const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+        const hours = Math.floor((diff / (1000 * 60 * 60)) % 24);
+        const mins = Math.floor((diff / (1000 * 60)) % 60);
+        const secs = Math.floor((diff / 1000) % 60);
+        countdown.textContent = `${days}d ${hours}h ${mins}m ${secs}s`;
+      } else {
+        countdown.style.display = 'none';
+        celebrate.style.display = '';
+      }
+    }
+
+    function startCountdown() {
+        if (intervalId) clearInterval(intervalId);
+        updateDisplay();
+        intervalId = setInterval(updateDisplay, 1000);
+    }
+    
+    startCountdown();
+
+    editBtn.onclick = () => {
+      editForm.style.display = 'flex';
+      editBtn.style.display = 'none';
+      eventInput.value = eventName;
+      dateInput.value = eventDate;
+    };
+
+    editForm.onsubmit = (e) => {
+      e.preventDefault();
+      eventName = eventInput.value.trim() || "Next Family Event";
+      eventDate = dateInput.value;
+      localStorage.setItem(EVENT_KEY, eventName);
+      localStorage.setItem(DATE_KEY, eventDate);
+      editForm.style.display = 'none';
+      editBtn.style.display = '';
+      startCountdown();
+    };
+
+    window.addEventListener('beforeunload', () => {
+        if(intervalId) clearInterval(intervalId);
+    });
+  </script>
+</body>
+</html>
