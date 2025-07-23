@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Saint of the Day Widget</title>
+
+  <!-- 1. Link to the main app's stylesheet for HomeGlow's core styles and CSS variables -->
+  <link rel="stylesheet" href="/index.css">
+
+  <style>
+    /* Widget-specific styles */
+    body {
+      background: transparent;
+      color: var(--text-color);
+      font-family: 'Inter', sans-serif;
+      margin: 0;
+      padding: 1rem;
+      box-sizing: border-box;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100%;
+    }
+
+    .widget-container {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      box-shadow: var(--shadow);
+      backdrop-filter: var(--backdrop-blur);
+      border-radius: 12px;
+      padding: var(--dynamic-card-padding, 20px);
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      min-height: calc(100% - 2rem);
+      width: 100%;
+    }
+
+    h2 {
+      font-size: 1.5rem;
+      margin-bottom: 0.5rem;
+      color: var(--text-color);
+    }
+
+    .saint-name {
+      font-size: 1.8rem;
+      font-weight: bold;
+      color: var(--text-color);
+      margin-bottom: 1rem;
+    }
+
+    .saint-description {
+      font-size: 1rem;
+      color: var(--text-color);
+      font-style: italic;
+    }
+
+    .error-message {
+      color: var(--error-color, red);
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="widget-container">
+    <h2>Saint of the Day</h2>
+    <p class="saint-name" id="saint-name">Loading...</p>
+    <p class="saint-description" id="saint-description"></p>
+  </div>
+
+  <!-- 2. Essential theme and transparency handling script -->
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const params = new URLSearchParams(window.location.search);
+
+      // Handle Theme
+      const theme = params.get('theme');
+      if (theme === 'dark' || theme === 'light') {
+        document.documentElement.setAttribute('data-theme', theme);
+      }
+
+      // Handle Transparency
+      const isTransparent = params.get('transparent') === 'true';
+      if (isTransparent) {
+        document.body.style.background = 'transparent';
+        const mainContainer = document.querySelector('.widget-container');
+        if (mainContainer) {
+          mainContainer.style.background = 'transparent';
+          mainContainer.style.boxShadow = 'none';
+          mainContainer.style.backdropFilter = 'none';
+          mainContainer.style.border = 'none';
+        }
+      }
+
+      // Fetch Saint of the Day from API via the new proxy
+      const fetchSaintOfTheDay = async () => {
+        const saintNameElement = document.getElementById('saint-name');
+        const saintDescriptionElement = document.getElementById('saint-description');
+        saintNameElement.textContent = 'Loading...';
+        saintDescriptionElement.textContent = '';
+
+        try {
+          // The external API we want to call
+          const externalApiUrl = 'https://calapi.inadiutorium.cz/v0/en/calendars/general-roman/today';
+
+          // Construct the URL for our proxy, passing the external URL as a query parameter
+          const proxyUrl = `/api/proxy?targetUrl=${encodeURIComponent(externalApiUrl)}`;
+
+          const response = await fetch(proxyUrl);
+
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+
+          const data = await response.json();
+
+          let saintFound = false;
+          if (data && data.celebrations && Array.isArray(data.celebrations)) {
+            for (const celebration of data.celebrations) {
+              const title = celebration.title;
+              if (title && (title.includes('St.') || title.includes('Saint'))) {
+                saintNameElement.textContent = title;
+                saintDescriptionElement.textContent = celebration.rank_name || '';
+                saintFound = true;
+                break;
+              }
+            }
+          }
+
+          if (!saintFound) {
+            saintNameElement.textContent = 'No specific saint listed for today.';
+            saintDescriptionElement.textContent = 'Check a full liturgical calendar for more details.';
+          }
+
+        } catch (error) {
+          console.error('Error fetching Saint of the Day:', error);
+          saintNameElement.textContent = 'Failed to load Saint of the Day.';
+          saintDescriptionElement.textContent = 'Ensure the domain is whitelisted in the server settings.';
+          saintNameElement.classList.add('error-message');
+        }
+      };
+
+      fetchSaintOfTheDay();
+    });
+  </script>
+
+</body>
+</html>
