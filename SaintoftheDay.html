@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Saint of the Day Widget</title>
+  <title>Liturgical Day Widget</title>
 
   <!-- 1. Link to the main app's stylesheet for HomeGlow's core styles and CSS variables -->
   <link rel="stylesheet" href="/index.css">
@@ -18,7 +18,7 @@
       box-sizing: border-box;
       display: flex;
       justify-content: center;
-      align-items: center;
+      align-items: flex-start;
       min-height: 100%;
     }
 
@@ -29,46 +29,95 @@
       backdrop-filter: var(--backdrop-blur);
       border-radius: 12px;
       padding: var(--dynamic-card-padding, 20px);
-      text-align: center;
+      text-align: left;
       display: flex;
       flex-direction: column;
-      justify-content: center;
-      align-items: center;
-      min-height: calc(100% - 2rem);
       width: 100%;
+      max-height: calc(100vh - 2rem);
+      overflow-y: auto;
     }
 
     h2 {
       font-size: 1.5rem;
-      margin-bottom: 0.5rem;
+      margin-bottom: 1rem;
       color: var(--text-color);
+      text-align: center;
     }
 
-    .saint-name {
-      font-size: 1.8rem;
-      font-weight: bold;
-      color: var(--text-color);
+    .liturgical-info {
       margin-bottom: 1rem;
     }
 
-    .saint-description {
+    .date-info {
+      font-size: 1.1rem;
+      font-weight: bold;
+      color: var(--accent);
+      margin-bottom: 0.5rem;
+    }
+
+    .season-info {
       font-size: 1rem;
       color: var(--text-color);
+      margin-bottom: 1rem;
+      padding: 0.5rem;
+      background: rgba(var(--accent-rgb), 0.1);
+      border-radius: 8px;
+    }
+
+    .celebrations {
+      margin-top: 1rem;
+    }
+
+    .celebration {
+      margin-bottom: 1rem;
+      padding: 0.75rem;
+      border-left: 3px solid var(--accent);
+      background: rgba(var(--text-color-rgb), 0.05);
+      border-radius: 0 8px 8px 0;
+    }
+
+    .celebration-title {
+      font-size: 1.1rem;
+      font-weight: bold;
+      color: var(--text-color);
+      margin-bottom: 0.25rem;
+    }
+
+    .celebration-rank {
+      font-size: 0.9rem;
+      color: var(--text-color);
+      opacity: 0.8;
       font-style: italic;
+    }
+
+    .celebration-colour {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      margin-left: 0.5rem;
+      vertical-align: middle;
+      border: 2px solid var(--card-border);
     }
 
     .error-message {
       color: var(--error-color, red);
       font-weight: bold;
+      text-align: center;
+    }
+
+    .loading {
+      text-align: center;
+      color: var(--text-color);
+      opacity: 0.7;
     }
   </style>
 </head>
 <body>
 
   <div class="widget-container">
-    <h2>Saint of the Day</h2>
-    <p class="saint-name" id="saint-name">Loading...</p>
-    <p class="saint-description" id="saint-description"></p>
+    <h2>Liturgical Day</h2>
+    <div id="liturgical-content" class="loading">Loading liturgical information...</div>
   </div>
 
   <!-- 2. Essential theme and transparency handling script -->
@@ -95,12 +144,21 @@
         }
       }
 
-      // Fetch Saint of the Day from API via the new proxy
-      const fetchSaintOfTheDay = async () => {
-        const saintNameElement = document.getElementById('saint-name');
-        const saintDescriptionElement = document.getElementById('saint-description');
-        saintNameElement.textContent = 'Loading...';
-        saintDescriptionElement.textContent = '';
+      // Color mapping for liturgical colors
+      const colorMap = {
+        'green': '#228B22',
+        'red': '#DC143C',
+        'white': '#FFFFFF',
+        'violet': '#8A2BE2',
+        'purple': '#800080',
+        'rose': '#FF69B4',
+        'gold': '#FFD700'
+      };
+
+      // Fetch Liturgical Day from API via the proxy
+      const fetchLiturgicalDay = async () => {
+        const contentElement = document.getElementById('liturgical-content');
+        contentElement.innerHTML = '<div class="loading">Loading liturgical information...</div>';
 
         try {
           // The external API we want to call
@@ -117,33 +175,74 @@
 
           const data = await response.json();
 
-          let saintFound = false;
-          if (data && data.celebrations && Array.isArray(data.celebrations)) {
-            for (const celebration of data.celebrations) {
-              const title = celebration.title;
-              if (title && (title.includes('St.') || title.includes('Saint'))) {
-                saintNameElement.textContent = title;
-                saintDescriptionElement.textContent = celebration.rank_name || '';
-                saintFound = true;
-                break;
-              }
-            }
-          }
+          if (data) {
+            let html = '';
 
-          if (!saintFound) {
-            saintNameElement.textContent = 'No specific saint listed for today.';
-            saintDescriptionElement.textContent = 'Check a full liturgical calendar for more details.';
+            // Date information
+            if (data.date) {
+              html += `<div class="date-info">${new Date(data.date).toLocaleDateString('en-US', { 
+                weekday: 'long', 
+                year: 'numeric', 
+                month: 'long', 
+                day: 'numeric' 
+              })}</div>`;
+            }
+
+            // Season information
+            if (data.season) {
+              html += `<div class="season-info">
+                <strong>Season:</strong> ${data.season}
+                ${data.season_week ? ` - Week ${data.season_week}` : ''}
+              </div>`;
+            }
+
+            // Celebrations
+            if (data.celebrations && Array.isArray(data.celebrations) && data.celebrations.length > 0) {
+              html += '<div class="celebrations">';
+              
+              data.celebrations.forEach(celebration => {
+                html += '<div class="celebration">';
+                
+                if (celebration.title) {
+                  html += `<div class="celebration-title">${celebration.title}`;
+                  
+                  // Add color indicator if available
+                  if (celebration.colour) {
+                    const colorValue = colorMap[celebration.colour.toLowerCase()] || celebration.colour;
+                    html += `<span class="celebration-colour" style="background-color: ${colorValue};" title="Liturgical color: ${celebration.colour}"></span>`;
+                  }
+                  
+                  html += '</div>';
+                }
+                
+                if (celebration.rank) {
+                  html += `<div class="celebration-rank">${celebration.rank}</div>`;
+                }
+                
+                html += '</div>';
+              });
+              
+              html += '</div>';
+            }
+
+            contentElement.innerHTML = html || '<div class="error-message">No liturgical information available for today.</div>';
+
+          } else {
+            contentElement.innerHTML = '<div class="error-message">No data received from the liturgical calendar.</div>';
           }
 
         } catch (error) {
-          console.error('Error fetching Saint of the Day:', error);
-          saintNameElement.textContent = 'Failed to load Saint of the Day.';
-          saintDescriptionElement.textContent = 'Ensure the domain is whitelisted in the server settings.';
-          saintNameElement.classList.add('error-message');
+          console.error('Error fetching Liturgical Day:', error);
+          contentElement.innerHTML = `
+            <div class="error-message">
+              Failed to load liturgical information.<br>
+              <small>Ensure the domain is whitelisted in the server settings.</small>
+            </div>
+          `;
         }
       };
 
-      fetchSaintOfTheDay();
+      fetchLiturgicalDay();
     });
   </script>
 
