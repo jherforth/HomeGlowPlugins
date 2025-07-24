@@ -104,7 +104,7 @@
 
         try {
           // The external API we want to call
-          const externalApiUrl = 'https://calapi.inadiutorium.cz/v0/en/calendars/general-roman/today';
+          const externalApiUrl = 'http://calapi.inadiutorium.cz/api/v0/en/calendars/default/today';
 
           // Construct the URL for our proxy, passing the external URL as a query parameter
           const proxyUrl = `/api/proxy?targetUrl=${encodeURIComponent(externalApiUrl)}`;
