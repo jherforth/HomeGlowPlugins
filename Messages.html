@@ -551,6 +551,207 @@
       filter: brightness(1.1);
       transform: translateY(-1px);
     }
+
+    /* Message Modal Styles */
+    .message-modal {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.7) !important;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1001;
+      padding: 1rem;
+    }
+
+    .message-modal-content {
+      background: rgba(255, 255, 255, 0.95) !important;
+      border-radius: 12px;
+      max-width: 500px;
+      width: 100%;
+      max-height: 80vh;
+      overflow-y: auto;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      position: relative;
+    }
+
+    [data-theme="dark"] .message-modal-content {
+      background: rgba(30, 30, 50, 0.95) !important;
+      border-color: rgba(100, 100, 150, 0.3);
+    }
+
+    .message-modal-header {
+      padding: 1rem 1.5rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    [data-theme="dark"] .message-modal-header {
+      border-bottom-color: rgba(100, 100, 150, 0.3);
+    }
+
+    .message-modal-title {
+      font-size: 1.1rem;
+      font-weight: 600;
+      margin: 0;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .modal-close-btn {
+      background: rgba(255, 255, 255, 0.1) !important;
+      border: none;
+      border-radius: 50%;
+      width: 32px;
+      height: 32px;
+      cursor: pointer;
+      font-size: 1.2rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.3s ease;
+      color: inherit;
+    }
+
+    [data-theme="dark"] .modal-close-btn {
+      background: rgba(30, 30, 50, 0.3) !important;
+    }
+
+    .modal-close-btn:hover {
+      background: rgba(255, 255, 255, 0.2) !important;
+      transform: scale(1.1);
+    }
+
+    [data-theme="dark"] .modal-close-btn:hover {
+      background: rgba(30, 30, 50, 0.5) !important;
+    }
+
+    .message-modal-body {
+      padding: 1.5rem;
+    }
+
+    .modal-message-content {
+      font-size: 1rem;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      margin-bottom: 1rem;
+    }
+
+    .modal-message-meta {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      padding-top: 1rem;
+      border-top: 1px solid rgba(255, 255, 255, 0.2);
+      font-size: 0.8rem;
+      opacity: 0.8;
+    }
+
+    [data-theme="dark"] .modal-message-meta {
+      border-top-color: rgba(100, 100, 150, 0.3);
+    }
+
+    .modal-meta-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    /* Recent Messages Section */
+    .recent-messages-section {
+      background: rgba(255, 255, 255, 0.05) !important;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      padding: 0.75rem;
+      margin-bottom: 1rem;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+
+    [data-theme="dark"] .recent-messages-section {
+      background: rgba(30, 30, 50, 0.2) !important;
+      border-color: rgba(100, 100, 150, 0.2);
+    }
+
+    .recent-messages-title {
+      font-size: 0.9rem;
+      font-weight: 600;
+      margin: 0 0 0.75rem 0;
+      text-align: center;
+    }
+
+    .recent-message-item {
+      background: rgba(255, 255, 255, 0.05) !important;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 6px;
+      padding: 0.5rem;
+      margin-bottom: 0.5rem;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      text-align: left;
+    }
+
+    [data-theme="dark"] .recent-message-item {
+      background: rgba(30, 30, 50, 0.2) !important;
+      border-color: rgba(100, 100, 150, 0.2);
+    }
+
+    .recent-message-item:hover {
+      background: rgba(255, 255, 255, 0.1) !important;
+      transform: translateY(-1px);
+      border-color: #00ddeb;
+    }
+
+    [data-theme="dark"] .recent-message-item:hover {
+      background: rgba(30, 30, 50, 0.4) !important;
+    }
+
+    .recent-message-item:last-child {
+      margin-bottom: 0;
+    }
+
+    .recent-message-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.25rem;
+    }
+
+    .recent-message-author {
+      font-weight: 600;
+      font-size: 0.75rem;
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+    }
+
+    .recent-message-time {
+      font-size: 0.7rem;
+      opacity: 0.7;
+    }
+
+    .recent-message-preview {
+      font-size: 0.75rem;
+      line-height: 1.3;
+      opacity: 0.9;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .no-recent-messages {
+      text-align: center;
+      opacity: 0.7;
+      font-style: italic;
+      font-size: 0.8rem;
+    }
   </style>
 </head>
 <body>
@@ -569,6 +770,12 @@
       <div id="currentUserAvatar" class="current-user-avatar"></div>
       <span id="currentUserName"></span>
       <button id="switchUserBtn" class="switch-user-btn">Switch User</button>
+    </div>
+    
+    <!-- Recent Messages Section -->
+    <div id="recentMessagesSection" class="recent-messages-section" style="display: none;">
+      <div class="recent-messages-title">Recent Messages</div>
+      <div id="recentMessagesList"></div>
     </div>
     
     <!-- Message Form -->
@@ -616,6 +823,32 @@
     </div>
   </div>
 
+  <!-- Message Modal -->
+  <div id="messageModal" class="message-modal" style="display: none;">
+    <div class="message-modal-content">
+      <div class="message-modal-header">
+        <div class="message-modal-title">
+          <span id="modalMessageAuthor"></span>
+          <span id="modalMessagePriority"></span>
+        </div>
+        <button id="modalCloseBtn" class="modal-close-btn">×</button>
+      </div>
+      <div class="message-modal-body">
+        <div id="modalMessageContent" class="modal-message-content"></div>
+        <div class="modal-message-meta">
+          <div class="modal-meta-row">
+            <span>Posted:</span>
+            <span id="modalMessageTime"></span>
+          </div>
+          <div class="modal-meta-row">
+            <span>Priority:</span>
+            <span id="modalMessagePriorityText"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script>
     document.addEventListener('DOMContentLoaded', () => {
       // Handle theme
@@ -638,6 +871,8 @@
       const currentUserAvatar = document.getElementById('currentUserAvatar');
       const currentUserName = document.getElementById('currentUserName');
       const switchUserBtn = document.getElementById('switchUserBtn');
+      const recentMessagesSection = document.getElementById('recentMessagesSection');
+      const recentMessagesList = document.getElementById('recentMessagesList');
       const messageForm = document.getElementById('messageForm');
       const messageInput = document.getElementById('messageInput');
       const prioritySelect = document.getElementById('prioritySelect');
@@ -651,6 +886,13 @@
       const confirmationMessage = document.getElementById('confirmationMessage');
       const cancelBtn = document.getElementById('cancelBtn');
       const confirmBtn = document.getElementById('confirmBtn');
+      const messageModal = document.getElementById('messageModal');
+      const modalMessageAuthor = document.getElementById('modalMessageAuthor');
+      const modalMessagePriority = document.getElementById('modalMessagePriority');
+      const modalMessageContent = document.getElementById('modalMessageContent');
+      const modalMessageTime = document.getElementById('modalMessageTime');
+      const modalMessagePriorityText = document.getElementById('modalMessagePriorityText');
+      const modalCloseBtn = document.getElementById('modalCloseBtn');
 
       // Load data from localStorage
       function loadMessages() {
@@ -751,11 +993,13 @@
         hideError();
         userSelection.style.display = 'none';
         currentUserDisplay.style.display = 'flex';
+        recentMessagesSection.style.display = 'block';
         messageForm.style.display = 'block';
         messageFilters.style.display = 'flex';
         messagesContainer.style.display = 'block';
         
         updateCurrentUserDisplay();
+        renderRecentMessages();
         renderMessages();
       }
 
@@ -764,6 +1008,7 @@
         localStorage.removeItem('messageBoardCurrentUser');
         userSelection.style.display = 'block';
         currentUserDisplay.style.display = 'none';
+        recentMessagesSection.style.display = 'none';
         messageForm.style.display = 'none';
         messageFilters.style.display = 'none';
         messagesContainer.style.display = 'none';
@@ -785,6 +1030,33 @@
         currentUserName.textContent = currentUser.username;
       }
 
+      function renderRecentMessages() {
+        const recentMessages = messages.slice(0, 3); // Show last 3 messages
+        
+        if (recentMessages.length === 0) {
+          recentMessagesList.innerHTML = '<div class="no-recent-messages">No messages yet</div>';
+          return;
+        }
+        
+        recentMessagesList.innerHTML = recentMessages.map(message => {
+          const isUnread = !message.readBy.includes(currentUser.id);
+          const preview = message.content.length > 50 ? 
+            message.content.substring(0, 50) + '...' : 
+            message.content;
+          
+          return `
+            <div class="recent-message-item ${isUnread ? 'unread' : ''}" onclick="openMessageModal(${message.id})">
+              <div class="recent-message-header">
+                <div class="recent-message-author">
+                  ${getPriorityIcon(message.priority)} ${message.authorName}
+                </div>
+                <div class="recent-message-time">${formatTimeAgo(message.timestamp)}</div>
+              </div>
+              <div class="recent-message-preview">${preview}</div>
+            </div>
+          `;
+        }).join('');
+      }
       function postMessage() {
         const content = messageInput.value.trim();
         const priority = prioritySelect.value;
@@ -807,6 +1079,7 @@
         
         messageInput.value = '';
         updateCharCounter();
+        renderRecentMessages();
         renderMessages();
       }
 
@@ -820,6 +1093,7 @@
         confirmBtn.onclick = () => {
           messages = messages.filter(m => m.id !== messageId);
           saveMessages();
+          renderRecentMessages();
           renderMessages();
           confirmationDialog.style.display = 'none';
         };
@@ -831,9 +1105,33 @@
         
         message.readBy.push(currentUser.id);
         saveMessages();
+        renderRecentMessages();
         renderMessages();
       }
 
+      function openMessageModal(messageId) {
+        const message = messages.find(m => m.id === messageId);
+        if (!message) return;
+        
+        // Mark as read if not already read
+        if (!message.readBy.includes(currentUser.id)) {
+          markAsRead(messageId);
+        }
+        
+        // Populate modal content
+        modalMessageAuthor.textContent = message.authorName;
+        modalMessagePriority.textContent = getPriorityIcon(message.priority);
+        modalMessageContent.textContent = message.content;
+        modalMessageTime.textContent = new Date(message.timestamp).toLocaleString();
+        modalMessagePriorityText.textContent = message.priority.charAt(0).toUpperCase() + message.priority.slice(1);
+        
+        // Show modal
+        messageModal.style.display = 'flex';
+      }
+
+      function closeMessageModal() {
+        messageModal.style.display = 'none';
+      }
       function formatTimeAgo(timestamp) {
         const now = new Date();
         const messageTime = new Date(timestamp);
@@ -877,6 +1175,8 @@
         filteredMessages.forEach(message => {
           const messageEl = document.createElement('div');
           messageEl.className = `message priority-${message.priority}`;
+          messageEl.style.cursor = 'pointer';
+          messageEl.onclick = () => openMessageModal(message.id);
           
           if (!message.readBy.includes(currentUser.id)) {
             messageEl.classList.add('unread');
@@ -922,7 +1222,10 @@
             readBtn.className = 'action-btn read-btn';
             readBtn.textContent = '✓';
             readBtn.title = 'Mark as read';
-            readBtn.onclick = () => markAsRead(message.id);
+            readBtn.onclick = (e) => {
+              e.stopPropagation();
+              markAsRead(message.id);
+            };
             actions.appendChild(readBtn);
           }
           
@@ -931,7 +1234,10 @@
             deleteBtn.className = 'action-btn delete-btn';
             deleteBtn.textContent = '🗑️';
             deleteBtn.title = 'Delete message';
-            deleteBtn.onclick = () => deleteMessage(message.id);
+            deleteBtn.onclick = (e) => {
+              e.stopPropagation();
+              deleteMessage(message.id);
+            };
             actions.appendChild(deleteBtn);
           }
           
@@ -953,6 +1259,8 @@
         postBtn.disabled = length === 0 || length > 500;
       }
 
+      // Global functions for onclick handlers
+      window.openMessageModal = openMessageModal;
       // Event listeners
       switchUserBtn.onclick = showUserSelection;
       postBtn.onclick = postMessage;
@@ -984,6 +1292,22 @@
           confirmationDialog.style.display = 'none';
         }
       };
+      
+      // Message modal
+      modalCloseBtn.onclick = closeMessageModal;
+      
+      messageModal.onclick = (e) => {
+        if (e.target === messageModal) {
+          closeMessageModal();
+        }
+      };
+      
+      // Escape key to close modal
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && messageModal.style.display === 'flex') {
+          closeMessageModal();
+        }
+      });
       
       // Initialize
       loadMessages();
