@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Bills Reminder</title>
+  <link rel="stylesheet" href="/index.css">
+  <style>
+    * {
+      background: transparent !important;
+      background-color: transparent !important;
+      background-image: none !important;
+    }
+
+    body {
+      background: transparent !important;
+      font-family: 'Inter', sans-serif;
+      margin: 0;
+      padding: 0.75rem;
+      box-sizing: border-box;
+      font-size: 0.85rem;
+      color: #333;
+    }
+
+    [data-theme="dark"] body {
+      color: #a6a6d1;
+      background: transparent !important;
+    }
+
+    .widget-container {
+      background: transparent !important;
+      border: none !important;
+      box-shadow: none !important;
+      backdrop-filter: none !important;
+      border-radius: 12px;
+      padding: 0.5rem;
+      text-align: center;
+      width: 100%;
+      max-height: calc(100vh - 1.5rem);
+      overflow-y: auto;
+    }
+
+    .widget-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    [data-theme="dark"] .widget-header {
+      border-bottom-color: rgba(100, 100, 150, 0.3);
+    }
+
+    .widget-title {
+      font-size: 1.2rem;
+      font-weight: 700;
+      margin: 0;
+      color: inherit;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .current-month {
+      font-size: 1rem;
+      font-weight: 600;
+      color: #00ddeb;
+      margin: 0;
+    }
+
+    [data-theme="dark"] .current-month {
+      color: #00ddeb;
+    }
+
+    .refresh-btn {
+      background: linear-gradient(45deg, #00ddeb, #ff6b6b) !important;
+      color: #333 !important;
+      border: none;
+      border-radius: 8px;
+      padding: 8px 16px;
+      cursor: pointer;
+      font-size: 0.8rem;
+      font-weight: 600;
+      transition: all 0.3s ease;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    [data-theme="dark"] .refresh-btn {
+      background: linear-gradient(45deg, #2e2767, #620808) !important;
+      color: #a6a6d1 !important;
+    }
+
+    .refresh-btn:hover {
+      filter: brightness(1.1);
+      transform: translateY(-1px);
+    }
+
+    .add-bills-section {
+      background: rgba(255, 255, 255, 0.05) !important;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      padding: 0.75rem;
+      margin-bottom: 1rem;
+      text-align: left;
+    }
+
+    [data-theme="dark"] .add-bills-section {
+      background: rgba(30, 30, 50, 0.2) !important;
+      border-color: rgba(100, 100, 150, 0.2);
+    }
+
+    .section-title {
+      font-size: 0.9rem;
+      font-weight: 600;
+      margin: 0 0 0.5rem 0;
+      color: inherit;
+    }
+
+    .bills-input {
+      width: 100%;
+      padding: 0.5rem;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.1) !important;
+      color: inherit;
+      font-size: 0.8rem;
+      font-family: inherit;
+      margin-bottom: 0.5rem;
+      box-sizing: border-box;
+    }
+
+    [data-theme="dark"] .bills-input {
+      background: rgba(30, 30, 50, 0.3) !important;
+      border-color: rgba(100, 100, 150, 0.3);
+    }
+
+    .bills-input::placeholder {
+      color: rgba(255, 255, 255, 0.5);
+    }
+
+    [data-theme="dark"] .bills-input::placeholder {
+      color: rgba(166, 166, 209, 0.5);
+    }
+
+    .bills-input:focus {
+      outline: none;
+      border-color: #00ddeb;
+      box-shadow: 0 0 0 2px rgba(0, 221, 235, 0.2);
+    }
+
+    .input-help {
+      font-size: 0.7rem;
+      opacity: 0.7;
+      margin-bottom: 0.5rem;
+    }
+
+    .add-bills-btn {
+      background: linear-gradient(45deg, #00ddeb, #ff6b6b) !important;
+      color: #333 !important;
+      border: none;
+      border-radius: 6px;
+      padding: 8px 16px;
+      cursor: pointer;
+      font-size: 0.8rem;
+      font-weight: 600;
+      transition: all 0.3s ease;
+      width: 100%;
+    }
+
+    [data-theme="dark"] .add-bills-btn {
+      background: linear-gradient(45deg, #2e2767, #620808) !important;
+      color: #a6a6d1 !important;
+    }
+
+    .add-bills-btn:hover {
+      filter: brightness(1.1);
+      transform: translateY(-1px);
+    }
+
+    .add-bills-btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .bills-list {
+      margin-bottom: 1rem;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+
+    .bill-item {
+      display: flex;
+      align-items: center;
+      padding: 0.75rem;
+      margin-bottom: 0.5rem;
+      background: rgba(255, 255, 255, 0.05) !important;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      transition: all 0.3s ease;
+    }
+
+    [data-theme="dark"] .bill-item {
+      background: rgba(30, 30, 50, 0.2) !important;
+      border-color: rgba(100, 100, 150, 0.2);
+    }
+
+    .bill-item.paid {
+      background: rgba(40, 167, 69, 0.1) !important;
+      border-color: rgba(40, 167, 69, 0.3);
+    }
+
+    .bill-item:hover {
+      background: rgba(255, 255, 255, 0.1) !important;
+      transform: translateY(-1px);
+    }
+
+    [data-theme="dark"] .bill-item:hover {
+      background: rgba(30, 30, 50, 0.4) !important;
+    }
+
+    .bill-item.paid:hover {
+      background: rgba(40, 167, 69, 0.15) !important;
+    }
+
+    .bill-checkbox {
+      width: 20px;
+      height: 20px;
+      margin-right: 0.75rem;
+      cursor: pointer;
+      accent-color: #00ddeb;
+    }
+
+    .bill-name {
+      flex: 1;
+      font-size: 0.9rem;
+      font-weight: 500;
+      color: inherit;
+      text-align: left;
+    }
+
+    .bill-item.paid .bill-name {
+      text-decoration: line-through;
+      opacity: 0.7;
+    }
+
+    .bill-status {
+      font-size: 0.7rem;
+      font-weight: 600;
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+      margin-left: 0.5rem;
+    }
+
+    .status-pending {
+      background: rgba(255, 167, 38, 0.2) !important;
+      color: #ffa726;
+      border: 1px solid rgba(255, 167, 38, 0.3);
+    }
+
+    .status-paid {
+      background: rgba(40, 167, 69, 0.2) !important;
+      color: #28a745;
+      border: 1px solid rgba(40, 167, 69, 0.3);
+    }
+
+    .delete-bill-btn {
+      background: rgba(220, 53, 69, 0.2) !important;
+      color: #dc3545 !important;
+      border: 1px solid rgba(220, 53, 69, 0.3);
+      border-radius: 4px;
+      padding: 0.25rem 0.5rem;
+      cursor: pointer;
+      font-size: 0.7rem;
+      margin-left: 0.5rem;
+      transition: all 0.3s ease;
+    }
+
+    .delete-bill-btn:hover {
+      background: rgba(220, 53, 69, 0.3) !important;
+      transform: scale(1.05);
+    }
+
+    .no-bills {
+      text-align: center;
+      color: rgba(255, 255, 255, 0.7);
+      font-style: italic;
+      padding: 2rem;
+      background: rgba(255, 255, 255, 0.05) !important;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+    }
+
+    [data-theme="dark"] .no-bills {
+      color: rgba(166, 166, 209, 0.7);
+      background: rgba(30, 30, 50, 0.2) !important;
+      border-color: rgba(100, 100, 150, 0.2);
+    }
+
+    .bills-summary {
+      background: rgba(255, 255, 255, 0.05) !important;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      padding: 0.75rem;
+      margin-top: 1rem;
+      display: flex;
+      justify-content: space-around;
+      text-align: center;
+    }
+
+    [data-theme="dark"] .bills-summary {
+      background: rgba(30, 30, 50, 0.2) !important;
+      border-color: rgba(100, 100, 150, 0.2);
+    }
+
+    .summary-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .summary-number {
+      font-size: 1.2rem;
+      font-weight: 700;
+      color: #00ddeb;
+      margin: 0;
+    }
+
+    [data-theme="dark"] .summary-number {
+      color: #00ddeb;
+    }
+
+    .summary-label {
+      font-size: 0.7rem;
+      opacity: 0.8;
+      margin: 0;
+    }
+
+    .error-message {
+      color: #dc3545;
+      background: rgba(220, 53, 69, 0.1) !important;
+      padding: 0.5rem;
+      border-radius: 6px;
+      margin: 0.5rem 0;
+      font-size: 0.8rem;
+      text-align: center;
+    }
+
+    [data-theme="dark"] .error-message {
+      color: #ff6b6b;
+      background: rgba(255, 107, 107, 0.1) !important;
+    }
+
+    .success-message {
+      color: #28a745;
+      background: rgba(40, 167, 69, 0.1) !important;
+      padding: 0.5rem;
+      border-radius: 6px;
+      margin: 0.5rem 0;
+      font-size: 0.8rem;
+      text-align: center;
+    }
+
+    [data-theme="dark"] .success-message {
+      color: #00ddeb;
+      background: rgba(0, 221, 235, 0.1) !important;
+    }
+
+    /* Scrollbar styling */
+    .bills-list::-webkit-scrollbar {
+      width: 4px;
+    }
+
+    .bills-list::-webkit-scrollbar-track {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 2px;
+    }
+
+    .bills-list::-webkit-scrollbar-thumb {
+      background: rgba(0, 221, 235, 0.5);
+      border-radius: 2px;
+    }
+
+    .bills-list::-webkit-scrollbar-thumb:hover {
+      background: rgba(0, 221, 235, 0.7);
+    }
+  </style>
+</head>
+<body>
+  <div class="widget-container">
+    <!-- Header with current month and refresh button -->
+    <div class="widget-header">
+      <h1 class="widget-title">💳 Bills Reminder</h1>
+      <div style="display: flex; align-items: center; gap: 1rem;">
+        <div id="currentMonth" class="current-month"></div>
+        <button id="refreshBtn" class="refresh-btn">
+          🔄 Next Month
+        </button>
+      </div>
+    </div>
+    
+    <!-- Add Bills Section -->
+    <div class="add-bills-section">
+      <div class="section-title">Add Bills</div>
+      <input 
+        type="text" 
+        id="billsInput" 
+        class="bills-input" 
+        placeholder="Enter bill names separated by commas (e.g., Electric, Water, Internet, Phone)"
+        maxlength="500"
+      >
+      <div class="input-help">Tip: Separate multiple bills with commas</div>
+      <button id="addBillsBtn" class="add-bills-btn">Add Bills</button>
+      <div id="errorMessage" class="error-message" style="display: none;"></div>
+      <div id="successMessage" class="success-message" style="display: none;"></div>
+    </div>
+    
+    <!-- Bills List -->
+    <div id="billsList" class="bills-list"></div>
+    
+    <!-- Bills Summary -->
+    <div class="bills-summary">
+      <div class="summary-item">
+        <div id="totalBills" class="summary-number">0</div>
+        <div class="summary-label">Total Bills</div>
+      </div>
+      <div class="summary-item">
+        <div id="paidBills" class="summary-number">0</div>
+        <div class="summary-label">Paid</div>
+      </div>
+      <div class="summary-item">
+        <div id="pendingBills" class="summary-number">0</div>
+        <div class="summary-label">Pending</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      // Handle theme
+      const params = new URLSearchParams(window.location.search);
+      const theme = params.get('theme');
+      if (theme === 'dark' || theme === 'light') {
+        document.documentElement.setAttribute('data-theme', theme);
+      }
+
+      // Widget state
+      let bills = [];
+      let currentDate = new Date();
+
+      // DOM elements
+      const currentMonthEl = document.getElementById('currentMonth');
+      const refreshBtn = document.getElementById('refreshBtn');
+      const billsInput = document.getElementById('billsInput');
+      const addBillsBtn = document.getElementById('addBillsBtn');
+      const billsList = document.getElementById('billsList');
+      const errorMessage = document.getElementById('errorMessage');
+      const successMessage = document.getElementById('successMessage');
+      const totalBills = document.getElementById('totalBills');
+      const paidBills = document.getElementById('paidBills');
+      const pendingBills = document.getElementById('pendingBills');
+
+      // Load data from localStorage
+      function loadData() {
+        try {
+          const savedBills = localStorage.getItem('billsReminder_bills');
+          const savedDate = localStorage.getItem('billsReminder_currentDate');
+          
+          if (savedBills) {
+            bills = JSON.parse(savedBills);
+          }
+          
+          if (savedDate) {
+            currentDate = new Date(savedDate);
+          }
+        } catch (error) {
+          console.error('Error loading bills data:', error);
+          bills = [];
+          currentDate = new Date();
+        }
+      }
+
+      function saveData() {
+        try {
+          localStorage.setItem('billsReminder_bills', JSON.stringify(bills));
+          localStorage.setItem('billsReminder_currentDate', currentDate.toISOString());
+        } catch (error) {
+          console.error('Error saving bills data:', error);
+          showError('Failed to save bills data');
+        }
+      }
+
+      function showError(message) {
+        errorMessage.textContent = message;
+        errorMessage.style.display = 'block';
+        successMessage.style.display = 'none';
+        setTimeout(() => {
+          errorMessage.style.display = 'none';
+        }, 3000);
+      }
+
+      function showSuccess(message) {
+        successMessage.textContent = message;
+        successMessage.style.display = 'block';
+        errorMessage.style.display = 'none';
+        setTimeout(() => {
+          successMessage.style.display = 'none';
+        }, 3000);
+      }
+
+      function updateCurrentMonth() {
+        const monthNames = [
+          'January', 'February', 'March', 'April', 'May', 'June',
+          'July', 'August', 'September', 'October', 'November', 'December'
+        ];
+        
+        const monthName = monthNames[currentDate.getMonth()];
+        const year = currentDate.getFullYear();
+        currentMonthEl.textContent = `${monthName} ${year}`;
+      }
+
+      function addBills() {
+        const input = billsInput.value.trim();
+        
+        if (!input) {
+          showError('Please enter at least one bill name');
+          return;
+        }
+
+        // Split by commas and clean up each bill name
+        const newBillNames = input.split(',')
+          .map(name => name.trim())
+          .filter(name => name.length > 0)
+          .filter(name => name.length <= 50); // Limit individual bill name length
+
+        if (newBillNames.length === 0) {
+          showError('Please enter valid bill names');
+          return;
+        }
+
+        // Check for duplicates
+        const duplicates = newBillNames.filter(name => 
+          bills.some(bill => bill.name.toLowerCase() === name.toLowerCase())
+        );
+
+        if (duplicates.length > 0) {
+          showError(`These bills already exist: ${duplicates.join(', ')}`);
+          return;
+        }
+
+        // Add new bills
+        const newBills = newBillNames.map(name => ({
+          id: Date.now() + Math.random(),
+          name: name,
+          paid: false,
+          createdAt: new Date().toISOString()
+        }));
+
+        bills.push(...newBills);
+        saveData();
+        renderBills();
+        updateSummary();
+        
+        billsInput.value = '';
+        showSuccess(`Added ${newBills.length} bill${newBills.length > 1 ? 's' : ''} successfully!`);
+      }
+
+      function toggleBillPaid(billId) {
+        const bill = bills.find(b => b.id === billId);
+        if (bill) {
+          bill.paid = !bill.paid;
+          saveData();
+          renderBills();
+          updateSummary();
+        }
+      }
+
+      function deleteBill(billId) {
+        const bill = bills.find(b => b.id === billId);
+        if (bill && confirm(`Are you sure you want to delete "${bill.name}"?`)) {
+          bills = bills.filter(b => b.id !== billId);
+          saveData();
+          renderBills();
+          updateSummary();
+          showSuccess('Bill deleted successfully');
+        }
+      }
+
+      function refreshMonth() {
+        // Advance to next month
+        currentDate.setMonth(currentDate.getMonth() + 1);
+        
+        // Uncheck all bills
+        bills.forEach(bill => {
+          bill.paid = false;
+        });
+        
+        saveData();
+        updateCurrentMonth();
+        renderBills();
+        updateSummary();
+        showSuccess('Advanced to next month - all bills reset to unpaid');
+      }
+
+      function renderBills() {
+        if (bills.length === 0) {
+          billsList.innerHTML = `
+            <div class="no-bills">
+              No bills added yet. Add your monthly bills above to get started!
+            </div>
+          `;
+          return;
+        }
+
+        // Sort bills alphabetically
+        const sortedBills = [...bills].sort((a, b) => a.name.localeCompare(b.name));
+
+        billsList.innerHTML = sortedBills.map(bill => `
+          <div class="bill-item ${bill.paid ? 'paid' : ''}">
+            <input 
+              type="checkbox" 
+              class="bill-checkbox" 
+              ${bill.paid ? 'checked' : ''}
+              onchange="toggleBillPaid(${bill.id})"
+            >
+            <div class="bill-name">${escapeHtml(bill.name)}</div>
+            <div class="bill-status ${bill.paid ? 'status-paid' : 'status-pending'}">
+              ${bill.paid ? 'PAID' : 'PENDING'}
+            </div>
+            <button class="delete-bill-btn" onclick="deleteBill(${bill.id})">
+              🗑️
+            </button>
+          </div>
+        `).join('');
+      }
+
+      function updateSummary() {
+        const total = bills.length;
+        const paid = bills.filter(bill => bill.paid).length;
+        const pending = total - paid;
+
+        totalBills.textContent = total;
+        paidBills.textContent = paid;
+        pendingBills.textContent = pending;
+      }
+
+      function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+      }
+
+      // Global functions for onclick handlers
+      window.toggleBillPaid = toggleBillPaid;
+      window.deleteBill = deleteBill;
+
+      // Event listeners
+      refreshBtn.addEventListener('click', refreshMonth);
+      addBillsBtn.addEventListener('click', addBills);
+      
+      // Enter key support
+      billsInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+          addBills();
+        }
+      });
+
+      // Initialize
+      loadData();
+      updateCurrentMonth();
+      renderBills();
+      updateSummary();
+    });
+  </script>
+</body>
+</html>
