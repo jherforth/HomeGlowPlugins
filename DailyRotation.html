@@ -1,0 +1,888 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Daily Rotation</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <link rel="stylesheet" href="/index.css">
+  <style>
+    * {
+      background: transparent !important;
+      background-color: transparent !important;
+      background-image: none !important;
+    }
+
+    body {
+      background: transparent !important;
+      font-family: 'Inter', sans-serif;
+      margin: 0;
+      padding: 0.75rem;
+      box-sizing: border-box;
+      font-size: 0.85rem;
+      color: #333;
+    }
+
+    [data-theme="dark"] body {
+      color: #a6a6d1;
+      background: transparent !important;
+    }
+
+    .widget-container {
+      background: transparent !important;
+      border: none !important;
+      box-shadow: none !important;
+      backdrop-filter: none !important;
+      border-radius: 12px;
+      padding: 0.5rem;
+      text-align: center;
+      width: 100%;
+      max-height: calc(100vh - 1.5rem);
+      overflow-y: auto;
+    }
+
+    .widget-title {
+      font-size: 1.2rem;
+      font-weight: 700;
+      margin: 0 0 1rem 0;
+      color: inherit;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+    }
+
+    .current-person {
+      background: rgba(255, 255, 255, 0.1) !important;
+      border: 2px solid #00ddeb;
+      border-radius: 16px;
+      padding: 2rem 1rem;
+      margin-bottom: 1.5rem;
+      position: relative;
+    }
+
+    [data-theme="dark"] .current-person {
+      background: rgba(30, 30, 50, 0.3) !important;
+    }
+
+    .current-label {
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: #00ddeb;
+      margin-bottom: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .current-avatar {
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      margin: 0 auto 1rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, #00ddeb, #ff6b6b) !important;
+      font-size: 2.5rem;
+      font-weight: bold;
+      color: white;
+      box-shadow: 0 4px 12px rgba(0, 221, 235, 0.3);
+    }
+
+    [data-theme="dark"] .current-avatar {
+      background: linear-gradient(135deg, #2e2767, #620808) !important;
+    }
+
+    .current-avatar img {
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      object-fit: cover;
+    }
+
+    .current-name {
+      font-size: 1.8rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+      text-transform: capitalize;
+    }
+
+    .rotation-info {
+      font-size: 0.8rem;
+      opacity: 0.7;
+    }
+
+    .members-section {
+      background: rgba(255, 255, 255, 0.05) !important;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 12px;
+      padding: 1rem;
+      margin-bottom: 1rem;
+    }
+
+    [data-theme="dark"] .members-section {
+      background: rgba(30, 30, 50, 0.2) !important;
+      border-color: rgba(100, 100, 150, 0.2);
+    }
+
+    .section-title {
+      font-size: 1rem;
+      font-weight: 600;
+      margin-bottom: 0.75rem;
+    }
+
+    .members-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(70px, 1fr));
+      gap: 0.75rem;
+      margin-bottom: 1rem;
+    }
+
+    .member-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 0.5rem;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      transition: all 0.3s ease;
+      position: relative;
+    }
+
+    .member-item.active {
+      border-color: #00ddeb;
+      background: rgba(0, 221, 235, 0.1) !important;
+    }
+
+    .member-item .remove-btn {
+      position: absolute;
+      top: -4px;
+      right: -4px;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #f44336 !important;
+      color: white !important;
+      border: none;
+      cursor: pointer;
+      font-size: 0.7rem;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      opacity: 0.9;
+    }
+
+    .member-item:hover .remove-btn {
+      display: flex;
+    }
+
+    .member-avatar {
+      width: 50px;
+      height: 50px;
+      border-radius: 50%;
+      margin-bottom: 0.35rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #ddd !important;
+      font-size: 1.3rem;
+    }
+
+    [data-theme="dark"] .member-avatar {
+      background: #555 !important;
+    }
+
+    .member-avatar img {
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      object-fit: cover;
+    }
+
+    .member-name {
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: capitalize;
+      text-align: center;
+      word-break: break-word;
+    }
+
+    .add-member-section {
+      margin-top: 1rem;
+      padding-top: 1rem;
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .add-member-form {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .add-member-input {
+      flex: 1;
+      padding: 0.5rem;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.1) !important;
+      color: inherit;
+      font-size: 0.8rem;
+    }
+
+    [data-theme="dark"] .add-member-input {
+      background: rgba(30, 30, 50, 0.3) !important;
+      border-color: rgba(100, 100, 150, 0.3);
+    }
+
+    .add-member-input::placeholder {
+      color: rgba(255, 255, 255, 0.5);
+    }
+
+    [data-theme="dark"] .add-member-input::placeholder {
+      color: rgba(166, 166, 209, 0.5);
+    }
+
+    .btn {
+      padding: 0.5rem 1rem;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.8rem;
+      font-weight: 600;
+      transition: all 0.3s ease;
+      background: linear-gradient(45deg, #00ddeb, #ff6b6b) !important;
+      color: #333 !important;
+    }
+
+    [data-theme="dark"] .btn {
+      background: linear-gradient(45deg, #2e2767, #620808) !important;
+      color: #a6a6d1 !important;
+    }
+
+    .btn:hover:not(:disabled) {
+      filter: brightness(1.1);
+      transform: translateY(-1px);
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.1) !important;
+      color: inherit !important;
+    }
+
+    [data-theme="dark"] .btn-secondary {
+      background: rgba(30, 30, 50, 0.3) !important;
+    }
+
+    .user-selector {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(70px, 1fr));
+      gap: 0.5rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .user-option {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 0.5rem;
+      border: 2px solid transparent;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      background: rgba(255, 255, 255, 0.05) !important;
+    }
+
+    [data-theme="dark"] .user-option {
+      background: rgba(30, 30, 50, 0.2) !important;
+    }
+
+    .user-option:hover {
+      border-color: #00ddeb;
+      transform: translateY(-2px);
+    }
+
+    .user-option.selected {
+      border-color: #00ddeb;
+      background: rgba(0, 221, 235, 0.1) !important;
+    }
+
+    .user-option-avatar {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      margin-bottom: 0.25rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #ddd !important;
+      font-size: 1.2rem;
+    }
+
+    [data-theme="dark"] .user-option-avatar {
+      background: #555 !important;
+    }
+
+    .user-option-avatar img {
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      object-fit: cover;
+    }
+
+    .user-option-name {
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: capitalize;
+      text-align: center;
+    }
+
+    .controls {
+      display: flex;
+      gap: 0.5rem;
+      justify-content: center;
+      margin-top: 1rem;
+    }
+
+    .error-message {
+      background: rgba(244, 67, 54, 0.1) !important;
+      color: #f44336;
+      padding: 0.5rem;
+      border-radius: 6px;
+      margin-bottom: 1rem;
+      font-size: 0.8rem;
+      text-align: center;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 2rem;
+      opacity: 0.7;
+    }
+
+    .rotation-name-edit {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      justify-content: center;
+      margin-bottom: 1rem;
+    }
+
+    .rotation-name-input {
+      font-size: 1.2rem;
+      font-weight: 700;
+      padding: 0.25rem 0.5rem;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.1) !important;
+      color: inherit;
+      text-align: center;
+      max-width: 250px;
+    }
+
+    [data-theme="dark"] .rotation-name-input {
+      background: rgba(30, 30, 50, 0.3) !important;
+      border-color: rgba(100, 100, 150, 0.3);
+    }
+
+    .edit-icon {
+      cursor: pointer;
+      opacity: 0.6;
+      transition: opacity 0.3s ease;
+      font-size: 1rem;
+    }
+
+    .edit-icon:hover {
+      opacity: 1;
+    }
+  </style>
+</head>
+<body>
+  <div class="widget-container">
+    <div class="rotation-name-edit">
+      <span id="rotationNameDisplay" class="widget-title"></span>
+      <span id="editNameIcon" class="edit-icon">✏️</span>
+      <input type="text" id="rotationNameInput" class="rotation-name-input" style="display: none;">
+    </div>
+
+    <div id="errorMessage" class="error-message" style="display: none;"></div>
+    <div id="loadingMessage" class="loading">Loading...</div>
+
+    <div id="mainContent" style="display: none;">
+      <div class="current-person">
+        <div class="current-label">Today's Turn</div>
+        <div id="currentAvatar" class="current-avatar"></div>
+        <div id="currentName" class="current-name"></div>
+        <div class="rotation-info">
+          Day <span id="rotationDay">1</span> of <span id="totalMembers">0</span>
+        </div>
+      </div>
+
+      <div class="members-section">
+        <div class="section-title">Rotation Members</div>
+        <div id="membersGrid" class="members-grid"></div>
+
+        <div class="add-member-section">
+          <div id="userSelector" class="user-selector" style="display: none;"></div>
+
+          <div class="add-member-form">
+            <input
+              type="text"
+              id="customNameInput"
+              class="add-member-input"
+              placeholder="Add custom name..."
+            >
+            <button id="addCustomBtn" class="btn">Add</button>
+          </div>
+
+          <button id="toggleUserSelector" class="btn btn-secondary" style="width: 100%;">
+            Add from Users
+          </button>
+        </div>
+      </div>
+
+      <div class="controls">
+        <button id="resetBtn" class="btn btn-secondary">Reset Rotation</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+    const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_SUPABASE_ANON_KEY;
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    let rotation = null;
+    let members = [];
+    let allUsers = [];
+    let editingName = false;
+
+    const elements = {
+      loading: document.getElementById('loadingMessage'),
+      error: document.getElementById('errorMessage'),
+      mainContent: document.getElementById('mainContent'),
+      rotationNameDisplay: document.getElementById('rotationNameDisplay'),
+      rotationNameInput: document.getElementById('rotationNameInput'),
+      editNameIcon: document.getElementById('editNameIcon'),
+      currentAvatar: document.getElementById('currentAvatar'),
+      currentName: document.getElementById('currentName'),
+      rotationDay: document.getElementById('rotationDay'),
+      totalMembers: document.getElementById('totalMembers'),
+      membersGrid: document.getElementById('membersGrid'),
+      userSelector: document.getElementById('userSelector'),
+      customNameInput: document.getElementById('customNameInput'),
+      addCustomBtn: document.getElementById('addCustomBtn'),
+      toggleUserSelector: document.getElementById('toggleUserSelector'),
+      resetBtn: document.getElementById('resetBtn')
+    };
+
+    const params = new URLSearchParams(window.location.search);
+    const theme = params.get('theme');
+    if (theme === 'dark' || theme === 'light') {
+      document.documentElement.setAttribute('data-theme', theme);
+    }
+
+    function showError(message) {
+      elements.error.textContent = message;
+      elements.error.style.display = 'block';
+    }
+
+    function hideError() {
+      elements.error.style.display = 'none';
+    }
+
+    function calculateCurrentIndex(startDate, memberCount) {
+      if (memberCount === 0) return 0;
+
+      const start = new Date(startDate);
+      const today = new Date();
+
+      start.setHours(0, 0, 0, 0);
+      today.setHours(0, 0, 0, 0);
+
+      const diffTime = today - start;
+      const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+
+      return diffDays % memberCount;
+    }
+
+    async function fetchUsers() {
+      try {
+        const response = await fetch('/api/users');
+        if (!response.ok) throw new Error('Failed to fetch users');
+
+        const data = await response.json();
+        allUsers = Array.isArray(data) ? data.filter(user => user.id !== 0) : [];
+      } catch (error) {
+        console.error('Error fetching users:', error);
+      }
+    }
+
+    async function initializeRotation() {
+      try {
+        const { data: existingRotations, error: fetchError } = await supabase
+          .from('rotation_groups')
+          .select('*')
+          .limit(1)
+          .maybeSingle();
+
+        if (fetchError) throw fetchError;
+
+        if (existingRotations) {
+          rotation = existingRotations;
+        } else {
+          const { data: newRotation, error: createError } = await supabase
+            .from('rotation_groups')
+            .insert({
+              name: 'Daily Rotation',
+              start_date: new Date().toISOString().split('T')[0],
+              current_index: 0
+            })
+            .select()
+            .single();
+
+          if (createError) throw createError;
+          rotation = newRotation;
+        }
+
+        await loadMembers();
+      } catch (error) {
+        console.error('Error initializing rotation:', error);
+        showError('Failed to initialize rotation system');
+      }
+    }
+
+    async function loadMembers() {
+      try {
+        const { data, error } = await supabase
+          .from('rotation_members')
+          .select('*')
+          .eq('rotation_id', rotation.id)
+          .order('sort_order', { ascending: true });
+
+        if (error) throw error;
+
+        members = data || [];
+
+        const currentIndex = calculateCurrentIndex(rotation.start_date, members.length);
+
+        if (currentIndex !== rotation.current_index && members.length > 0) {
+          await supabase
+            .from('rotation_groups')
+            .update({ current_index: currentIndex })
+            .eq('id', rotation.id);
+
+          rotation.current_index = currentIndex;
+        }
+
+        renderRotation();
+      } catch (error) {
+        console.error('Error loading members:', error);
+        showError('Failed to load rotation members');
+      }
+    }
+
+    async function addMember(userId, customName) {
+      try {
+        const nextSortOrder = members.length;
+
+        const { data, error } = await supabase
+          .from('rotation_members')
+          .insert({
+            rotation_id: rotation.id,
+            user_id: userId,
+            custom_name: customName,
+            sort_order: nextSortOrder
+          })
+          .select()
+          .single();
+
+        if (error) throw error;
+
+        await loadMembers();
+      } catch (error) {
+        console.error('Error adding member:', error);
+        showError('Failed to add member');
+      }
+    }
+
+    async function removeMember(memberId) {
+      try {
+        const { error } = await supabase
+          .from('rotation_members')
+          .delete()
+          .eq('id', memberId);
+
+        if (error) throw error;
+
+        const { error: updateError } = await supabase
+          .from('rotation_members')
+          .select('*')
+          .eq('rotation_id', rotation.id)
+          .order('sort_order', { ascending: true })
+          .then(async ({ data }) => {
+            for (let i = 0; i < data.length; i++) {
+              await supabase
+                .from('rotation_members')
+                .update({ sort_order: i })
+                .eq('id', data[i].id);
+            }
+          });
+
+        await loadMembers();
+      } catch (error) {
+        console.error('Error removing member:', error);
+        showError('Failed to remove member');
+      }
+    }
+
+    async function resetRotation() {
+      if (!confirm('Reset the rotation to start from today? This will restart from the first member.')) {
+        return;
+      }
+
+      try {
+        const { error } = await supabase
+          .from('rotation_groups')
+          .update({
+            start_date: new Date().toISOString().split('T')[0],
+            current_index: 0
+          })
+          .eq('id', rotation.id);
+
+        if (error) throw error;
+
+        rotation.start_date = new Date().toISOString().split('T')[0];
+        rotation.current_index = 0;
+
+        renderRotation();
+      } catch (error) {
+        console.error('Error resetting rotation:', error);
+        showError('Failed to reset rotation');
+      }
+    }
+
+    async function updateRotationName(newName) {
+      try {
+        const { error } = await supabase
+          .from('rotation_groups')
+          .update({ name: newName })
+          .eq('id', rotation.id);
+
+        if (error) throw error;
+
+        rotation.name = newName;
+      } catch (error) {
+        console.error('Error updating rotation name:', error);
+        showError('Failed to update rotation name');
+      }
+    }
+
+    function getMemberDisplayName(member) {
+      if (member.custom_name) {
+        return member.custom_name;
+      }
+
+      if (member.user_id) {
+        const user = allUsers.find(u => u.id === member.user_id);
+        return user ? user.username : `User ${member.user_id}`;
+      }
+
+      return 'Unknown';
+    }
+
+    function getMemberAvatar(member) {
+      if (member.user_id) {
+        const user = allUsers.find(u => u.id === member.user_id);
+        return user?.profile_picture;
+      }
+      return null;
+    }
+
+    function renderRotation() {
+      hideError();
+      elements.loading.style.display = 'none';
+      elements.mainContent.style.display = 'block';
+
+      elements.rotationNameDisplay.textContent = rotation.name;
+      elements.totalMembers.textContent = members.length;
+
+      if (members.length > 0) {
+        const currentMember = members[rotation.current_index];
+        const displayName = getMemberDisplayName(currentMember);
+        const avatar = getMemberAvatar(currentMember);
+
+        elements.currentAvatar.innerHTML = '';
+        if (avatar) {
+          const img = document.createElement('img');
+          img.src = avatar;
+          img.alt = displayName;
+          elements.currentAvatar.appendChild(img);
+        } else {
+          elements.currentAvatar.textContent = displayName.charAt(0).toUpperCase();
+        }
+
+        elements.currentName.textContent = displayName;
+        elements.rotationDay.textContent = rotation.current_index + 1;
+      } else {
+        elements.currentAvatar.textContent = '?';
+        elements.currentName.textContent = 'No members yet';
+        elements.rotationDay.textContent = '0';
+      }
+
+      renderMembers();
+    }
+
+    function renderMembers() {
+      elements.membersGrid.innerHTML = '';
+
+      members.forEach((member, index) => {
+        const isActive = index === rotation.current_index;
+        const displayName = getMemberDisplayName(member);
+        const avatar = getMemberAvatar(member);
+
+        const memberEl = document.createElement('div');
+        memberEl.className = `member-item ${isActive ? 'active' : ''}`;
+
+        const removeBtn = document.createElement('button');
+        removeBtn.className = 'remove-btn';
+        removeBtn.textContent = '×';
+        removeBtn.onclick = () => removeMember(member.id);
+
+        const avatarEl = document.createElement('div');
+        avatarEl.className = 'member-avatar';
+
+        if (avatar) {
+          const img = document.createElement('img');
+          img.src = avatar;
+          img.alt = displayName;
+          avatarEl.appendChild(img);
+        } else {
+          avatarEl.textContent = displayName.charAt(0).toUpperCase();
+        }
+
+        const nameEl = document.createElement('div');
+        nameEl.className = 'member-name';
+        nameEl.textContent = displayName;
+
+        memberEl.appendChild(removeBtn);
+        memberEl.appendChild(avatarEl);
+        memberEl.appendChild(nameEl);
+        elements.membersGrid.appendChild(memberEl);
+      });
+    }
+
+    function renderUserSelector() {
+      elements.userSelector.innerHTML = '';
+
+      const memberUserIds = members
+        .filter(m => m.user_id)
+        .map(m => m.user_id);
+
+      const availableUsers = allUsers.filter(u => !memberUserIds.includes(u.id));
+
+      if (availableUsers.length === 0) {
+        elements.userSelector.innerHTML = '<div style="grid-column: 1/-1; text-align: center; opacity: 0.7; font-size: 0.8rem;">All users already added</div>';
+        return;
+      }
+
+      availableUsers.forEach(user => {
+        const userEl = document.createElement('div');
+        userEl.className = 'user-option';
+        userEl.onclick = () => {
+          addMember(user.id, null);
+          elements.userSelector.style.display = 'none';
+        };
+
+        const avatarEl = document.createElement('div');
+        avatarEl.className = 'user-option-avatar';
+
+        if (user.profile_picture) {
+          const img = document.createElement('img');
+          img.src = user.profile_picture;
+          img.alt = user.username;
+          avatarEl.appendChild(img);
+        } else {
+          avatarEl.textContent = user.username.charAt(0).toUpperCase();
+        }
+
+        const nameEl = document.createElement('div');
+        nameEl.className = 'user-option-name';
+        nameEl.textContent = user.username;
+
+        userEl.appendChild(avatarEl);
+        userEl.appendChild(nameEl);
+        elements.userSelector.appendChild(userEl);
+      });
+    }
+
+    elements.addCustomBtn.onclick = () => {
+      const name = elements.customNameInput.value.trim();
+      if (name) {
+        addMember(null, name);
+        elements.customNameInput.value = '';
+      }
+    };
+
+    elements.customNameInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        elements.addCustomBtn.click();
+      }
+    });
+
+    elements.toggleUserSelector.onclick = () => {
+      const isVisible = elements.userSelector.style.display !== 'none';
+      elements.userSelector.style.display = isVisible ? 'none' : 'grid';
+
+      if (!isVisible) {
+        renderUserSelector();
+      }
+    };
+
+    elements.resetBtn.onclick = resetRotation;
+
+    elements.editNameIcon.onclick = () => {
+      editingName = true;
+      elements.rotationNameDisplay.style.display = 'none';
+      elements.editNameIcon.style.display = 'none';
+      elements.rotationNameInput.style.display = 'block';
+      elements.rotationNameInput.value = rotation.name;
+      elements.rotationNameInput.focus();
+      elements.rotationNameInput.select();
+    };
+
+    elements.rotationNameInput.addEventListener('blur', async () => {
+      if (editingName) {
+        editingName = false;
+        const newName = elements.rotationNameInput.value.trim();
+
+        if (newName && newName !== rotation.name) {
+          await updateRotationName(newName);
+        }
+
+        elements.rotationNameDisplay.textContent = rotation.name;
+        elements.rotationNameDisplay.style.display = 'flex';
+        elements.editNameIcon.style.display = 'inline';
+        elements.rotationNameInput.style.display = 'none';
+      }
+    });
+
+    elements.rotationNameInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        elements.rotationNameInput.blur();
+      }
+    });
+
+    async function initialize() {
+      await fetchUsers();
+      await initializeRotation();
+    }
+
+    initialize();
+  </script>
+</body>
+</html>
