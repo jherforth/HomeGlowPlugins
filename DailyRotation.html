@@ -3,7 +3,6 @@
 <head>
   <meta charset="UTF-8">
   <title>Daily Rotation</title>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <link rel="stylesheet" href="/index.css">
   <style>
     * {
@@ -452,12 +451,7 @@
   </div>
 
   <script>
-    const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-    const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_SUPABASE_ANON_KEY;
-    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
     let rotation = null;
-    let members = [];
     let allUsers = [];
     let editingName = false;
 
@@ -495,10 +489,28 @@
       elements.error.style.display = 'none';
     }
 
-    function calculateCurrentIndex(startDate, memberCount) {
-      if (memberCount === 0) return 0;
+    function loadRotation() {
+      const saved = localStorage.getItem('dailyRotation');
+      if (saved) {
+        rotation = JSON.parse(saved);
+      } else {
+        rotation = {
+          name: 'Daily Rotation',
+          startDate: new Date().toISOString().split('T')[0],
+          members: []
+        };
+        saveRotation();
+      }
+    }
 
-      const start = new Date(startDate);
+    function saveRotation() {
+      localStorage.setItem('dailyRotation', JSON.stringify(rotation));
+    }
+
+    function calculateCurrentIndex() {
+      if (rotation.members.length === 0) return 0;
+
+      const start = new Date(rotation.startDate);
       const today = new Date();
 
       start.setHours(0, 0, 0, 0);
@@ -507,7 +519,7 @@
       const diffTime = today - start;
       const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
 
-      return diffDays % memberCount;
+      return diffDays % rotation.members.length;
     }
 
     async function fetchUsers() {
@@ -522,182 +534,55 @@
       }
     }
 
-    async function initializeRotation() {
-      try {
-        const { data: existingRotations, error: fetchError } = await supabase
-          .from('rotation_groups')
-          .select('*')
-          .limit(1)
-          .maybeSingle();
+    function addMember(userId, customName) {
+      const member = {
+        id: Date.now(),
+        userId: userId,
+        customName: customName
+      };
 
-        if (fetchError) throw fetchError;
-
-        if (existingRotations) {
-          rotation = existingRotations;
-        } else {
-          const { data: newRotation, error: createError } = await supabase
-            .from('rotation_groups')
-            .insert({
-              name: 'Daily Rotation',
-              start_date: new Date().toISOString().split('T')[0],
-              current_index: 0
-            })
-            .select()
-            .single();
-
-          if (createError) throw createError;
-          rotation = newRotation;
-        }
-
-        await loadMembers();
-      } catch (error) {
-        console.error('Error initializing rotation:', error);
-        showError('Failed to initialize rotation system');
-      }
+      rotation.members.push(member);
+      saveRotation();
+      renderRotation();
     }
 
-    async function loadMembers() {
-      try {
-        const { data, error } = await supabase
-          .from('rotation_members')
-          .select('*')
-          .eq('rotation_id', rotation.id)
-          .order('sort_order', { ascending: true });
-
-        if (error) throw error;
-
-        members = data || [];
-
-        const currentIndex = calculateCurrentIndex(rotation.start_date, members.length);
-
-        if (currentIndex !== rotation.current_index && members.length > 0) {
-          await supabase
-            .from('rotation_groups')
-            .update({ current_index: currentIndex })
-            .eq('id', rotation.id);
-
-          rotation.current_index = currentIndex;
-        }
-
-        renderRotation();
-      } catch (error) {
-        console.error('Error loading members:', error);
-        showError('Failed to load rotation members');
-      }
+    function removeMember(memberId) {
+      rotation.members = rotation.members.filter(m => m.id !== memberId);
+      saveRotation();
+      renderRotation();
     }
 
-    async function addMember(userId, customName) {
-      try {
-        const nextSortOrder = members.length;
-
-        const { data, error } = await supabase
-          .from('rotation_members')
-          .insert({
-            rotation_id: rotation.id,
-            user_id: userId,
-            custom_name: customName,
-            sort_order: nextSortOrder
-          })
-          .select()
-          .single();
-
-        if (error) throw error;
-
-        await loadMembers();
-      } catch (error) {
-        console.error('Error adding member:', error);
-        showError('Failed to add member');
-      }
-    }
-
-    async function removeMember(memberId) {
-      try {
-        const { error } = await supabase
-          .from('rotation_members')
-          .delete()
-          .eq('id', memberId);
-
-        if (error) throw error;
-
-        const { error: updateError } = await supabase
-          .from('rotation_members')
-          .select('*')
-          .eq('rotation_id', rotation.id)
-          .order('sort_order', { ascending: true })
-          .then(async ({ data }) => {
-            for (let i = 0; i < data.length; i++) {
-              await supabase
-                .from('rotation_members')
-                .update({ sort_order: i })
-                .eq('id', data[i].id);
-            }
-          });
-
-        await loadMembers();
-      } catch (error) {
-        console.error('Error removing member:', error);
-        showError('Failed to remove member');
-      }
-    }
-
-    async function resetRotation() {
+    function resetRotation() {
       if (!confirm('Reset the rotation to start from today? This will restart from the first member.')) {
         return;
       }
 
-      try {
-        const { error } = await supabase
-          .from('rotation_groups')
-          .update({
-            start_date: new Date().toISOString().split('T')[0],
-            current_index: 0
-          })
-          .eq('id', rotation.id);
-
-        if (error) throw error;
-
-        rotation.start_date = new Date().toISOString().split('T')[0];
-        rotation.current_index = 0;
-
-        renderRotation();
-      } catch (error) {
-        console.error('Error resetting rotation:', error);
-        showError('Failed to reset rotation');
-      }
+      rotation.startDate = new Date().toISOString().split('T')[0];
+      saveRotation();
+      renderRotation();
     }
 
-    async function updateRotationName(newName) {
-      try {
-        const { error } = await supabase
-          .from('rotation_groups')
-          .update({ name: newName })
-          .eq('id', rotation.id);
-
-        if (error) throw error;
-
-        rotation.name = newName;
-      } catch (error) {
-        console.error('Error updating rotation name:', error);
-        showError('Failed to update rotation name');
-      }
+    function updateRotationName(newName) {
+      rotation.name = newName;
+      saveRotation();
     }
 
     function getMemberDisplayName(member) {
-      if (member.custom_name) {
-        return member.custom_name;
+      if (member.customName) {
+        return member.customName;
       }
 
-      if (member.user_id) {
-        const user = allUsers.find(u => u.id === member.user_id);
-        return user ? user.username : `User ${member.user_id}`;
+      if (member.userId) {
+        const user = allUsers.find(u => u.id === member.userId);
+        return user ? user.username : `User ${member.userId}`;
       }
 
       return 'Unknown';
     }
 
     function getMemberAvatar(member) {
-      if (member.user_id) {
-        const user = allUsers.find(u => u.id === member.user_id);
+      if (member.userId) {
+        const user = allUsers.find(u => u.id === member.userId);
         return user?.profile_picture;
       }
       return null;
@@ -709,10 +594,12 @@
       elements.mainContent.style.display = 'block';
 
       elements.rotationNameDisplay.textContent = rotation.name;
-      elements.totalMembers.textContent = members.length;
+      elements.totalMembers.textContent = rotation.members.length;
 
-      if (members.length > 0) {
-        const currentMember = members[rotation.current_index];
+      const currentIndex = calculateCurrentIndex();
+
+      if (rotation.members.length > 0) {
+        const currentMember = rotation.members[currentIndex];
         const displayName = getMemberDisplayName(currentMember);
         const avatar = getMemberAvatar(currentMember);
 
@@ -727,21 +614,21 @@
         }
 
         elements.currentName.textContent = displayName;
-        elements.rotationDay.textContent = rotation.current_index + 1;
+        elements.rotationDay.textContent = currentIndex + 1;
       } else {
         elements.currentAvatar.textContent = '?';
         elements.currentName.textContent = 'No members yet';
         elements.rotationDay.textContent = '0';
       }
 
-      renderMembers();
+      renderMembers(currentIndex);
     }
 
-    function renderMembers() {
+    function renderMembers(currentIndex) {
       elements.membersGrid.innerHTML = '';
 
-      members.forEach((member, index) => {
-        const isActive = index === rotation.current_index;
+      rotation.members.forEach((member, index) => {
+        const isActive = index === currentIndex;
         const displayName = getMemberDisplayName(member);
         const avatar = getMemberAvatar(member);
 
@@ -779,9 +666,9 @@
     function renderUserSelector() {
       elements.userSelector.innerHTML = '';
 
-      const memberUserIds = members
-        .filter(m => m.user_id)
-        .map(m => m.user_id);
+      const memberUserIds = rotation.members
+        .filter(m => m.userId)
+        .map(m => m.userId);
 
       const availableUsers = allUsers.filter(u => !memberUserIds.includes(u.id));
 
@@ -855,13 +742,13 @@
       elements.rotationNameInput.select();
     };
 
-    elements.rotationNameInput.addEventListener('blur', async () => {
+    elements.rotationNameInput.addEventListener('blur', () => {
       if (editingName) {
         editingName = false;
         const newName = elements.rotationNameInput.value.trim();
 
         if (newName && newName !== rotation.name) {
-          await updateRotationName(newName);
+          updateRotationName(newName);
         }
 
         elements.rotationNameDisplay.textContent = rotation.name;
@@ -878,8 +765,9 @@
     });
 
     async function initialize() {
+      loadRotation();
       await fetchUsers();
-      await initializeRotation();
+      renderRotation();
     }
 
     initialize();
