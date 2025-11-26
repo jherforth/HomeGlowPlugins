@@ -30,69 +30,143 @@
       flex-direction: column;
       gap: 0.75rem;
     }
-    .widget-title { font-size: 1.2rem; font-weight: 700; margin: 0; color: inherit; }
+    .widget-title { font-size: 1.2rem; font-weight: 700; margin: 0; color: inherit; text-align: center; }
 
-    .calendars-list { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: center; }
-    .calendar-tag {
-      background: rgba(0,0,0,0.1) !important;
-      padding: 4px 10px; border-radius: 20px;
-      font-size: 0.75rem; font-weight: 600;
+    .add-section {
+      background: rgba(255,255,255,0.05) !important;
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 12px;
+      padding: 1rem;
     }
-    [data-theme="dark"] .calendar-tag { background: rgba(255,255,255,0.1) !important; }
+    [data-theme="dark"] .add-section { background: rgba(30,30,50,0.2) !important; border-color: rgba(100,100,150,0.2); }
 
-    .events-list { flex: 1; overflow-y: auto; padding: 0.5rem;
-      background: rgba(0,0,0,0.03) !important; border-radius: 8px; }
-    [data-theme="dark"] .events-list { background: rgba(255,255,255,0.05) !important; }
+    .input {
+      width: 100%;
+      padding: 0.5rem;
+      margin: 0.5rem 0;
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 8px;
+      background: rgba(255,255,255,0.1) !important;
+      color: inherit;
+      font-size: 0.85rem;
+    }
+    [data-theme="dark"] .input { background: rgba(30,30,50,0.3) !important; border-color: rgba(100,100,150,0.3); }
 
-    .event { padding: 0.5rem 0; border-bottom: 1px solid rgba(0,0,0,0.1); }
-    [data-theme="dark"] .event { border-bottom-color: rgba(255,255,255,0.1); }
-    .event:last-child { border-bottom: none; }
-    .event-summary { font-weight: 600; margin-bottom: 0.25rem; }
-    .event-time { font-size: 0.75rem; opacity: 0.8; }
-
-    .pagination { display: flex; justify-content: center; gap: 0.5rem; margin-top: 0.5rem; }
-    .custom-button {
+    .btn {
       background: linear-gradient(45deg, #00ddeb, #ff6b6b) !important;
       color: #333 !important;
-      border: none; border-radius: 8px; padding: 8px 16px;
-      cursor: pointer; font-size: 0.8rem; font-weight: 600;
+      border: none;
+      border-radius: 8px;
+      padding: 0.6rem 1rem;
+      cursor: pointer;
+      font-weight: 600;
       transition: all 0.3s ease;
     }
-    [data-theme="dark"] .custom-button {
-      background: linear-gradient(45deg, #2e2767, #620808) !important;
-      color: #a6a6d1 !important;
-    }
-    .custom-button:hover { filter: brightness(1.1); transform: translateY(-1px); }
-    .custom-button.small { padding: 6px 12px; font-size: 0.75rem; }
+    [data-theme="dark"] .btn { background: linear-gradient(45deg, #2e2767, #620808) !important; color: #a6a6d1 !important; }
+    .btn:hover { filter: brightness(1.1); transform: translateY(-1px); }
+    .btn-small { padding: 0.4rem 0.8rem; font-size: 0.8rem; }
 
+    .calendars-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      justify-content: center;
+    }
+    .calendar-tag {
+      background: rgba(0,0,0,0.1) !important;
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      position: relative;
+    }
+    [data-theme="dark"] .calendar-tag { background: rgba(255,255,255,0.1) !important; }
+    .calendar-tag .remove {
+      margin-left: 8px;
+      cursor: pointer;
+      font-weight: bold;
+      opacity: 0.7;
+    }
+    .calendar-tag .remove:hover { opacity: 1; }
+
+    .events-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0.75rem;
+      background: rgba(0,0,0,0.03) !important;
+      border-radius: 10px;
+    }
+    [data-theme="dark"] .events-list { background: rgba(255,255,255,0.05) !important; }
+
+    .event {
+      padding: 0.6rem 0;
+      border-bottom: 1px solid rgba(0,0,0,0.1);
+    }
+    [data-theme="dark"] .event { border-bottom-color: rgba(255,255,255,0.1); }
+    .event:last-child { border-bottom: none; }
+    .event-summary { font-weight: 600; }
+    .event-time { font-size: 0.8rem; opacity: 0.8; margin-top: 0.2rem; }
+
+    .pagination {
+      display: flex;
+      justify-content: center;
+      gap: 0.5rem;
+      margin-top: 0.5rem;
+    }
+
+    .status {
+      text-align: center;
+      font-size: 0.8rem;
+      opacity: 0.8;
+      min-height: 1.2rem;
+    }
     .error { color: #dc3545; }
     [data-theme="dark"] .error { color: #ff6b6b; }
+
+    .hint {
+      font-size: 0.75rem;
+      opacity: 0.7;
+      margin-top: 0.5rem;
+      text-align: center;
+    }
   </style>
 </head>
 <body>
   <div class="widget-container">
     <h1 class="widget-title">Calendars</h1>
 
-    <div style="text-align:center;">
-      <button id="addCalendar" class="custom-button">+ Add CalDAV Calendar</button>
-      <button id="refresh" class="custom-button" style="display:none; margin-left:0.5rem;">Refresh</button>
+    <div class="add-section">
+      <input type="text" id="calName" class="input" placeholder="Calendar name (e.g. Work, Personal)">
+      <input type="url" id="calUrl" class="input" placeholder="CalDAV URL (e.g. https://...)">
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem;">
+        <input type="text" id="calUser" class="input" placeholder="Username (optional)">
+        <input type="password" id="calPass" class="input" placeholder="Password (optional)">
+      </div>
+      <button id="addBtn" class="btn">Add Calendar</button>
+      <div class="hint">
+        Tip: For Yahoo, use URL like:<br>
+        <code>https://you@yahoo.com:apppassword@caldav.calendar.yahoo.com/</code>
+        <br>and leave username/password blank
+      </div>
     </div>
 
     <div id="calendars" class="calendars-list"></div>
+
+    <button id="refreshBtn" class="btn" style="display:none;">Refresh Events</button>
+
     <div id="events" class="events-list" style="display:none;"></div>
 
     <div id="pagination" class="pagination" style="display:none;">
-      <button id="prevPage" class="custom-button small">‹ Prev</button>
+      <button id="prevPage" class="btn btn-small">Prev</button>
       <span id="pageInfo"></span>
-      <button id="nextPage" class="custom-button small">Next ›</button>
+      <button id="nextPage" class="btn btn-small">Next</button>
     </div>
 
-    <div id="status" style="text-align:center; font-size:0.8rem; opacity:0.8;"></div>
+    <div id="status" class="status"></div>
   </div>
 
   <script>
     document.addEventListener('DOMContentLoaded', () => {
-      // Theme & transparency handling (unchanged)
       const params = new URLSearchParams(window.location.search);
       const theme = params.get('theme');
       if (theme === 'dark' || theme === 'light') {
@@ -111,138 +185,163 @@
       const EVENTS_PER_PAGE = 10;
 
       const el = {
-        addBtn: document.getElementById('addCalendar'),
-        refreshBtn: document.getElementById('refresh'),
+        name: document.getElementById('calName'),
+        url: document.getElementById('calUrl'),
+        user: document.getElementById('calUser'),
+        pass: document.getElementById('calPass'),
+        addBtn: document.getElementById('addBtn'),
+        refreshBtn: document.getElementById('refreshBtn'),
         calendarsDiv: document.getElementById('calendars'),
         eventsDiv: document.getElementById('events'),
         pagination: document.getElementById('pagination'),
-        prevBtn: document.getElementById('prevPage'),
-        nextBtn: document.getElementById('nextPage'),
+        prev: document.getElementById('prevPage'),
+        next: document.getElementById('nextPage'),
         pageInfo: document.getElementById('pageInfo'),
         status: document.getElementById('status')
       };
 
       const save = () => localStorage.setItem(STORAGE_KEY, JSON.stringify(calendars));
-      const status = (msg, err = false) => {
+      const status = (msg, error = false) => {
         el.status.textContent = msg;
-        el.status.className = err ? 'error' : '';
+        el.status.className = 'status' + (error ? ' error' : '');
       };
 
       const renderCalendars = () => {
         el.calendarsDiv.innerHTML = '';
         calendars.forEach((cal, i) => {
-          const tag = document.createElement('span');
+          const tag = document.createElement('div');
           tag.className = 'calendar-tag';
-          tag.textContent = cal.name || `Calendar ${i+1}`;
-          const x = document.createElement('span');
-          x.textContent = ' ×';
-          x.style.cursor = 'pointer';
-          x.style.marginLeft = '6px';
-          x.onclick = () => {
+          tag.innerHTML = `${cal.name || 'Calendar'} <span class="remove">×</span>`;
+          tag.querySelector('.remove').onclick = (e) => {
+            e.stopPropagation();
             if (confirm(`Remove "${cal.name || 'this calendar'}"?`)) {
               calendars.splice(i, 1);
               save();
               renderCalendars();
-              loadAll();
+              loadEvents();
             }
           };
-          tag.appendChild(x);
           el.calendarsDiv.appendChild(tag);
         });
       };
 
-      const renderEvents = () => { /* ← same as before, unchanged for brevity */ 
+      const renderEvents = () => {
         const start = (currentPage - 1) * EVENTS_PER_PAGE;
         const end = start + EVENTS_PER_PAGE;
         const page = allEvents.slice(start, end);
 
-        el.eventsDiv.innerHTML = page.length ? '' : '<p>No upcoming events.</p>';
+        el.eventsDiv.innerHTML = '';
+        if (page.length === 0) {
+          el.eventsDiv.innerHTML = '<p>No upcoming events.</p>';
+          el.pagination.style.display = 'none';
+          return;
+        }
+
         page.forEach(ev => {
-          const div = document.createElement('div'); div.className = 'event';
-          const sum = document.createElement('div'); sum.className = 'event-summary';
-          sum.textContent = ev.summary || '(No title)';
-          const time = document.createElement('div'); time.className = 'event-time';
-          if (ev.isAllDay) time.textContent = ev.start.toLocaleDateString(undefined, {weekday:'short', month:'short', day:'numeric'});
-          else time.textContent = `${ev.start.toLocaleDateString(undefined, {weekday:'short', month:'short', day:'numeric'})} ${ev.start.toLocaleTimeString([], {hour:'numeric', minute:'2-digit'})} – ${ev.end?.toLocaleTimeString([], {hour:'numeric', minute:'2-digit'}) || ''}`;
-          div.append(sum, time);
+          const div = document.createElement('div');
+          div.className = 'event';
+          div.innerHTML = `
+            <div class="event-summary">${ev.summary || '(No title)'}</div>
+            <div class="event-time">
+              ${ev.start.toLocaleDateString(undefined, {weekday:'short', month:'short', day:'numeric'})}
+              ${ev.isAllDay ? '' : ' · ' + ev.start.toLocaleTimeString([], {hour:'numeric', minute:'2-digit'})}
+            </div>
+          `;
           el.eventsDiv.appendChild(div);
         });
 
-        const pages = Math.ceil(allEvents.length / EVENTS_PER_PAGE);
-        el.pageInfo.textContent = `Page ${currentPage} of ${pages}`;
-        el.prevBtn.disabled = currentPage === 1;
-        el.nextBtn.disabled = currentPage === pages;
-        el.pagination.style.display = pages > 1 ? 'flex' : 'none';
+        const totalPages = Math.ceil(allEvents.length / EVENTS_PER_PAGE);
+        el.pageInfo.textContent = `Page ${currentPage} of ${totalPages}`;
+        el.prev.disabled = currentPage === 1;
+        el.next.disabled = currentPage === totalPages;
+        el.pagination.style.display = totalPages > 1 ? 'flex' : 'none';
       };
 
-      // ICS parser & fetchCalendar unchanged — exactly the same as previous working version
-
       async function fetchCalendar(cal) {
-        status(`Fetching ${cal.name || 'calendar'}…`);
+        status(`Loading ${cal.name || 'calendar'}...`);
         try {
           const headers = {};
-          if (cal.username || cal.password) {
+          if (cal.username && cal.password) {
             headers.Authorization = 'Basic ' + btoa(`${cal.username}:${cal.password}`);
           }
           const resp = await fetch(cal.url, { headers });
           if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
           const ics = await resp.text();
-          return parseICS(ics, cal.name);
+          return parseICS(ics);
         } catch (e) {
           console.error(e);
-          status(`Failed: ${cal.name || 'calendar'} – ${e.message}`, true);
+          status(`Failed: ${cal.name || 'calendar'}`, true);
           return [];
         }
       }
 
-      // ← parseICS(), parseDate(), parseDateTime() exactly the same as before (omitted for brevity)
+      function parseICS(ics) {
+        const events = [];
+        const lines = ics.replace(/\r\n /g, ' ').split('\n');
+        let current = null;
+        lines.forEach(line => {
+          line = line.trim();
+          if (line === 'BEGIN:VEVENT') current = {};
+          else if (line.startsWith('SUMMARY:')) current.summary = line.slice(8);
+          else if (line.startsWith('DTSTART;VALUE=DATE:')) {
+            current.start = new Date(line.slice(19));
+            current.isAllDay = true;
+          } else if (line.startsWith('DTSTART:')) {
+            const dt = line.slice(8);
+            current.start = new Date(dt.endsWith('Z') ? dt : dt.replace(/(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})/, '$1-$2-$3T$4:$5:$6'));
+          } else if (line === 'END:VEVENT' && current && current.start > new Date()) {
+            events.push(current);
+          }
+        });
+        return events.sort((a,b) => a.start - b.start);
+      }
 
-      async function loadAll() {
-        if (!calendars.length) {
+      async function loadEvents() {
+        if (calendars.length === 0) {
           el.eventsDiv.style.display = 'none';
           el.refreshBtn.style.display = 'none';
-          status('No calendars added yet.');
+          status('Add a calendar to see events');
           return;
         }
         allEvents = [];
         for (const cal of calendars) {
           const evs = await fetchCalendar(cal);
-          allEvents = allEvents.concat(evs.map(e => ({...e, calendar: cal.name})));
+          allEvents.push(...evs.map(e => ({...e, calendar: cal.name})));
         }
         allEvents.sort((a,b) => a.start - b.start);
         currentPage = 1;
         renderEvents();
         el.eventsDiv.style.display = 'block';
-        el.refreshBtn.style.display = 'inline-block';
+        el.refreshBtn.style.display = 'block';
         status(`Loaded ${allEvents.length} upcoming event(s)`);
       }
 
-      // ——————— MAIN FIX: Robust add-calendar flow ———————
       el.addBtn.onclick = () => {
-        el.addBtn.disabled = true; // prevent double-click issues
-
-        const name = prompt('Calendar display name (e.g. Work, Personal):') || '';
-        if (!name.trim ()) { el.addBtn.disabled = false; return; }
-
-        const url = prompt('Full CalDAV URL (must end with .ics or folder path):\nExamples:\n• Yahoo: https://user:pass@caldav.calendar.yahoo.com/\n• Nextcloud: https://cloud.example.com/remote.php/dav/calendars/user/work/') || '';
-        if (!url.trim()) { el.addBtn.disabled = false; return; }
-
-        const username = prompt('Username / email (leave blank if embedded in URL):') || '';
-        const password = prompt('Password / app-password (leave blank if embedded in URL):') || '';
-
-        calendars.push({ name: name.trim(), url: url.trim(), username, password });
+        const name = el.name.value.trim();
+        const url = el.url.value.trim();
+        if (!name || !url) {
+          status('Name and URL are required', true);
+          return;
+        }
+        calendars.push({
+          name,
+          url,
+          username: el.user.value.trim(),
+          password: el.pass.value
+        });
         save();
+        el.name.value = el.url.value = el.user.value = el.pass.value = '';
         renderCalendars();
-        loadAll();
-        el.addBtn.disabled = false;
+        loadEvents();
+        status('Calendar added!');
       };
 
-      el.refreshBtn.onclick = () => loadAll();
-      el.prevBtn.onclick = () => { if (currentPage > 1) { currentPage--; renderEvents(); }};
-      el.nextBtn.onclick = () => { if (currentPage * EVENTS_PER_PAGE < allEvents.length) { currentPage++; renderEvents(); }};
+      el.refreshBtn.onclick = () => loadEvents();
+      el.prev.onclick = () => { if (currentPage > 1) { currentPage--; renderEvents(); }};
+      el.next.onclick = () => { if (currentPage * EVENTS_PER_PAGE < allEvents.length) { currentPage++; renderEvents(); }};
 
       renderCalendars();
-      if (calendars.length) loadAll();
+      if (calendars.length > 0) loadEvents();
     });
   </script>
 </body>
