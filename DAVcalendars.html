@@ -25,58 +25,46 @@
       padding: 0.5rem;
       width: 100%;
       max-height: calc(100vh - 1.5rem);
-      overflow-y: auto;
+      overflow: hidden;
       display: flex;
       flex-direction: column;
       gap: 0.75rem;
     }
-    .widget-title { font-size: 1.2rem; font-weight: 700; margin: 0; color: inherit; text-align: center; }
 
-    .add-section {
-      background: rgba(255,255,255,0.05) !important;
-      border: 1px solid rgba(255,255,255,0.1);
-      border-radius: 12px;
-      padding: 1rem;
-    }
-    [data-theme="dark"] .add-section { background: rgba(30,30,50,0.2) !important; border-color: rgba(100,100,150,0.2); }
-
-    .input {
-      width: 100%;
-      padding: 0.5rem;
-      margin: 0.5rem 0;
-      border: 1px solid rgba(255,255,255,0.2);
-      border-radius: 8px;
-      background: rgba(255,255,255,0.1) !important;
+    .widget-title {
+      font-size: 1.2rem;
+      font-weight: 700;
+      margin: 0;
+      text-align: center;
       color: inherit;
-      font-size: 0.85rem;
     }
-    [data-theme="dark"] .input { background: rgba(30,30,50,0.3) !important; border-color: rgba(100,100,150,0.3); }
 
-    .btn {
-      background: linear-gradient(45deg, #00ddeb, #ff6b6b) !important;
-      color: #333 !important;
-      border: none;
-      border-radius: 8px;
-      padding: 0.6rem 1rem;
-      cursor: pointer;
-      font-weight: 600;
-      transition: all 0.3s ease;
+    /* Events at the top — takes all available space */
+    .events-wrapper {
+      flex: 1;
+      min-height: 0; /* crucial for flex children with overflow */
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
     }
-    [data-theme="dark"] .btn { background: linear-gradient(45deg, #2e2767, #620808) !important; color: #a6a6d1 !important; }
-    .btn:hover { filter: brightness(1.1); transform: translateY(-1px); }
-    .btn-small { padding: 0.4rem 0.8rem; font-size: 0.8rem; }
+
+    .events-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
 
     .calendars-list {
       display: flex;
       flex-wrap: wrap;
       gap: 0.5rem;
       justify-content: center;
+      font-size: 0.8rem;
     }
     .calendar-tag {
       background: rgba(0,0,0,0.1) !important;
       padding: 6px 12px;
       border-radius: 20px;
-      font-size: 0.8rem;
       font-weight: 600;
       position: relative;
     }
@@ -111,8 +99,59 @@
       display: flex;
       justify-content: center;
       gap: 0.5rem;
-      margin-top: 0.5rem;
+      padding: 0.5rem 0;
     }
+
+    /* Add form at the very bottom */
+    .add-section {
+      background: rgba(255,255,255,0.05) !important;
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 12px;
+      padding: 1rem;
+      margin-top: auto; /* pushes it to bottom */
+    }
+    [data-theme="dark"] .add-section {
+      background: rgba(30,30,50,0.2) !important;
+      border-color: rgba(100,100,150,0.2);
+    }
+
+    .input {
+      width: 100%;
+      padding: 0.5rem;
+      margin: 0.5rem 0;
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 8px;
+      background: rgba(255,255,255,0.1) !important;
+      color: inherit;
+      font-size: 0.85rem;
+    }
+    [data-theme="dark"] .input {
+      background: rgba(30,30,50,0.3) !important;
+      border-color: rgba(100,100,150,0.3);
+    }
+
+    .input-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.5rem;
+    }
+
+    .btn {
+      background: linear-gradient(45deg, #00ddeb, #ff6b6b) !important;
+      color: #333 !important;
+      border: none;
+      border-radius: 8px;
+      padding: 0.6rem 1rem;
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.3s ease;
+    }
+    [data-theme="dark"] .btn {
+      background: linear-gradient(45deg, #2e2767, #620808) !important;
+      color: #a6a6d1 !important;
+    }
+    .btn:hover { filter: brightness(1.1); transform: translateY(-1px); }
+    .btn-small { padding: 0.4rem 0.8rem; font-size: 0.8rem; }
 
     .status {
       text-align: center;
@@ -135,34 +174,40 @@
   <div class="widget-container">
     <h1 class="widget-title">Calendars</h1>
 
+    <!-- Events at the top -->
+    <div class="events-wrapper">
+      <div class="events-header">
+        <div id="calendars" class="calendars-list"></div>
+        <button id="refreshBtn" class="btn" style="display:none;">Refresh</button>
+      </div>
+
+      <div id="events" class="events-list" style="display:none;">
+        <p>No events yet — add a calendar below!</p>
+      </div>
+
+      <div id="pagination" class="pagination" style="display:none;">
+        <button id="prevPage" class="btn btn-small">Prev</button>
+        <span id="pageInfo"></span>
+        <button id="nextPage" class="btn btn-small">Next</button>
+      </div>
+
+      <div id="status" class="status">Add a calendar below to see events</div>
+    </div>
+
+    <!-- Add form at the bottom -->
     <div class="add-section">
-      <input type="text" id="calName" class="input" placeholder="Calendar name (e.g. Work, Personal)">
-      <input type="url" id="calUrl" class="input" placeholder="CalDAV URL (e.g. https://...)">
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem;">
+      <input type="text" id="calName" class="input" placeholder="Calendar name (e.g. Work)">
+      <input type="url" id="calUrl" class="input" placeholder="CalDAV URL">
+      <div class="input-grid">
         <input type="text" id="calUser" class="input" placeholder="Username (optional)">
         <input type="password" id="calPass" class="input" placeholder="Password (optional)">
       </div>
       <button id="addBtn" class="btn">Add Calendar</button>
       <div class="hint">
-        Tip: For Yahoo, use URL like:<br>
-        <code>https://you@yahoo.com:apppassword@caldav.calendar.yahoo.com/</code>
-        <br>and leave username/password blank
+        Yahoo tip: <code>https://you@yahoo.com:apppass@caldav.calendar.yahoo.com/</code><br>
+        (leave username/password blank if in URL)
       </div>
     </div>
-
-    <div id="calendars" class="calendars-list"></div>
-
-    <button id="refreshBtn" class="btn" style="display:none;">Refresh Events</button>
-
-    <div id="events" class="events-list" style="display:none;"></div>
-
-    <div id="pagination" class="pagination" style="display:none;">
-      <button id="prevPage" class="btn btn-small">Prev</button>
-      <span id="pageInfo"></span>
-      <button id="nextPage" class="btn btn-small">Next</button>
-    </div>
-
-    <div id="status" class="status"></div>
   </div>
 
   <script>
@@ -240,12 +285,11 @@
         page.forEach(ev => {
           const div = document.createElement('div');
           div.className = 'event';
+          const dateStr = ev.start.toLocaleDateString(undefined, {weekday:'short', month:'short', day:'numeric'});
+          const timeStr = ev.isAllDay ? '' : ' · ' + ev.start.toLocaleTimeString([], {hour:'numeric', minute:'2-digit'});
           div.innerHTML = `
             <div class="event-summary">${ev.summary || '(No title)'}</div>
-            <div class="event-time">
-              ${ev.start.toLocaleDateString(undefined, {weekday:'short', month:'short', day:'numeric'})}
-              ${ev.isAllDay ? '' : ' · ' + ev.start.toLocaleTimeString([], {hour:'numeric', minute:'2-digit'})}
-            </div>
+            <div class="event-time">${dateStr}${timeStr}</div>
           `;
           el.eventsDiv.appendChild(div);
         });
@@ -258,7 +302,6 @@
       };
 
       async function fetchCalendar(cal) {
-        status(`Loading ${cal.name || 'calendar'}...`);
         try {
           const headers = {};
           if (cal.username && cal.password) {
@@ -270,7 +313,7 @@
           return parseICS(ics);
         } catch (e) {
           console.error(e);
-          status(`Failed: ${cal.name || 'calendar'}`, true);
+          status(`Failed to load ${cal.name || 'calendar'}`, true);
           return [];
         }
       }
@@ -289,7 +332,7 @@
           } else if (line.startsWith('DTSTART:')) {
             const dt = line.slice(8);
             current.start = new Date(dt.endsWith('Z') ? dt : dt.replace(/(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})/, '$1-$2-$3T$4:$5:$6'));
-          } else if (line === 'END:VEVENT' && current && current.start > new Date()) {
+          } else if (line === 'END:VEVENT' && current?.start > new Date()) {
             events.push(current);
           }
         });
@@ -300,27 +343,29 @@
         if (calendars.length === 0) {
           el.eventsDiv.style.display = 'none';
           el.refreshBtn.style.display = 'none';
-          status('Add a calendar to see events');
+          status('Add a calendar below to see events');
           return;
         }
+
+        status('Loading events...');
         allEvents = [];
         for (const cal of calendars) {
           const evs = await fetchCalendar(cal);
-          allEvents.push(...evs.map(e => ({...e, calendar: cal.name})));
+          allEvents.push(...evs);
         }
-        allEvents.sort((a,b) => a.start - b.start);
+        allEvents.sort = allEvents.sort((a,b) => a.start - b.start);
         currentPage = 1;
         renderEvents();
         el.eventsDiv.style.display = 'block';
         el.refreshBtn.style.display = 'block';
-        status(`Loaded ${allEvents.length} upcoming event(s)`);
+        status(`Showing ${allEvents.length} upcoming event${allEvents.length !== 1 ? 's' : ''}`);
       }
 
       el.addBtn.onclick = () => {
         const name = el.name.value.trim();
         const url = el.url.value.trim();
         if (!name || !url) {
-          status('Name and URL are required', true);
+          status('Name and URL required', true);
           return;
         }
         calendars.push({
@@ -333,7 +378,6 @@
         el.name.value = el.url.value = el.user.value = el.pass.value = '';
         renderCalendars();
         loadEvents();
-        status('Calendar added!');
       };
 
       el.refreshBtn.onclick = () => loadEvents();
