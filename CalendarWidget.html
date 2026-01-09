@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Weekly Calendar</title>
+  <link rel="stylesheet" href="/index.css">
+  <style>
+    * {
+      background: transparent !important;
+      background-color: transparent !important;
+      background-image: none !important;
+    }
+
+    body {
+      background: transparent !important;
+      font-family: 'Inter', sans-serif;
+      margin: 0;
+      padding: 0.75rem;
+      box-sizing: border-box;
+      font-size: 0.85rem;
+      color: #333;
+    }
+
+    [data-theme="dark"] body {
+      color: #a6a6d1;
+      background: transparent !important;
+    }
+
+    .widget-container {
+      background: transparent !important;
+      border: none !important;
+      box-shadow: none !important;
+      backdrop-filter: none !important;
+      border-radius: 12px;
+      padding: 0.5rem;
+      width: 100%;
+      max-height: calc(100vh - 1.5rem);
+      overflow-y: auto;
+    }
+
+    .widget-title {
+      font-size: 1.2rem;
+      font-weight: 700;
+      margin: 0 0 0.5rem 0;
+      color: inherit;
+      text-align: center;
+    }
+
+    .week-range {
+      text-align: center;
+      font-size: 0.75rem;
+      opacity: 0.8;
+      margin-bottom: 1rem;
+    }
+
+    .config-section {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      padding: 0.75rem;
+      margin-bottom: 1rem;
+    }
+
+    [data-theme="dark"] .config-section {
+      background: rgba(30, 30, 50, 0.2);
+      border-color: rgba(100, 100, 150, 0.2);
+    }
+
+    .config-label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+      display: block;
+    }
+
+    .config-input {
+      background: rgba(255, 255, 255, 0.1) !important;
+      border: 1px solid rgba(255, 255, 255, 0.2) !important;
+      border-radius: 4px;
+      padding: 0.5rem;
+      color: inherit !important;
+      font-size: 0.75rem;
+      width: 100%;
+      box-sizing: border-box;
+      margin-bottom: 0.5rem;
+    }
+
+    [data-theme="dark"] .config-input {
+      background: rgba(30, 30, 50, 0.3) !important;
+      border-color: rgba(100, 100, 150, 0.3) !important;
+    }
+
+    .config-input:focus {
+      outline: none;
+      border-color: #00ddeb !important;
+      box-shadow: 0 0 0 2px rgba(0, 221, 235, 0.2);
+    }
+
+    .custom-button {
+      background: linear-gradient(45deg, #00ddeb, #ff6b6b) !important;
+      color: #333 !important;
+      border: none;
+      border-radius: 8px;
+      padding: 8px 16px;
+      cursor: pointer;
+      font-size: 0.75rem;
+      font-weight: 600;
+      transition: all 0.3s ease;
+      width: 100%;
+    }
+
+    [data-theme="dark"] .custom-button {
+      background: linear-gradient(45deg, #2e2767, #620808) !important;
+      color: #a6a6d1 !important;
+    }
+
+    .custom-button:hover {
+      filter: brightness(1.1);
+      transform: translateY(-1px);
+    }
+
+    .custom-button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .day-section {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      padding: 0.5rem;
+      margin-bottom: 0.5rem;
+    }
+
+    [data-theme="dark"] .day-section {
+      background: rgba(30, 30, 50, 0.2);
+      border-color: rgba(100, 100, 150, 0.2);
+    }
+
+    .day-section.today {
+      border-color: #00ddeb;
+      border-width: 2px;
+    }
+
+    .day-header {
+      font-weight: 700;
+      font-size: 0.85rem;
+      margin-bottom: 0.5rem;
+      color: inherit;
+    }
+
+    .day-header.today {
+      color: #00ddeb;
+    }
+
+    .event-item {
+      background: rgba(255, 255, 255, 0.08);
+      border-left: 3px solid #00ddeb;
+      border-radius: 4px;
+      padding: 0.4rem;
+      margin-bottom: 0.4rem;
+      font-size: 0.75rem;
+    }
+
+    [data-theme="dark"] .event-item {
+      background: rgba(30, 30, 50, 0.3);
+    }
+
+    .event-time {
+      font-weight: 600;
+      color: #00ddeb;
+      margin-bottom: 0.2rem;
+    }
+
+    .event-title {
+      font-weight: 500;
+      color: inherit;
+      margin-bottom: 0.2rem;
+    }
+
+    .event-location {
+      font-size: 0.7rem;
+      opacity: 0.7;
+      font-style: italic;
+    }
+
+    .no-events {
+      text-align: center;
+      opacity: 0.7;
+      font-style: italic;
+      padding: 1rem;
+      font-size: 0.75rem;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 2rem;
+      opacity: 0.7;
+    }
+
+    .error-message {
+      background: rgba(255, 107, 107, 0.1);
+      border: 1px solid #ff6b6b;
+      border-radius: 8px;
+      padding: 0.75rem;
+      color: #ff6b6b;
+      font-size: 0.75rem;
+      margin-bottom: 1rem;
+      text-align: center;
+    }
+
+    .success-message {
+      background: rgba(40, 167, 69, 0.1);
+      border: 1px solid #28a745;
+      border-radius: 8px;
+      padding: 0.75rem;
+      color: #28a745;
+      font-size: 0.75rem;
+      margin-bottom: 1rem;
+      text-align: center;
+    }
+
+    .toggle-config-btn {
+      background: rgba(255, 255, 255, 0.1) !important;
+      color: inherit !important;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 8px;
+      padding: 6px 12px;
+      cursor: pointer;
+      font-size: 0.7rem;
+      font-weight: 600;
+      transition: all 0.3s ease;
+      margin-bottom: 0.5rem;
+      width: 100%;
+    }
+
+    [data-theme="dark"] .toggle-config-btn {
+      background: rgba(30, 30, 50, 0.3) !important;
+      border-color: rgba(100, 100, 150, 0.3);
+    }
+
+    .toggle-config-btn:hover {
+      background: rgba(255, 255, 255, 0.2) !important;
+    }
+
+    .refresh-info {
+      text-align: center;
+      font-size: 0.7rem;
+      opacity: 0.6;
+      margin-top: 0.5rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="widget-container">
+    <h1 class="widget-title">📅 Weekly Calendar</h1>
+
+    <button id="toggleConfigBtn" class="toggle-config-btn">⚙️ Configure Calendar</button>
+
+    <div id="configSection" class="config-section" style="display: none;">
+      <label class="config-label">Google Calendar ICS URL:</label>
+      <input
+        type="url"
+        id="icsUrl"
+        class="config-input"
+        placeholder="https://calendar.google.com/calendar/ical/..."
+      >
+      <div style="font-size: 0.7rem; opacity: 0.7; margin-bottom: 0.5rem;">
+        To get your ICS URL: Open Google Calendar → Settings → Calendar settings → Secret address in iCalendar format
+      </div>
+      <button id="saveConfigBtn" class="custom-button">Save & Load Calendar</button>
+      <div id="statusMessage"></div>
+    </div>
+
+    <div id="weekRange" class="week-range"></div>
+    <div id="calendarContent"></div>
+    <div id="refreshInfo" class="refresh-info"></div>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      // Handle theme
+      const params = new URLSearchParams(window.location.search);
+      const theme = params.get('theme');
+      if (theme === 'dark' || theme === 'light') {
+        document.documentElement.setAttribute('data-theme', theme);
+      }
+
+      // DOM elements
+      const toggleConfigBtn = document.getElementById('toggleConfigBtn');
+      const configSection = document.getElementById('configSection');
+      const icsUrlInput = document.getElementById('icsUrl');
+      const saveConfigBtn = document.getElementById('saveConfigBtn');
+      const statusMessage = document.getElementById('statusMessage');
+      const weekRange = document.getElementById('weekRange');
+      const calendarContent = document.getElementById('calendarContent');
+      const refreshInfo = document.getElementById('refreshInfo');
+
+      let events = [];
+      let showConfig = false;
+
+      // Load saved ICS URL
+      function loadConfig() {
+        const savedUrl = localStorage.getItem('homeglowCalendarIcsUrl');
+        if (savedUrl) {
+          icsUrlInput.value = savedUrl;
+          return savedUrl;
+        }
+        return null;
+      }
+
+      // Save ICS URL
+      function saveConfig() {
+        const url = icsUrlInput.value.trim();
+        if (!url) {
+          showStatus('Please enter a valid ICS URL', 'error');
+          return false;
+        }
+        localStorage.setItem('homeglowCalendarIcsUrl', url);
+        return true;
+      }
+
+      // Show status message
+      function showStatus(message, type = 'success') {
+        const className = type === 'error' ? 'error-message' : 'success-message';
+        statusMessage.innerHTML = `<div class="${className}">${message}</div>`;
+        setTimeout(() => {
+          statusMessage.innerHTML = '';
+        }, 4000);
+      }
+
+      // Toggle config section
+      function toggleConfig() {
+        showConfig = !showConfig;
+        configSection.style.display = showConfig ? 'block' : 'none';
+        toggleConfigBtn.textContent = showConfig ? '✕ Close Settings' : '⚙️ Configure Calendar';
+      }
+
+      // Get current week date range
+      function getCurrentWeek() {
+        const now = new Date();
+        const dayOfWeek = now.getDay(); // 0 = Sunday
+        const monday = new Date(now);
+        monday.setDate(now.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
+        monday.setHours(0, 0, 0, 0);
+
+        const sunday = new Date(monday);
+        sunday.setDate(monday.getDate() + 6);
+        sunday.setHours(23, 59, 59, 999);
+
+        return { start: monday, end: sunday };
+      }
+
+      // Format date range
+      function formatWeekRange(start, end) {
+        const options = { month: 'short', day: 'numeric' };
+        const startStr = start.toLocaleDateString('en-US', options);
+        const endStr = end.toLocaleDateString('en-US', options);
+        const year = end.getFullYear();
+        return `${startStr} - ${endStr}, ${year}`;
+      }
+
+      // Parse ICS data
+      function parseICS(icsText) {
+        const events = [];
+        const lines = icsText.split(/\r?\n/);
+        let currentEvent = null;
+        let currentField = '';
+
+        for (let i = 0; i < lines.length; i++) {
+          let line = lines[i].trim();
+
+          // Handle line continuation
+          if (line.startsWith(' ') || line.startsWith('\t')) {
+            if (currentField && currentEvent) {
+              currentEvent[currentField] += line.substring(1);
+            }
+            continue;
+          }
+
+          if (line === 'BEGIN:VEVENT') {
+            currentEvent = {};
+          } else if (line === 'END:VEVENT' && currentEvent) {
+            if (currentEvent.DTSTART) {
+              events.push(currentEvent);
+            }
+            currentEvent = null;
+            currentField = '';
+          } else if (currentEvent) {
+            const colonIndex = line.indexOf(':');
+            if (colonIndex > 0) {
+              const key = line.substring(0, colonIndex).split(';')[0];
+              const value = line.substring(colonIndex + 1);
+              currentEvent[key] = value;
+              currentField = key;
+            }
+          }
+        }
+
+        return events;
+      }
+
+      // Parse ICS datetime
+      function parseICSDate(icsDate) {
+        if (!icsDate) return null;
+
+        // Handle VALUE=DATE format (all-day events)
+        if (icsDate.length === 8) {
+          const year = icsDate.substring(0, 4);
+          const month = icsDate.substring(4, 6);
+          const day = icsDate.substring(6, 8);
+          return new Date(year, month - 1, day);
+        }
+
+        // Handle datetime format (with or without Z)
+        const year = icsDate.substring(0, 4);
+        const month = icsDate.substring(4, 6);
+        const day = icsDate.substring(6, 8);
+        const hour = icsDate.substring(9, 11) || '00';
+        const minute = icsDate.substring(11, 13) || '00';
+        const second = icsDate.substring(13, 15) || '00';
+
+        if (icsDate.endsWith('Z')) {
+          return new Date(Date.UTC(year, month - 1, day, hour, minute, second));
+        } else {
+          return new Date(year, month - 1, day, hour, minute, second);
+        }
+      }
+
+      // Format time for display
+      function formatTime(date) {
+        return date.toLocaleTimeString('en-US', {
+          hour: 'numeric',
+          minute: '2-digit',
+          hour12: true
+        });
+      }
+
+      // Format day header
+      function formatDayHeader(date) {
+        const today = new Date();
+        const isToday = date.toDateString() === today.toDateString();
+
+        const dayName = date.toLocaleDateString('en-US', { weekday: 'long' });
+        const monthDay = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+        return {
+          text: `${dayName}, ${monthDay}`,
+          isToday
+        };
+      }
+
+      // Filter and sort events for current week
+      function filterWeekEvents(events) {
+        const { start, end } = getCurrentWeek();
+
+        return events
+          .filter(event => {
+            const eventStart = parseICSDate(event.DTSTART);
+            return eventStart && eventStart >= start && eventStart <= end;
+          })
+          .map(event => ({
+            start: parseICSDate(event.DTSTART),
+            end: event.DTEND ? parseICSDate(event.DTEND) : null,
+            summary: event.SUMMARY || 'Untitled Event',
+            location: event.LOCATION || '',
+            description: event.DESCRIPTION || ''
+          }))
+          .sort((a, b) => a.start - b.start);
+      }
+
+      // Group events by day
+      function groupEventsByDay(events) {
+        const grouped = {};
+        const { start, end } = getCurrentWeek();
+
+        // Initialize all days of the week
+        for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+          const dateKey = d.toDateString();
+          grouped[dateKey] = [];
+        }
+
+        // Add events to their respective days
+        events.forEach(event => {
+          const dateKey = event.start.toDateString();
+          if (grouped[dateKey]) {
+            grouped[dateKey].push(event);
+          }
+        });
+
+        return grouped;
+      }
+
+      // Render calendar
+      function renderCalendar() {
+        const weekEvents = filterWeekEvents(events);
+        const groupedEvents = groupEventsByDay(weekEvents);
+        const { start, end } = getCurrentWeek();
+
+        weekRange.textContent = formatWeekRange(start, end);
+
+        if (weekEvents.length === 0) {
+          calendarContent.innerHTML = '<div class="no-events">No events scheduled for this week</div>';
+          return;
+        }
+
+        let html = '';
+
+        for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+          const dateKey = d.toDateString();
+          const dayEvents = groupedEvents[dateKey] || [];
+          const dayHeader = formatDayHeader(d);
+
+          if (dayEvents.length > 0) {
+            const todayClass = dayHeader.isToday ? ' today' : '';
+            const headerClass = dayHeader.isToday ? ' today' : '';
+
+            html += `<div class="day-section${todayClass}">`;
+            html += `<div class="day-header${headerClass}">${dayHeader.text}</div>`;
+
+            dayEvents.forEach(event => {
+              const isAllDay = event.start.getHours() === 0 && event.start.getMinutes() === 0;
+              const timeStr = isAllDay ? 'All day' : formatTime(event.start);
+
+              html += `<div class="event-item">`;
+              html += `<div class="event-time">${timeStr}</div>`;
+              html += `<div class="event-title">${escapeHtml(event.summary)}</div>`;
+              if (event.location) {
+                html += `<div class="event-location">📍 ${escapeHtml(event.location)}</div>`;
+              }
+              html += `</div>`;
+            });
+
+            html += `</div>`;
+          }
+        }
+
+        calendarContent.innerHTML = html || '<div class="no-events">No events for this week</div>';
+      }
+
+      // Escape HTML to prevent XSS
+      function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+      }
+
+      // Fetch and load calendar
+      async function loadCalendar() {
+        const url = loadConfig();
+
+        if (!url) {
+          calendarContent.innerHTML = '<div class="no-events">Please configure your calendar ICS URL above</div>';
+          return;
+        }
+
+        calendarContent.innerHTML = '<div class="loading">Loading calendar...</div>';
+        refreshInfo.textContent = '';
+
+        try {
+          const response = await fetch(url);
+
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          }
+
+          const icsText = await response.text();
+          const parsedEvents = parseICS(icsText);
+
+          if (parsedEvents.length === 0) {
+            throw new Error('No events found in calendar');
+          }
+
+          events = parsedEvents;
+          renderCalendar();
+
+          const now = new Date();
+          refreshInfo.textContent = `Last updated: ${now.toLocaleTimeString()}`;
+
+        } catch (error) {
+          console.error('Error loading calendar:', error);
+          calendarContent.innerHTML = `
+            <div class="error-message">
+              Failed to load calendar: ${escapeHtml(error.message)}<br>
+              <small>Make sure your ICS URL is correct and publicly accessible</small>
+            </div>
+          `;
+        }
+      }
+
+      // Event listeners
+      toggleConfigBtn.addEventListener('click', toggleConfig);
+
+      saveConfigBtn.addEventListener('click', async () => {
+        if (saveConfig()) {
+          showStatus('Configuration saved! Loading calendar...', 'success');
+          toggleConfig();
+          await loadCalendar();
+        }
+      });
+
+      // Initialize
+      loadCalendar();
+
+      // Auto-refresh every 15 minutes
+      setInterval(loadCalendar, 15 * 60 * 1000);
+    });
+  </script>
+</body>
+</html>
