@@ -250,6 +250,80 @@
       opacity: 0.6;
       margin-top: 0.5rem;
     }
+
+    .nav-controls {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+      align-items: center;
+    }
+
+    .nav-button {
+      background: rgba(255, 255, 255, 0.1) !important;
+      color: inherit !important;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 8px;
+      padding: 6px 12px;
+      cursor: pointer;
+      font-size: 0.75rem;
+      font-weight: 600;
+      transition: all 0.3s ease;
+      flex: 1;
+    }
+
+    [data-theme="dark"] .nav-button {
+      background: rgba(30, 30, 50, 0.3) !important;
+      border-color: rgba(100, 100, 150, 0.3);
+    }
+
+    .nav-button:hover:not(:disabled) {
+      background: rgba(255, 255, 255, 0.2) !important;
+      transform: translateY(-1px);
+    }
+
+    [data-theme="dark"] .nav-button:hover:not(:disabled) {
+      background: rgba(30, 30, 50, 0.5) !important;
+    }
+
+    .nav-button:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    .nav-button.today-btn {
+      flex: 1.5;
+      background: linear-gradient(45deg, #00ddeb, #ff6b6b) !important;
+      color: #333 !important;
+      border: none;
+    }
+
+    [data-theme="dark"] .nav-button.today-btn {
+      background: linear-gradient(45deg, #2e2767, #620808) !important;
+      color: #a6a6d1 !important;
+    }
+
+    .config-select {
+      background: rgba(255, 255, 255, 0.1) !important;
+      border: 1px solid rgba(255, 255, 255, 0.2) !important;
+      border-radius: 4px;
+      padding: 0.5rem;
+      color: inherit !important;
+      font-size: 0.75rem;
+      width: 100%;
+      box-sizing: border-box;
+      margin-bottom: 0.5rem;
+    }
+
+    [data-theme="dark"] .config-select {
+      background: rgba(30, 30, 50, 0.3) !important;
+      border-color: rgba(100, 100, 150, 0.3) !important;
+    }
+
+    .config-select:focus {
+      outline: none;
+      border-color: #00ddeb !important;
+      box-shadow: 0 0 0 2px rgba(0, 221, 235, 0.2);
+    }
   </style>
 </head>
 <body>
@@ -269,8 +343,25 @@
       <div style="font-size: 0.7rem; opacity: 0.7; margin-bottom: 0.5rem;">
         To get your ICS URL: Open Google Calendar → Settings → Calendar settings → Secret address in iCalendar format
       </div>
+
+      <label class="config-label">Auto-refresh interval:</label>
+      <select id="refreshRate" class="config-select">
+        <option value="0">Never (manual only)</option>
+        <option value="60000">1 minute</option>
+        <option value="300000">5 minutes</option>
+        <option value="900000" selected>15 minutes</option>
+        <option value="1800000">30 minutes</option>
+        <option value="3600000">1 hour</option>
+      </select>
+
       <button id="saveConfigBtn" class="custom-button">Save & Load Calendar</button>
       <div id="statusMessage"></div>
+    </div>
+
+    <div class="nav-controls">
+      <button id="prevWeekBtn" class="nav-button">← Prev</button>
+      <button id="todayBtn" class="nav-button today-btn">Today</button>
+      <button id="nextWeekBtn" class="nav-button">Next →</button>
     </div>
 
     <div id="weekRange" class="week-range"></div>
@@ -291,34 +382,69 @@
       const toggleConfigBtn = document.getElementById('toggleConfigBtn');
       const configSection = document.getElementById('configSection');
       const icsUrlInput = document.getElementById('icsUrl');
+      const refreshRateSelect = document.getElementById('refreshRate');
       const saveConfigBtn = document.getElementById('saveConfigBtn');
       const statusMessage = document.getElementById('statusMessage');
       const weekRange = document.getElementById('weekRange');
       const calendarContent = document.getElementById('calendarContent');
       const refreshInfo = document.getElementById('refreshInfo');
+      const prevWeekBtn = document.getElementById('prevWeekBtn');
+      const todayBtn = document.getElementById('todayBtn');
+      const nextWeekBtn = document.getElementById('nextWeekBtn');
 
       let events = [];
       let showConfig = false;
+      let weekOffset = 0;
+      let refreshInterval = null;
 
-      // Load saved ICS URL
+      // Load saved configuration
       function loadConfig() {
         const savedUrl = localStorage.getItem('homeglowCalendarIcsUrl');
+        const savedRefreshRate = localStorage.getItem('homeglowCalendarRefreshRate') || '900000';
+
         if (savedUrl) {
           icsUrlInput.value = savedUrl;
-          return savedUrl;
         }
-        return null;
+
+        refreshRateSelect.value = savedRefreshRate;
+
+        return savedUrl || null;
       }
 
-      // Save ICS URL
+      // Save configuration
       function saveConfig() {
         const url = icsUrlInput.value.trim();
         if (!url) {
           showStatus('Please enter a valid ICS URL', 'error');
           return false;
         }
+
+        const refreshRate = refreshRateSelect.value;
+
         localStorage.setItem('homeglowCalendarIcsUrl', url);
+        localStorage.setItem('homeglowCalendarRefreshRate', refreshRate);
+
+        setupAutoRefresh();
+
         return true;
+      }
+
+      // Setup auto-refresh based on saved settings
+      function setupAutoRefresh() {
+        if (refreshInterval) {
+          clearInterval(refreshInterval);
+          refreshInterval = null;
+        }
+
+        const refreshRate = parseInt(localStorage.getItem('homeglowCalendarRefreshRate') || '900000');
+
+        if (refreshRate > 0) {
+          refreshInterval = setInterval(() => {
+            if (weekOffset === 0) {
+              loadCalendar();
+            }
+          }, refreshRate);
+        }
       }
 
       // Show status message
@@ -337,7 +463,7 @@
         toggleConfigBtn.textContent = showConfig ? '✕ Close Settings' : '⚙️ Configure Calendar';
       }
 
-      // Get current week date range
+      // Get week date range based on offset
       function getCurrentWeek() {
         const now = new Date();
         const dayOfWeek = now.getDay(); // 0 = Sunday
@@ -345,11 +471,40 @@
         monday.setDate(now.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
         monday.setHours(0, 0, 0, 0);
 
+        // Apply week offset
+        monday.setDate(monday.getDate() + (weekOffset * 7));
+
         const sunday = new Date(monday);
         sunday.setDate(monday.getDate() + 6);
         sunday.setHours(23, 59, 59, 999);
 
         return { start: monday, end: sunday };
+      }
+
+      // Navigate to previous week
+      function navigateToPrevWeek() {
+        weekOffset--;
+        renderCalendar();
+        updateNavButtons();
+      }
+
+      // Navigate to next week
+      function navigateToNextWeek() {
+        weekOffset++;
+        renderCalendar();
+        updateNavButtons();
+      }
+
+      // Navigate to current week
+      function navigateToToday() {
+        weekOffset = 0;
+        renderCalendar();
+        updateNavButtons();
+      }
+
+      // Update navigation button states
+      function updateNavButtons() {
+        todayBtn.disabled = weekOffset === 0;
       }
 
       // Format date range
@@ -499,6 +654,7 @@
         const { start, end } = getCurrentWeek();
 
         weekRange.textContent = formatWeekRange(start, end);
+        updateNavButtons();
 
         if (weekEvents.length === 0) {
           calendarContent.innerHTML = '<div class="no-events">No events scheduled for this week</div>';
@@ -597,15 +753,27 @@
         if (saveConfig()) {
           showStatus('Configuration saved! Loading calendar...', 'success');
           toggleConfig();
+          weekOffset = 0;
           await loadCalendar();
         }
       });
 
-      // Initialize
-      loadCalendar();
+      prevWeekBtn.addEventListener('click', navigateToPrevWeek);
+      todayBtn.addEventListener('click', navigateToToday);
+      nextWeekBtn.addEventListener('click', navigateToNextWeek);
 
-      // Auto-refresh every 15 minutes
-      setInterval(loadCalendar, 15 * 60 * 1000);
+      // Initialize
+      loadConfig();
+      loadCalendar();
+      setupAutoRefresh();
+      updateNavButtons();
+
+      // Cleanup on page unload
+      window.addEventListener('beforeunload', () => {
+        if (refreshInterval) {
+          clearInterval(refreshInterval);
+        }
+      });
     });
   </script>
 </body>
