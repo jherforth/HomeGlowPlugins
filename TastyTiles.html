@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <title>Rolling Weekly Menu</title>
@@ -199,10 +200,11 @@
     }
   </style>
 </head>
+
 <body>
   <div class="widget-container">
     <h1 class="widget-title">🍽️ Rolling Weekly Menu</h1>
-    
+
     <div class="menu-controls">
       <button class="custom-button" onclick="toggleEditMode()">
         <span id="edit-mode-text">Edit Mode</span>
@@ -229,14 +231,11 @@
         document.documentElement.setAttribute('data-theme', theme);
       }
 
-      // Load saved menu data
-      loadMenuData();
-      
-      // Render the menu
-      renderMenu();
-      
-      // Check if we need to cycle days (once per day)
-      checkAndCycleDays();
+      (async () => {
+        await loadMenuData();
+        await checkAndCycleDays();
+        renderMenu();
+      })();
     });
 
     function getCurrentDayIndex() {
@@ -257,7 +256,7 @@
     function getRollingDayOrder() {
       const currentDayIndex = getCurrentDayIndex();
       const rollingOrder = [];
-      
+
       // Start with today and go forward 7 days
       for (let i = 0; i < 7; i++) {
         const dayIndex = (currentDayIndex + i) % 7;
@@ -269,35 +268,61 @@
           isToday: i === 0
         });
       }
-      
+
       return rollingOrder;
     }
 
-    function loadMenuData() {
-      const saved = localStorage.getItem('rollingWeeklyMenu');
-      if (saved) {
-        menuData = JSON.parse(saved);
-      } else {
-        // Initialize empty menu data
-        menuData = {};
-        dayNames.forEach((day, index) => {
-          menuData[index] = [];
+    async function loadMenuData() {
+      try {
+        const response = await fetch('/api/settings', {
+          credentials: 'include'
         });
+
+        if (!response.ok) throw new Error('Failed to load settings');
+
+        const settings = await response.json();
+
+        if (settings['plugin_tastytiles_recipes']) {
+          menuData = JSON.parse(settings['plugin_tastytiles_recipes']);
+        } else {
+          initializeEmptyMenu();
+        }
+
+      } catch (err) {
+        console.error(err);
+        initializeEmptyMenu();
       }
     }
 
-    function saveMenuData() {
-      localStorage.setItem('rollingWeeklyMenu', JSON.stringify(menuData));
+    async function saveMenuData() {
+      try {
+        await fetch('/api/settings', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            key: 'plugin_tastytiles_recipes',
+            value: JSON.stringify(menuData)
+          })
+        });
+      } catch (err) {
+        console.error(err);
+      }
     }
 
-    function checkAndCycleDays() {
-      const lastCycleDate = localStorage.getItem('lastMenuCycleDate');
+    async function checkAndCycleDays() {
       const today = new Date().toDateString();
-      
-      if (lastCycleDate !== today) {
-        // It's a new day, cycle the menu
-        cycleDays();
-        localStorage.setItem('lastMenuCycleDate', today);
+
+      if (!menuData.lastCycleDate) {
+        menuData.lastCycleDate = today;
+        await saveMenuData();
+        return;
+      }
+
+      if (menuData.lastCycleDate !== today) {
+        await cycleDays();
+        menuData.lastCycleDate = today;
+        await saveMenuData();
       }
     }
 
@@ -306,7 +331,7 @@
       const yesterday = new Date();
       yesterday.setDate(yesterday.getDate() - 1);
       const yesterdayIndex = yesterday.getDay();
-      
+
       // Clear yesterday's menu items (they've been "consumed")
       if (menuData[yesterdayIndex]) {
         menuData[yesterdayIndex] = [];
@@ -317,24 +342,24 @@
     function renderMenu() {
       const container = document.getElementById('menu-days');
       const rollingDays = getRollingDayOrder();
-      
+
       container.innerHTML = '';
-      
+
       rollingDays.forEach((day, position) => {
         const dayContainer = document.createElement('div');
         dayContainer.className = `day-container ${day.isToday ? 'current-day' : ''}`;
-        
+
         const dayItems = menuData[day.index] || [];
-        
+
         dayContainer.innerHTML = `
           <div class="day-header">
             <span class="day-name">${day.name}</span>
             <span class="day-date">${formatDate(day.date)}</span>
           </div>
           <div class="menu-items" id="items-${day.index}">
-            ${dayItems.length === 0 ? 
-              '<div class="empty-day">No menu items planned</div>' : 
-              dayItems.map((item, itemIndex) => `
+            ${dayItems.length === 0 ?
+            '<div class="empty-day">No menu items planned</div>' :
+            dayItems.map((item, itemIndex) => `
                 <div class="menu-item">
                   <span class="menu-item-text">${item}</span>
                   ${editMode ? `
@@ -344,25 +369,25 @@
                   ` : ''}
                 </div>
               `).join('')
-            }
+          }
           </div>
           ${editMode ? `
             <div class="add-item-container" id="add-container-${day.index}">
-              <input type="text" class="add-item-input" id="add-input-${day.index}" 
-                     placeholder="Add menu item..." 
+              <input type="text" class="add-item-input" id="add-input-${day.index}"
+                     placeholder="Add menu item..."
                      onkeypress="handleAddKeyPress(event, ${day.index})">
               <div class="add-item-actions">
                 <button class="small-button" onclick="cancelAdd(${day.index})">Cancel</button>
                 <button class="small-button" onclick="addItem(${day.index})">Add</button>
               </div>
             </div>
-            <button class="custom-button" onclick="showAddItem(${day.index})" 
+            <button class="custom-button" onclick="showAddItem(${day.index})"
                     id="add-btn-${day.index}" style="margin-top: 0.5rem; font-size: 0.7rem; padding: 4px 8px;">
               + Add Item
             </button>
           ` : ''}
         `;
-        
+
         container.appendChild(dayContainer);
       });
     }
@@ -378,12 +403,12 @@
       document.querySelectorAll('.add-item-container').forEach(container => {
         container.classList.remove('active');
       });
-      
+
       // Show this day's add container
       const container = document.getElementById(`add-container-${dayIndex}`);
       const button = document.getElementById(`add-btn-${dayIndex}`);
       const input = document.getElementById(`add-input-${dayIndex}`);
-      
+
       container.classList.add('active');
       button.style.display = 'none';
       input.focus();
@@ -394,7 +419,7 @@
       const container = document.getElementById(`add-container-${dayIndex}`);
       const button = document.getElementById(`add-btn-${dayIndex}`);
       const input = document.getElementById(`add-input-${dayIndex}`);
-      
+
       container.classList.remove('active');
       button.style.display = 'block';
       input.value = '';
@@ -404,7 +429,7 @@
     function addItem(dayIndex) {
       const input = document.getElementById(`add-input-${dayIndex}`);
       const text = input.value.trim();
-      
+
       if (text) {
         if (!menuData[dayIndex]) {
           menuData[dayIndex] = [];
@@ -443,4 +468,5 @@
     }
   </script>
 </body>
+
 </html>
