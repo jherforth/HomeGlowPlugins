@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Cron Helper • Nice & Clean</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f8f9fc;
+      color: #1d1d1f;
+      min-height: 100vh;
+      margin: 0;
+      padding: 40px 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .container {
+      background: white;
+      border-radius: 16px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.08);
+      padding: 32px;
+      max-width: 720px;
+      width: 100%;
+    }
+
+    h1 {
+      font-size: 2.1rem;
+      margin: 0 0 8px 0;
+      color: #0d47a1;
+      text-align: center;
+    }
+
+    .subtitle {
+      color: #555;
+      text-align: center;
+      margin: 0 0 32px 0;
+      font-size: 1.05rem;
+    }
+
+    .fields {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 24px;
+      justify-content: center;
+      margin-bottom: 32px;
+    }
+
+    .field {
+      flex: 1;
+      min-width: 180px;
+      max-width: 220px;
+    }
+
+    label {
+      font-weight: 600;
+      color: #333;
+      display: block;
+      margin-bottom: 8px;
+      font-size: 0.95rem;
+    }
+
+    select {
+      width: 100%;
+      padding: 12px 16px;
+      font-size: 1rem;
+      border: 1px solid #d0d7e0;
+      border-radius: 10px;
+      background: white;
+      color: #111;
+      box-shadow: inset 0 1px 3px rgba(0,0,0,0.04);
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    select:focus {
+      outline: none;
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 3px rgba(59,130,246,0.18);
+    }
+
+    h2 {
+      font-size: 1.4rem;
+      color: #1e40af;
+      margin: 32px 0 16px;
+      text-align: center;
+    }
+
+    #output {
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 1.5rem;
+      background: #f1f5f9;
+      padding: 20px 24px;
+      border-radius: 12px;
+      text-align: center;
+      border: 1px solid #e2e8f0;
+      word-break: break-all;
+      color: #111827;
+      box-shadow: inset 0 1px 3px rgba(0,0,0,0.05);
+    }
+
+    .footer {
+      margin-top: 40px;
+      text-align: center;
+      color: #6b7280;
+      font-size: 0.9rem;
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+
+  <h1>Cron Helper</h1>
+  <div class="subtitle">minute hour day-of-month month day-of-week</div>
+
+  <div class="fields">
+    <div class="field">
+      <label>Minute (0–59)</label>
+      <select id="min">
+        <option value="*">*</option>
+        <option value="0">0</option>
+        <option value="5">5</option>
+        <option value="10">10</option>
+        <option value="15">15</option>
+        <option value="20">20</option>
+        <option value="30">30</option>
+        <option value="45">45</option>
+        <option value="*/5">*/5</option>
+        <option value="*/10">*/10</option>
+        <option value="*/15">*/15</option>
+        <option value="*/30">*/30</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label>Hour (0–23)</label>
+      <select id="hour">
+        <option value="*">*</option>
+        <option value="0">0 (midnight)</option>
+        <option value="1">1</option>
+        <option value="2">2</option>
+        <option value="3">3</option>
+        <option value="4">4</option>
+        <option value="5">5</option>
+        <option value="6">6</option>
+        <option value="7">7</option>
+        <option value="8">8</option>
+        <option value="9">9</option>
+        <option value="10">10</option>
+        <option value="12">12 (noon)</option>
+        <option value="14">14</option>
+        <option value="18">18</option>
+        <option value="22">22</option>
+        <option value="*/2">*/2</option>
+        <option value="*/4">*/4</option>
+        <option value="*/6">*/6</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label>Day of month (1–31)</label>
+      <select id="dom">
+        <option value="*">*</option>
+        <option value="1">1</option>
+        <option value="5">5</option>
+        <option value="10">10</option>
+        <option value="15">15</option>
+        <option value="20">20</option>
+        <option value="25">25</option>
+        <option value="28">28</option>
+        <option value="L">L (last day)</option>
+        <option value="*/5">*/5</option>
+        <option value="1-7">1-7</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label>Month (1–12)</label>
+      <select id="month">
+        <option value="*">*</option>
+        <option value="1">1 (Jan)</option>
+        <option value="2">2 (Feb)</option>
+        <option value="3">3 (Mar)</option>
+        <option value="4">4 (Apr)</option>
+        <option value="5">5 (May)</option>
+        <option value="6">6 (Jun)</option>
+        <option value="7">7 (Jul)</option>
+        <option value="8">8 (Aug)</option>
+        <option value="9">9 (Sep)</option>
+        <option value="10">10 (Oct)</option>
+        <option value="11">11 (Nov)</option>
+        <option value="12">12 (Dec)</option>
+        <option value="*/3">*/3 (quarterly)</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label>Day of week (0–7)</label>
+      <select id="dow">
+        <option value="*">*</option>
+        <option value="0">0 / 7 = Sunday</option>
+        <option value="1">1 = Monday</option>
+        <option value="2">2 = Tuesday</option>
+        <option value="3">3 = Wednesday</option>
+        <option value="4">4 = Thursday</option>
+        <option value="5">5 = Friday</option>
+        <option value="6">6 = Saturday</option>
+        <option value="1-5">1-5 (weekdays)</option>
+        <option value="0,6">0,6 (weekend)</option>
+      </select>
+    </div>
+  </div>
+
+  <h2>Your Cron Expression</h2>
+  <div id="output">* * * * *</div>
+
+  <div class="footer">
+    Just pick values — result updates instantly
+  </div>
+
+</div>
+
+<script>
+const selects = ['min','hour','dom','month','dow'];
+const output = document.getElementById('output');
+
+function update() {
+  const values = selects.map(id => document.getElementById(id).value);
+  output.textContent = values.join(' ');
+}
+
+selects.forEach(id => {
+  document.getElementById(id).addEventListener('change', update);
+});
+
+update(); // initial render
+</script>
+
+</body>
+</html>
