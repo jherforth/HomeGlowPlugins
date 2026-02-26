@@ -1,242 +1,502 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Cron Helper • Nice & Clean</title>
+  <meta charset="UTF-8">
+  <title>Cron Helper</title>
+  <link rel="stylesheet" href="/index.css">
   <style>
+    * {
+      background: transparent !important;
+      background-color: transparent !important;
+      background-image: none !important;
+    }
+
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: #f8f9fc;
-      color: #1d1d1f;
-      min-height: 100vh;
+      background: transparent !important;
+      font-family: 'Inter', sans-serif;
       margin: 0;
-      padding: 40px 20px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
+      padding: 0.75rem;
+      box-sizing: border-box;
+      font-size: 0.85rem;
+      color: #333;
     }
 
-    .container {
-      background: white;
-      border-radius: 16px;
-      box-shadow: 0 10px 40px rgba(0,0,0,0.08);
-      padding: 32px;
-      max-width: 720px;
+    [data-theme="dark"] body {
+      color: #a6a6d1;
+      background: transparent !important;
+    }
+
+    .widget-container {
+      background: transparent !important;
+      border: none !important;
+      box-shadow: none !important;
+      backdrop-filter: none !important;
+      border-radius: 12px;
+      padding: 0.5rem;
       width: 100%;
+      max-height: calc(100vh - 1.5rem);
+      overflow-y: auto;
     }
 
-    h1 {
-      font-size: 2.1rem;
-      margin: 0 0 8px 0;
-      color: #0d47a1;
+    .widget-title {
+      font-size: 1.2rem;
+      font-weight: 700;
+      margin: 0 0 0.5rem 0;
+      color: inherit;
       text-align: center;
     }
 
     .subtitle {
-      color: #555;
       text-align: center;
-      margin: 0 0 32px 0;
-      font-size: 1.05rem;
+      font-size: 0.75rem;
+      opacity: 0.7;
+      margin-bottom: 1rem;
+      font-style: italic;
     }
 
-    .fields {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 24px;
-      justify-content: center;
-      margin-bottom: 32px;
+    .info-box {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      padding: 0.75rem;
+      margin-bottom: 1rem;
+      font-size: 0.75rem;
+      line-height: 1.5;
+    }
+
+    [data-theme="dark"] .info-box {
+      background: rgba(30, 30, 50, 0.2);
+      border-color: rgba(100, 100, 150, 0.2);
+    }
+
+    .help-title {
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+      font-size: 0.8rem;
+    }
+
+    .help-list {
+      margin: 0;
+      padding-left: 1.2rem;
+      opacity: 0.9;
+    }
+
+    .help-list li {
+      margin-bottom: 0.25rem;
+    }
+
+    .fields-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 0.75rem;
+      margin-bottom: 1rem;
     }
 
     .field {
-      flex: 1;
-      min-width: 180px;
-      max-width: 220px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      padding: 0.75rem;
     }
 
-    label {
+    [data-theme="dark"] .field {
+      background: rgba(30, 30, 50, 0.2);
+      border-color: rgba(100, 100, 150, 0.2);
+    }
+
+    .field-label {
       font-weight: 600;
-      color: #333;
+      font-size: 0.8rem;
+      margin-bottom: 0.5rem;
       display: block;
-      margin-bottom: 8px;
-      font-size: 0.95rem;
+      color: inherit;
     }
 
-    select {
+    .field-select {
+      background: rgba(255, 255, 255, 0.1) !important;
+      border: 1px solid rgba(255, 255, 255, 0.2) !important;
+      border-radius: 4px;
+      padding: 0.5rem;
+      color: inherit !important;
+      font-size: 0.8rem;
       width: 100%;
-      padding: 12px 16px;
-      font-size: 1rem;
-      border: 1px solid #d0d7e0;
-      border-radius: 10px;
-      background: white;
-      color: #111;
-      box-shadow: inset 0 1px 3px rgba(0,0,0,0.04);
-      transition: border-color 0.2s, box-shadow 0.2s;
+      box-sizing: border-box;
     }
 
-    select:focus {
+    [data-theme="dark"] .field-select {
+      background: rgba(30, 30, 50, 0.3) !important;
+      border-color: rgba(100, 100, 150, 0.3) !important;
+    }
+
+    .field-select:focus {
       outline: none;
-      border-color: #3b82f6;
-      box-shadow: 0 0 0 3px rgba(59,130,246,0.18);
+      border-color: #00ddeb !important;
+      box-shadow: 0 0 0 2px rgba(0, 221, 235, 0.2);
     }
 
-    h2 {
-      font-size: 1.4rem;
-      color: #1e40af;
-      margin: 32px 0 16px;
+    .output-section {
+      background: rgba(0, 221, 235, 0.1);
+      border: 2px solid #00ddeb;
+      border-radius: 8px;
+      padding: 1rem;
+      margin-bottom: 1rem;
+    }
+
+    [data-theme="dark"] .output-section {
+      background: rgba(0, 221, 235, 0.15);
+      border-color: #00ddeb;
+    }
+
+    .output-label {
+      font-size: 0.75rem;
+      font-weight: 700;
       text-align: center;
+      margin-bottom: 0.5rem;
+      opacity: 0.9;
     }
 
-    #output {
+    .output-expression {
       font-family: 'Courier New', Courier, monospace;
-      font-size: 1.5rem;
-      background: #f1f5f9;
-      padding: 20px 24px;
-      border-radius: 12px;
+      font-size: 1.3rem;
+      font-weight: 700;
       text-align: center;
-      border: 1px solid #e2e8f0;
+      color: #00ddeb;
+      margin-bottom: 0.75rem;
       word-break: break-all;
-      color: #111827;
-      box-shadow: inset 0 1px 3px rgba(0,0,0,0.05);
     }
 
-    .footer {
-      margin-top: 40px;
+    [data-theme="dark"] .output-expression {
+      color: #00ddeb;
+    }
+
+    .plain-english {
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 6px;
+      padding: 0.75rem;
+      font-size: 0.85rem;
+      line-height: 1.6;
       text-align: center;
-      color: #6b7280;
-      font-size: 0.9rem;
+      font-style: italic;
+    }
+
+    [data-theme="dark"] .plain-english {
+      background: rgba(30, 30, 50, 0.3);
+      border-color: rgba(100, 100, 150, 0.3);
+    }
+
+    .plain-english-icon {
+      font-size: 1.1rem;
+      margin-right: 0.25rem;
+    }
+
+    .common-examples {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      padding: 0.75rem;
+      margin-top: 1rem;
+    }
+
+    [data-theme="dark"] .common-examples {
+      background: rgba(30, 30, 50, 0.2);
+      border-color: rgba(100, 100, 150, 0.2);
+    }
+
+    .examples-title {
+      font-weight: 700;
+      font-size: 0.8rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .example-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.5rem;
+      margin-bottom: 0.25rem;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 4px;
+      font-size: 0.75rem;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+
+    [data-theme="dark"] .example-item {
+      background: rgba(30, 30, 50, 0.3);
+    }
+
+    .example-item:hover {
+      background: rgba(255, 255, 255, 0.1);
+      transform: translateX(4px);
+    }
+
+    [data-theme="dark"] .example-item:hover {
+      background: rgba(30, 30, 50, 0.5);
+    }
+
+    .example-expression {
+      font-family: 'Courier New', Courier, monospace;
+      font-weight: 700;
+      color: #00ddeb;
+    }
+
+    .example-description {
+      opacity: 0.8;
     }
   </style>
 </head>
 <body>
+  <div class="widget-container">
+    <h1 class="widget-title">⏰ Cron Helper</h1>
+    <div class="subtitle">Build cron schedules without memorizing the syntax</div>
 
-<div class="container">
-
-  <h1>Cron Helper</h1>
-  <div class="subtitle">minute hour day-of-month month day-of-week</div>
-
-  <div class="fields">
-    <div class="field">
-      <label>Minute (0–59)</label>
-      <select id="min">
-        <option value="*">*</option>
-        <option value="0">0</option>
-        <option value="5">5</option>
-        <option value="10">10</option>
-        <option value="15">15</option>
-        <option value="20">20</option>
-        <option value="30">30</option>
-        <option value="45">45</option>
-        <option value="*/5">*/5</option>
-        <option value="*/10">*/10</option>
-        <option value="*/15">*/15</option>
-        <option value="*/30">*/30</option>
-      </select>
+    <div class="info-box">
+      <div class="help-title">Quick Guide:</div>
+      <ul class="help-list">
+        <li><strong>*</strong> = Every (e.g., every minute, every hour)</li>
+        <li><strong>*/5</strong> = Every 5 units (e.g., every 5 minutes)</li>
+        <li><strong>1-5</strong> = Range (e.g., Monday through Friday)</li>
+        <li><strong>0,6</strong> = Specific values (e.g., Sunday and Saturday)</li>
+      </ul>
     </div>
 
-    <div class="field">
-      <label>Hour (0–23)</label>
-      <select id="hour">
-        <option value="*">*</option>
-        <option value="0">0 (midnight)</option>
-        <option value="1">1</option>
-        <option value="2">2</option>
-        <option value="3">3</option>
-        <option value="4">4</option>
-        <option value="5">5</option>
-        <option value="6">6</option>
-        <option value="7">7</option>
-        <option value="8">8</option>
-        <option value="9">9</option>
-        <option value="10">10</option>
-        <option value="12">12 (noon)</option>
-        <option value="14">14</option>
-        <option value="18">18</option>
-        <option value="22">22</option>
-        <option value="*/2">*/2</option>
-        <option value="*/4">*/4</option>
-        <option value="*/6">*/6</option>
-      </select>
+    <div class="fields-grid">
+      <div class="field">
+        <label class="field-label">Minute (0-59)</label>
+        <select id="min" class="field-select">
+          <option value="*">* (every minute)</option>
+          <option value="0">:00 (top of the hour)</option>
+          <option value="15">:15</option>
+          <option value="30">:30</option>
+          <option value="45">:45</option>
+          <option value="*/5">Every 5 minutes</option>
+          <option value="*/10">Every 10 minutes</option>
+          <option value="*/15">Every 15 minutes</option>
+          <option value="*/30">Every 30 minutes</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label class="field-label">Hour (0-23)</label>
+        <select id="hour" class="field-select">
+          <option value="*">* (every hour)</option>
+          <option value="0">12:00 AM (midnight)</option>
+          <option value="6">6:00 AM</option>
+          <option value="9">9:00 AM</option>
+          <option value="12">12:00 PM (noon)</option>
+          <option value="15">3:00 PM</option>
+          <option value="18">6:00 PM</option>
+          <option value="21">9:00 PM</option>
+          <option value="*/2">Every 2 hours</option>
+          <option value="*/4">Every 4 hours</option>
+          <option value="*/6">Every 6 hours</option>
+          <option value="*/12">Every 12 hours</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label class="field-label">Day of Month (1-31)</label>
+        <select id="dom" class="field-select">
+          <option value="*">* (every day)</option>
+          <option value="1">1st</option>
+          <option value="15">15th</option>
+          <option value="*/7">Every 7 days</option>
+          <option value="1,15">1st and 15th</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label class="field-label">Month (1-12)</label>
+        <select id="month" class="field-select">
+          <option value="*">* (every month)</option>
+          <option value="1">January</option>
+          <option value="2">February</option>
+          <option value="3">March</option>
+          <option value="4">April</option>
+          <option value="5">May</option>
+          <option value="6">June</option>
+          <option value="7">July</option>
+          <option value="8">August</option>
+          <option value="9">September</option>
+          <option value="10">October</option>
+          <option value="11">November</option>
+          <option value="12">December</option>
+          <option value="*/3">Every 3 months (quarterly)</option>
+          <option value="*/6">Every 6 months</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label class="field-label">Day of Week (0-7, Sun-Sat)</label>
+        <select id="dow" class="field-select">
+          <option value="*">* (every day)</option>
+          <option value="0">Sunday</option>
+          <option value="1">Monday</option>
+          <option value="2">Tuesday</option>
+          <option value="3">Wednesday</option>
+          <option value="4">Thursday</option>
+          <option value="5">Friday</option>
+          <option value="6">Saturday</option>
+          <option value="1-5">Weekdays (Mon-Fri)</option>
+          <option value="0,6">Weekends (Sat-Sun)</option>
+        </select>
+      </div>
     </div>
 
-    <div class="field">
-      <label>Day of month (1–31)</label>
-      <select id="dom">
-        <option value="*">*</option>
-        <option value="1">1</option>
-        <option value="5">5</option>
-        <option value="10">10</option>
-        <option value="15">15</option>
-        <option value="20">20</option>
-        <option value="25">25</option>
-        <option value="28">28</option>
-        <option value="L">L (last day)</option>
-        <option value="*/5">*/5</option>
-        <option value="1-7">1-7</option>
-      </select>
+    <div class="output-section">
+      <div class="output-label">YOUR CRON EXPRESSION</div>
+      <div class="output-expression" id="output">* * * * *</div>
+      <div class="plain-english" id="plainEnglish">
+        <span class="plain-english-icon">💬</span>
+        <span id="plainEnglishText">Runs every minute</span>
+      </div>
     </div>
 
-    <div class="field">
-      <label>Month (1–12)</label>
-      <select id="month">
-        <option value="*">*</option>
-        <option value="1">1 (Jan)</option>
-        <option value="2">2 (Feb)</option>
-        <option value="3">3 (Mar)</option>
-        <option value="4">4 (Apr)</option>
-        <option value="5">5 (May)</option>
-        <option value="6">6 (Jun)</option>
-        <option value="7">7 (Jul)</option>
-        <option value="8">8 (Aug)</option>
-        <option value="9">9 (Sep)</option>
-        <option value="10">10 (Oct)</option>
-        <option value="11">11 (Nov)</option>
-        <option value="12">12 (Dec)</option>
-        <option value="*/3">*/3 (quarterly)</option>
-      </select>
-    </div>
-
-    <div class="field">
-      <label>Day of week (0–7)</label>
-      <select id="dow">
-        <option value="*">*</option>
-        <option value="0">0 / 7 = Sunday</option>
-        <option value="1">1 = Monday</option>
-        <option value="2">2 = Tuesday</option>
-        <option value="3">3 = Wednesday</option>
-        <option value="4">4 = Thursday</option>
-        <option value="5">5 = Friday</option>
-        <option value="6">6 = Saturday</option>
-        <option value="1-5">1-5 (weekdays)</option>
-        <option value="0,6">0,6 (weekend)</option>
-      </select>
+    <div class="common-examples">
+      <div class="examples-title">Common Patterns (click to apply):</div>
+      <div class="example-item" onclick="applyExample('0', '*', '*', '*', '*')">
+        <span class="example-expression">0 * * * *</span>
+        <span class="example-description">Every hour</span>
+      </div>
+      <div class="example-item" onclick="applyExample('0', '9', '*', '*', '1-5')">
+        <span class="example-expression">0 9 * * 1-5</span>
+        <span class="example-description">9 AM on weekdays</span>
+      </div>
+      <div class="example-item" onclick="applyExample('0', '0', '*', '*', '*')">
+        <span class="example-expression">0 0 * * *</span>
+        <span class="example-description">Daily at midnight</span>
+      </div>
+      <div class="example-item" onclick="applyExample('0', '0', '1', '*', '*')">
+        <span class="example-expression">0 0 1 * *</span>
+        <span class="example-description">Monthly on the 1st</span>
+      </div>
+      <div class="example-item" onclick="applyExample('*/15', '*', '*', '*', '*')">
+        <span class="example-expression">*/15 * * * *</span>
+        <span class="example-description">Every 15 minutes</span>
+      </div>
     </div>
   </div>
 
-  <h2>Your Cron Expression</h2>
-  <div id="output">* * * * *</div>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const params = new URLSearchParams(window.location.search);
+      const theme = params.get('theme');
+      if (theme === 'dark' || theme === 'light') {
+        document.documentElement.setAttribute('data-theme', theme);
+      }
 
-  <div class="footer">
-    Just pick values — result updates instantly
-  </div>
+      const selects = ['min', 'hour', 'dom', 'month', 'dow'];
+      const output = document.getElementById('output');
+      const plainEnglishText = document.getElementById('plainEnglishText');
 
-</div>
+      function generatePlainEnglish(min, hour, dom, month, dow) {
+        let parts = [];
 
-<script>
-const selects = ['min','hour','dom','month','dow'];
-const output = document.getElementById('output');
+        // Frequency (based on minute)
+        if (min === '*') {
+          parts.push('Runs every minute');
+        } else if (min.startsWith('*/')) {
+          const interval = min.substring(2);
+          parts.push(`Runs every ${interval} minutes`);
+        } else {
+          parts.push(`Runs at minute ${min}`);
+        }
 
-function update() {
-  const values = selects.map(id => document.getElementById(id).value);
-  output.textContent = values.join(' ');
-}
+        // Hour
+        if (hour !== '*') {
+          if (hour.startsWith('*/')) {
+            const interval = hour.substring(2);
+            if (parts[0].includes('every minute')) {
+              parts = [`Runs every ${interval} hours`];
+            } else {
+              parts.push(`every ${interval} hours`);
+            }
+          } else {
+            const hourNum = parseInt(hour);
+            const ampm = hourNum >= 12 ? 'PM' : 'AM';
+            const displayHour = hourNum === 0 ? 12 : hourNum > 12 ? hourNum - 12 : hourNum;
+            parts.push(`at ${displayHour}:00 ${ampm}`);
+          }
+        }
 
-selects.forEach(id => {
-  document.getElementById(id).addEventListener('change', update);
-});
+        // Day of week
+        if (dow !== '*') {
+          const dayMap = {
+            '0': 'Sunday', '1': 'Monday', '2': 'Tuesday',
+            '3': 'Wednesday', '4': 'Thursday', '5': 'Friday', '6': 'Saturday',
+            '1-5': 'weekdays', '0,6': 'weekends'
+          };
+          if (dow === '1-5') {
+            parts.push('on weekdays');
+          } else if (dow === '0,6') {
+            parts.push('on weekends');
+          } else if (dayMap[dow]) {
+            parts.push(`on ${dayMap[dow]}`);
+          } else {
+            parts.push(`on day ${dow}`);
+          }
+        }
 
-update(); // initial render
-</script>
+        // Day of month
+        if (dom !== '*') {
+          if (dom.startsWith('*/')) {
+            const interval = dom.substring(2);
+            parts.push(`every ${interval} days`);
+          } else if (dom.includes(',')) {
+            parts.push(`on days ${dom}`);
+          } else {
+            const suffix = dom === '1' ? 'st' : dom === '2' ? 'nd' : dom === '3' ? 'rd' : 'th';
+            parts.push(`on the ${dom}${suffix}`);
+          }
+        }
 
+        // Month
+        if (month !== '*') {
+          const monthMap = {
+            '1': 'January', '2': 'February', '3': 'March', '4': 'April',
+            '5': 'May', '6': 'June', '7': 'July', '8': 'August',
+            '9': 'September', '10': 'October', '11': 'November', '12': 'December'
+          };
+          if (month.startsWith('*/')) {
+            const interval = month.substring(2);
+            parts.push(`every ${interval} months`);
+          } else if (monthMap[month]) {
+            parts.push(`in ${monthMap[month]}`);
+          }
+        }
+
+        // Combine parts intelligently
+        if (parts.length === 0) {
+          return 'Runs every minute';
+        }
+
+        return parts.join(' ');
+      }
+
+      function update() {
+        const values = selects.map(id => document.getElementById(id).value);
+        output.textContent = values.join(' ');
+
+        const [min, hour, dom, month, dow] = values;
+        plainEnglishText.textContent = generatePlainEnglish(min, hour, dom, month, dow);
+      }
+
+      selects.forEach(id => {
+        document.getElementById(id).addEventListener('change', update);
+      });
+
+      window.applyExample = function(min, hour, dom, month, dow) {
+        document.getElementById('min').value = min;
+        document.getElementById('hour').value = hour;
+        document.getElementById('dom').value = dom;
+        document.getElementById('month').value = month;
+        document.getElementById('dow').value = dow;
+        update();
+      };
+
+      update();
+    });
+  </script>
 </body>
 </html>
