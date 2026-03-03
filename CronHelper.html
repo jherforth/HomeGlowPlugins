@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <title>Cron Helper</title>
@@ -246,52 +247,39 @@
     }
   </style>
 </head>
+
 <body>
   <div class="widget-container">
     <h1 class="widget-title">⏰ Cron Helper</h1>
     <div class="subtitle">Build cron schedules without memorizing the syntax</div>
 
     <div class="info-box">
-      <div class="help-title">Quick Guide:</div>
+      <div class="help-title">⚠️ HomeGlow Chore System Note:</div>
+      <p style="margin: 0 0 0.5rem 0; font-weight: 600; color: #ff6b6b;">Minutes and hours are ignored - chores only trigger once daily!</p>
+      <div class="help-title">Advanced Cron Patterns:</div>
       <ul class="help-list">
-        <li><strong>*</strong> = Every (e.g., every minute, every hour)</li>
-        <li><strong>*/5</strong> = Every 5 units (e.g., every 5 minutes)</li>
+        <li><strong>*</strong> = Every (e.g., every day, every month)</li>
+        <li><strong>*/7</strong> = Every 7 units (e.g., every 7 days)</li>
+        <li><strong>2/7</strong> = Offset step (2nd day, then every 7 days)</li>
         <li><strong>1-5</strong> = Range (e.g., Monday through Friday)</li>
-        <li><strong>0,6</strong> = Specific values (e.g., Sunday and Saturday)</li>
+        <li><strong>2#4</strong> = Nth weekday (2nd Thursday of month)</li>
       </ul>
     </div>
 
     <div class="fields-grid">
       <div class="field">
-        <label class="field-label">Minute (0-59)</label>
+        <label class="field-label">⚠️ Minute (0-59) - IGNORED by HomeGlow</label>
         <select id="min" class="field-select">
-          <option value="*">* (every minute)</option>
-          <option value="0">:00 (top of the hour)</option>
-          <option value="15">:15</option>
-          <option value="30">:30</option>
-          <option value="45">:45</option>
-          <option value="*/5">Every 5 minutes</option>
-          <option value="*/10">Every 10 minutes</option>
-          <option value="*/15">Every 15 minutes</option>
-          <option value="*/30">Every 30 minutes</option>
+          <option value="0">0 (standard for daily chores)</option>
+          <option value="*">* (ignored anyway)</option>
         </select>
       </div>
 
       <div class="field">
-        <label class="field-label">Hour (0-23)</label>
+        <label class="field-label">⚠️ Hour (0-23) - IGNORED by HomeGlow</label>
         <select id="hour" class="field-select">
-          <option value="*">* (every hour)</option>
-          <option value="0">12:00 AM (midnight)</option>
-          <option value="6">6:00 AM</option>
-          <option value="9">9:00 AM</option>
-          <option value="12">12:00 PM (noon)</option>
-          <option value="15">3:00 PM</option>
-          <option value="18">6:00 PM</option>
-          <option value="21">9:00 PM</option>
-          <option value="*/2">Every 2 hours</option>
-          <option value="*/4">Every 4 hours</option>
-          <option value="*/6">Every 6 hours</option>
-          <option value="*/12">Every 12 hours</option>
+          <option value="0">0 (standard for daily chores)</option>
+          <option value="*">* (ignored anyway)</option>
         </select>
       </div>
 
@@ -301,8 +289,10 @@
           <option value="*">* (every day)</option>
           <option value="1">1st</option>
           <option value="15">15th</option>
-          <option value="*/7">Every 7 days</option>
-          <option value="1,15">1st and 15th</option>
+          <option value="L">L (last day of month)</option>
+          <option value="*/7">*/7 (every 7 days)</option>
+          <option value="2/7">2/7 (2nd day, then every 7 days)</option>
+          <option value="1,15">1,15 (1st and 15th)</option>
         </select>
       </div>
 
@@ -338,8 +328,12 @@
           <option value="4">Thursday</option>
           <option value="5">Friday</option>
           <option value="6">Saturday</option>
-          <option value="1-5">Weekdays (Mon-Fri)</option>
-          <option value="0,6">Weekends (Sat-Sun)</option>
+          <option value="1-5">1-5 (Weekdays Mon-Fri)</option>
+          <option value="0,6">0,6 (Weekends Sat-Sun)</option>
+          <option value="1#1">1#1 (1st Monday of month)</option>
+          <option value="2#2">2#2 (2nd Tuesday of month)</option>
+          <option value="4#3">4#3 (3rd Thursday of month)</option>
+          <option value="5L">5L (Last Friday of month)</option>
         </select>
       </div>
     </div>
@@ -354,26 +348,34 @@
     </div>
 
     <div class="common-examples">
-      <div class="examples-title">Common Patterns (click to apply):</div>
-      <div class="example-item" onclick="applyExample('0', '*', '*', '*', '*')">
-        <span class="example-expression">0 * * * *</span>
-        <span class="example-description">Every hour</span>
-      </div>
-      <div class="example-item" onclick="applyExample('0', '9', '*', '*', '1-5')">
-        <span class="example-expression">0 9 * * 1-5</span>
-        <span class="example-description">9 AM on weekdays</span>
-      </div>
+      <div class="examples-title">Daily Chore Patterns (click to apply):</div>
       <div class="example-item" onclick="applyExample('0', '0', '*', '*', '*')">
         <span class="example-expression">0 0 * * *</span>
-        <span class="example-description">Daily at midnight</span>
+        <span class="example-description">Every day</span>
+      </div>
+      <div class="example-item" onclick="applyExample('0', '0', '*', '*', '1-5')">
+        <span class="example-expression">0 0 * * 1-5</span>
+        <span class="example-description">Weekdays only</span>
       </div>
       <div class="example-item" onclick="applyExample('0', '0', '1', '*', '*')">
         <span class="example-expression">0 0 1 * *</span>
-        <span class="example-description">Monthly on the 1st</span>
+        <span class="example-description">Monthly on 1st</span>
       </div>
-      <div class="example-item" onclick="applyExample('*/15', '*', '*', '*', '*')">
-        <span class="example-expression">*/15 * * * *</span>
-        <span class="example-description">Every 15 minutes</span>
+      <div class="example-item" onclick="applyExample('0', '0', 'L', '*', '*')">
+        <span class="example-expression">0 0 L * *</span>
+        <span class="example-description">Last day of month</span>
+      </div>
+      <div class="example-item" onclick="applyExample('0', '0', '2/7', '*', '*')">
+        <span class="example-expression">0 0 2/7 * *</span>
+        <span class="example-description">2nd, then every 7 days</span>
+      </div>
+      <div class="example-item" onclick="applyExample('0', '0', '*', '*', '1#1')">
+        <span class="example-expression">0 0 * * 1#1</span>
+        <span class="example-description">1st Monday of month</span>
+      </div>
+      <div class="example-item" onclick="applyExample('0', '0', '*', '*', '5L')">
+        <span class="example-expression">0 0 * * 5L</span>
+        <span class="example-description">Last Friday of month</span>
       </div>
     </div>
   </div>
@@ -393,61 +395,60 @@
       function generatePlainEnglish(min, hour, dom, month, dow) {
         let parts = [];
 
-        // Frequency (based on minute)
-        if (min === '*') {
-          parts.push('Runs every minute');
-        } else if (min.startsWith('*/')) {
-          const interval = min.substring(2);
-          parts.push(`Runs every ${interval} minutes`);
-        } else {
-          parts.push(`Runs at minute ${min}`);
-        }
+        // Start with "Runs daily" since HomeGlow only does daily triggers
+        parts.push('Runs daily');
 
-        // Hour
-        if (hour !== '*') {
-          if (hour.startsWith('*/')) {
-            const interval = hour.substring(2);
-            if (parts[0].includes('every minute')) {
-              parts = [`Runs every ${interval} hours`];
-            } else {
-              parts.push(`every ${interval} hours`);
-            }
-          } else {
-            const hourNum = parseInt(hour);
-            const ampm = hourNum >= 12 ? 'PM' : 'AM';
-            const displayHour = hourNum === 0 ? 12 : hourNum > 12 ? hourNum - 12 : hourNum;
-            parts.push(`at ${displayHour}:00 ${ampm}`);
-          }
-        }
-
-        // Day of week
+        // Day of week (process first as it can override daily)
         if (dow !== '*') {
           const dayMap = {
             '0': 'Sunday', '1': 'Monday', '2': 'Tuesday',
-            '3': 'Wednesday', '4': 'Thursday', '5': 'Friday', '6': 'Saturday',
-            '1-5': 'weekdays', '0,6': 'weekends'
+            '3': 'Wednesday', '4': 'Thursday', '5': 'Friday', '6': 'Saturday'
           };
+
           if (dow === '1-5') {
-            parts.push('on weekdays');
+            parts = ['Runs on weekdays'];
           } else if (dow === '0,6') {
-            parts.push('on weekends');
+            parts = ['Runs on weekends'];
+          } else if (dow.includes('#')) {
+            const [dayNum, weekNum] = dow.split('#');
+            const dayName = dayMap[dayNum] || `day ${dayNum}`;
+            if (weekNum === 'L') {
+              parts = [`Runs on the last ${dayName} of each month`];
+            } else {
+              const weekOrdinal = weekNum === '1' ? '1st' : weekNum === '2' ? '2nd' : weekNum === '3' ? '3rd' : `${weekNum}th`;
+              parts = [`Runs on the ${weekOrdinal} ${dayName} of each month`];
+            }
           } else if (dayMap[dow]) {
-            parts.push(`on ${dayMap[dow]}`);
+            parts = [`Runs every ${dayMap[dow]}`];
           } else {
-            parts.push(`on day ${dow}`);
+            parts = [`Runs on day ${dow} of week`];
           }
         }
 
         // Day of month
         if (dom !== '*') {
-          if (dom.startsWith('*/')) {
-            const interval = dom.substring(2);
-            parts.push(`every ${interval} days`);
+          if (dom === 'L') {
+            parts.push('on the last day of each month');
+          } else if (dom.startsWith('L-')) {
+            const offset = dom.substring(2);
+            const ordinal = offset === '1' ? '2nd' : offset === '2' ? '3rd' : `${parseInt(offset) + 1}th`;
+            parts.push(`on the ${ordinal} to last day of each month`);
+          } else if (dom.includes('/')) {
+            const [start, interval] = dom.split('/');
+            if (start === '*') {
+              parts.push(`every ${interval} days`);
+            } else {
+              parts.push(`on the ${start}, then every ${interval} days`);
+            }
           } else if (dom.includes(',')) {
-            parts.push(`on days ${dom}`);
+            parts.push(`on days ${dom} of each month`);
           } else {
             const suffix = dom === '1' ? 'st' : dom === '2' ? 'nd' : dom === '3' ? 'rd' : 'th';
-            parts.push(`on the ${dom}${suffix}`);
+            if (parts[0].includes('weekdays') || parts[0].includes('weekends') || parts[0].includes('Sunday') || parts[0].includes('Monday') || parts[0].includes('Tuesday') || parts[0].includes('Wednesday') || parts[0].includes('Thursday') || parts[0].includes('Friday') || parts[0].includes('Saturday')) {
+              // Don't add day of month if we already specified day of week
+            } else {
+              parts.push(`on the ${dom}${suffix} of each month`);
+            }
           }
         }
 
@@ -462,13 +463,13 @@
             const interval = month.substring(2);
             parts.push(`every ${interval} months`);
           } else if (monthMap[month]) {
-            parts.push(`in ${monthMap[month]}`);
+            parts.push(`in ${monthMap[month]} only`);
           }
         }
 
-        // Combine parts intelligently
-        if (parts.length === 0) {
-          return 'Runs every minute';
+        // Add note about minutes/hours being ignored
+        if (parts.length === 1 && parts[0] === 'Runs daily') {
+          parts.push('(minutes/hours ignored by HomeGlow)');
         }
 
         return parts.join(' ');
@@ -486,7 +487,7 @@
         document.getElementById(id).addEventListener('change', update);
       });
 
-      window.applyExample = function(min, hour, dom, month, dow) {
+      window.applyExample = function (min, hour, dom, month, dow) {
         document.getElementById('min').value = min;
         document.getElementById('hour').value = hour;
         document.getElementById('dom').value = dom;
@@ -499,4 +500,5 @@
     });
   </script>
 </body>
+
 </html>
