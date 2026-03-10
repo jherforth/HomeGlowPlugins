@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>School Lunch Menu</title>
+  <link rel="stylesheet" href="/index.css">
+  <style>
+    * {
+      background: transparent !important;
+      background-color: transparent !important;
+      background-image: none !important;
+    }
+
+    body {
+      background: transparent !important;
+      font-family: 'Inter', sans-serif;
+      margin: 0;
+      padding: 0.75rem;
+      box-sizing: border-box;
+      font-size: 0.85rem;
+      color: #333;
+    }
+
+    [data-theme="dark"] body {
+      color: #a6a6d1;
+      background: transparent !important;
+    }
+
+    .widget-container {
+      background: transparent !important;
+      border: none !important;
+      box-shadow: none !important;
+      backdrop-filter: none !important;
+      border-radius: 12px;
+      padding: 0.5rem;
+      text-align: center;
+      width: 100%;
+      max-height: calc(100vh - 1.5rem);
+      overflow-y: auto;
+    }
+
+    .widget-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    [data-theme="dark"] .widget-header {
+      border-bottom-color: rgba(100, 100, 150, 0.3);
+    }
+
+    .widget-title {
+      font-size: 1.2rem;
+      font-weight: 700;
+      margin: 0;
+      color: inherit;
+    }
+
+    .week-nav {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .nav-btn {
+      background: rgba(255, 255, 255, 0.1) !important;
+      color: inherit !important;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 6px;
+      padding: 0.4rem 0.7rem;
+      cursor: pointer;
+      font-size: 0.8rem;
+      font-weight: 600;
+      transition: all 0.3s ease;
+    }
+
+    [data-theme="dark"] .nav-btn {
+      background: rgba(30, 30, 50, 0.3) !important;
+      border-color: rgba(100, 100, 150, 0.3);
+    }
+
+    .nav-btn:hover {
+      background: rgba(255, 255, 255, 0.2) !important;
+      transform: translateY(-1px);
+    }
+
+    [data-theme="dark"] .nav-btn:hover {
+      background: rgba(30, 30, 50, 0.5) !important;
+    }
+
+    .week-label {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #00ddeb;
+      min-width: 100px;
+      text-align: center;
+    }
+
+    .day-list {
+      margin-bottom: 1rem;
+    }
+
+    .day-card {
+      background: rgba(255, 255, 255, 0.05) !important;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      padding: 0.6rem 0.75rem;
+      margin-bottom: 0.5rem;
+      text-align: left;
+      transition: all 0.3s ease;
+    }
+
+    [data-theme="dark"] .day-card {
+      background: rgba(30, 30, 50, 0.2) !important;
+      border-color: rgba(100, 100, 150, 0.2);
+    }
+
+    .day-card.today {
+      border-left: 3px solid #00ddeb;
+      background: rgba(0, 221, 235, 0.06) !important;
+    }
+
+    [data-theme="dark"] .day-card.today {
+      background: rgba(0, 221, 235, 0.05) !important;
+    }
+
+    .day-card.school-off {
+      opacity: 0.55;
+    }
+
+    .day-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.4rem;
+    }
+
+    .day-name {
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: inherit;
+    }
+
+    .day-date {
+      font-size: 0.72rem;
+      opacity: 0.6;
+    }
+
+    .today-badge {
+      background: rgba(0, 221, 235, 0.15) !important;
+      color: #00ddeb;
+      font-size: 0.65rem;
+      font-weight: 700;
+      padding: 0.15rem 0.4rem;
+      border-radius: 4px;
+      border: 1px solid rgba(0, 221, 235, 0.3);
+    }
+
+    .menu-items-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+
+    .menu-item-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.2rem 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      gap: 0.5rem;
+    }
+
+    [data-theme="dark"] .menu-item-row {
+      border-bottom-color: rgba(100, 100, 150, 0.1);
+    }
+
+    .menu-item-row:last-child {
+      border-bottom: none;
+    }
+
+    .menu-item-text {
+      font-size: 0.8rem;
+      color: inherit;
+      flex: 1;
+    }
+
+    .remove-item-btn {
+      background: rgba(220, 53, 69, 0.15) !important;
+      color: #dc3545 !important;
+      border: 1px solid rgba(220, 53, 69, 0.25);
+      border-radius: 4px;
+      padding: 0.1rem 0.4rem;
+      cursor: pointer;
+      font-size: 0.65rem;
+      transition: all 0.2s ease;
+      flex-shrink: 0;
+    }
+
+    .remove-item-btn:hover {
+      background: rgba(220, 53, 69, 0.3) !important;
+    }
+
+    .no-menu {
+      font-size: 0.78rem;
+      opacity: 0.5;
+      font-style: italic;
+    }
+
+    .off-label {
+      font-size: 0.78rem;
+      opacity: 0.6;
+      font-style: italic;
+    }
+
+    .add-item-row {
+      display: flex;
+      gap: 0.4rem;
+      margin-top: 0.4rem;
+    }
+
+    .add-item-input {
+      flex: 1;
+      padding: 0.3rem 0.5rem;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.08) !important;
+      color: inherit;
+      font-size: 0.78rem;
+      font-family: inherit;
+    }
+
+    [data-theme="dark"] .add-item-input {
+      background: rgba(30, 30, 50, 0.3) !important;
+      border-color: rgba(100, 100, 150, 0.3);
+    }
+
+    .add-item-input::placeholder {
+      color: rgba(150, 150, 150, 0.7);
+    }
+
+    .add-item-input:focus {
+      outline: none;
+      border-color: #00ddeb;
+      box-shadow: 0 0 0 2px rgba(0, 221, 235, 0.15);
+    }
+
+    .add-item-btn {
+      background: linear-gradient(45deg, #00ddeb, #ff6b6b) !important;
+      color: #333 !important;
+      border: none;
+      border-radius: 4px;
+      padding: 0.3rem 0.6rem;
+      cursor: pointer;
+      font-size: 0.75rem;
+      font-weight: 600;
+      transition: all 0.3s ease;
+      flex-shrink: 0;
+    }
+
+    [data-theme="dark"] .add-item-btn {
+      background: linear-gradient(45deg, #2e2767, #620808) !important;
+      color: #a6a6d1 !important;
+    }
+
+    .add-item-btn:hover {
+      filter: brightness(1.1);
+      transform: translateY(-1px);
+    }
+
+    .toggle-off-btn {
+      background: rgba(255, 255, 255, 0.08) !important;
+      color: inherit !important;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 4px;
+      padding: 0.15rem 0.5rem;
+      cursor: pointer;
+      font-size: 0.68rem;
+      transition: all 0.2s ease;
+    }
+
+    [data-theme="dark"] .toggle-off-btn {
+      background: rgba(30, 30, 50, 0.3) !important;
+      border-color: rgba(100, 100, 150, 0.2);
+    }
+
+    .toggle-off-btn:hover {
+      background: rgba(255, 255, 255, 0.15) !important;
+    }
+
+    .toggle-off-btn.active {
+      background: rgba(255, 152, 0, 0.15) !important;
+      color: #ff9800 !important;
+      border-color: rgba(255, 152, 0, 0.3);
+    }
+
+    .controls-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.75rem;
+      gap: 0.5rem;
+    }
+
+    .edit-toggle-btn {
+      background: linear-gradient(45deg, #00ddeb, #ff6b6b) !important;
+      color: #333 !important;
+      border: none;
+      border-radius: 8px;
+      padding: 8px 14px;
+      cursor: pointer;
+      font-size: 0.8rem;
+      font-weight: 600;
+      transition: all 0.3s ease;
+    }
+
+    [data-theme="dark"] .edit-toggle-btn {
+      background: linear-gradient(45deg, #2e2767, #620808) !important;
+      color: #a6a6d1 !important;
+    }
+
+    .edit-toggle-btn:hover {
+      filter: brightness(1.1);
+      transform: translateY(-1px);
+    }
+
+    .school-name-input {
+      flex: 1;
+      padding: 0.4rem 0.6rem;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.08) !important;
+      color: inherit;
+      font-size: 0.8rem;
+      font-family: inherit;
+    }
+
+    [data-theme="dark"] .school-name-input {
+      background: rgba(30, 30, 50, 0.3) !important;
+      border-color: rgba(100, 100, 150, 0.3);
+    }
+
+    .school-name-input:focus {
+      outline: none;
+      border-color: #00ddeb;
+    }
+
+    .school-name-display {
+      font-size: 0.78rem;
+      opacity: 0.7;
+      text-align: center;
+      margin-bottom: 0.75rem;
+    }
+
+    .day-list::-webkit-scrollbar { width: 4px; }
+    .day-list::-webkit-scrollbar-thumb {
+      background: rgba(0, 221, 235, 0.5);
+      border-radius: 2px;
+    }
+
+    .error-message {
+      color: #dc3545;
+      background: rgba(220, 53, 69, 0.1) !important;
+      padding: 0.5rem;
+      border-radius: 6px;
+      margin: 0.5rem 0;
+      font-size: 0.8rem;
+      text-align: center;
+    }
+
+    [data-theme="dark"] .error-message {
+      color: #ff6b6b;
+    }
+  </style>
+</head>
+<body>
+  <div class="widget-container">
+    <div class="widget-header">
+      <h1 class="widget-title">🍱 School Lunch</h1>
+      <div class="week-nav">
+        <button id="prevWeekBtn" class="nav-btn">&#8249;</button>
+        <div id="weekLabel" class="week-label"></div>
+        <button id="nextWeekBtn" class="nav-btn">&#8250;</button>
+      </div>
+    </div>
+
+    <div class="controls-row">
+      <input type="text" id="schoolNameInput" class="school-name-input" placeholder="School name (optional)" maxlength="60">
+      <button id="editToggleBtn" class="edit-toggle-btn">Edit Menu</button>
+    </div>
+
+    <div id="errorMessage" class="error-message" style="display:none;"></div>
+
+    <div id="dayList" class="day-list"></div>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const params = new URLSearchParams(window.location.search);
+      const theme = params.get('theme');
+      if (theme === 'dark' || theme === 'light') {
+        document.documentElement.setAttribute('data-theme', theme);
+      }
+
+      let editMode = false;
+      let weekOffset = 0;
+      let menuData = {};
+      let schoolName = '';
+
+      const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+      const shortDayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
+
+      const prevWeekBtn = document.getElementById('prevWeekBtn');
+      const nextWeekBtn = document.getElementById('nextWeekBtn');
+      const weekLabel = document.getElementById('weekLabel');
+      const editToggleBtn = document.getElementById('editToggleBtn');
+      const schoolNameInput = document.getElementById('schoolNameInput');
+      const dayList = document.getElementById('dayList');
+      const errorMessage = document.getElementById('errorMessage');
+
+      function showError(msg) {
+        errorMessage.textContent = msg;
+        errorMessage.style.display = 'block';
+        setTimeout(() => { errorMessage.style.display = 'none'; }, 3000);
+      }
+
+      function loadData() {
+        try {
+          const saved = localStorage.getItem('schoolLunch_data');
+          if (saved) menuData = JSON.parse(saved);
+          const sn = localStorage.getItem('schoolLunch_name');
+          if (sn) {
+            schoolName = sn;
+            schoolNameInput.value = sn;
+          }
+        } catch (e) {
+          console.error('Error loading school lunch data:', e);
+          menuData = {};
+        }
+      }
+
+      function saveData() {
+        try {
+          localStorage.setItem('schoolLunch_data', JSON.stringify(menuData));
+          localStorage.setItem('schoolLunch_name', schoolName);
+        } catch (e) {
+          console.error('Error saving school lunch data:', e);
+          showError('Failed to save data');
+        }
+      }
+
+      function getMondayOfWeek(offset) {
+        const today = new Date();
+        const day = today.getDay();
+        const diff = day === 0 ? -6 : 1 - day;
+        const monday = new Date(today);
+        monday.setDate(today.getDate() + diff + offset * 7);
+        monday.setHours(0, 0, 0, 0);
+        return monday;
+      }
+
+      function getWeekKey(monday) {
+        return monday.toISOString().slice(0, 10);
+      }
+
+      function getDatesForWeek(monday) {
+        return Array.from({ length: 5 }, (_, i) => {
+          const d = new Date(monday);
+          d.setDate(monday.getDate() + i);
+          return d;
+        });
+      }
+
+      function isToday(dateObj) {
+        const t = new Date();
+        return dateObj.getFullYear() === t.getFullYear()
+          && dateObj.getMonth() === t.getMonth()
+          && dateObj.getDate() === t.getDate();
+      }
+
+      function formatShortDate(dateObj) {
+        return dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      }
+
+      function getWeekData(weekKey) {
+        if (!menuData[weekKey]) {
+          menuData[weekKey] = {
+            days: {
+              Mon: { items: [], off: false },
+              Tue: { items: [], off: false },
+              Wed: { items: [], off: false },
+              Thu: { items: [], off: false },
+              Fri: { items: [], off: false }
+            }
+          };
+        }
+        return menuData[weekKey];
+      }
+
+      function updateWeekLabel(monday) {
+        const friday = new Date(monday);
+        friday.setDate(monday.getDate() + 4);
+        const opts = { month: 'short', day: 'numeric' };
+        weekLabel.textContent = `${monday.toLocaleDateString('en-US', opts)} – ${friday.toLocaleDateString('en-US', opts)}`;
+      }
+
+      function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+      }
+
+      function render() {
+        const monday = getMondayOfWeek(weekOffset);
+        const weekKey = getWeekKey(monday);
+        const dates = getDatesForWeek(monday);
+        const weekData = getWeekData(weekKey);
+
+        updateWeekLabel(monday);
+
+        dayList.innerHTML = dates.map((dateObj, i) => {
+          const dk = shortDayNames[i];
+          const dayInfo = weekData.days[dk];
+          const todayClass = isToday(dateObj) ? 'today' : '';
+          const offClass = dayInfo.off ? 'school-off' : '';
+
+          const itemsHtml = dayInfo.off
+            ? `<div class="off-label">No school</div>`
+            : (dayInfo.items.length === 0
+              ? `<div class="no-menu">${editMode ? 'Add menu items below' : 'No menu entered'}</div>`
+              : `<ul class="menu-items-list">${dayInfo.items.map((item, idx) => `
+                  <li class="menu-item-row">
+                    <span class="menu-item-text">${escapeHtml(item)}</span>
+                    ${editMode ? `<button class="remove-item-btn" onclick="removeItem('${weekKey}','${dk}',${idx})">✕</button>` : ''}
+                  </li>`).join('')}
+                </ul>`);
+
+          const editControls = editMode ? `
+            <div class="add-item-row" style="margin-top:0.4rem;">
+              ${!dayInfo.off ? `<input type="text" class="add-item-input" id="input_${dk}" placeholder="Add menu item..." maxlength="80">
+              <button class="add-item-btn" onclick="addItem('${weekKey}','${dk}')">Add</button>` : ''}
+              <button class="toggle-off-btn ${dayInfo.off ? 'active' : ''}" onclick="toggleOff('${weekKey}','${dk}')">${dayInfo.off ? 'Mark On' : 'No School'}</button>
+            </div>` : '';
+
+          return `
+            <div class="day-card ${todayClass} ${offClass}">
+              <div class="day-header">
+                <span class="day-name">${dayNames[i]}</span>
+                <span style="display:flex;align-items:center;gap:0.4rem;">
+                  ${isToday(dateObj) ? '<span class="today-badge">TODAY</span>' : ''}
+                  <span class="day-date">${formatShortDate(dateObj)}</span>
+                </span>
+              </div>
+              ${itemsHtml}
+              ${editControls}
+            </div>
+          `;
+        }).join('');
+
+        if (editMode) {
+          dates.forEach((_, i) => {
+            const dk = shortDayNames[i];
+            const inp = document.getElementById(`input_${dk}`);
+            if (inp) {
+              inp.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') addItem(weekKey, dk);
+              });
+            }
+          });
+        }
+      }
+
+      window.addItem = function(weekKey, dk) {
+        const inp = document.getElementById(`input_${dk}`);
+        if (!inp) return;
+        const val = inp.value.trim();
+        if (!val) return;
+        if (!menuData[weekKey]) getWeekData(weekKey);
+        menuData[weekKey].days[dk].items.push(val);
+        saveData();
+        render();
+      };
+
+      window.removeItem = function(weekKey, dk, idx) {
+        if (!menuData[weekKey]) return;
+        menuData[weekKey].days[dk].items.splice(idx, 1);
+        saveData();
+        render();
+      };
+
+      window.toggleOff = function(weekKey, dk) {
+        if (!menuData[weekKey]) getWeekData(weekKey);
+        menuData[weekKey].days[dk].off = !menuData[weekKey].days[dk].off;
+        saveData();
+        render();
+      };
+
+      editToggleBtn.addEventListener('click', () => {
+        editMode = !editMode;
+        editToggleBtn.textContent = editMode ? 'Done' : 'Edit Menu';
+        render();
+      });
+
+      prevWeekBtn.addEventListener('click', () => { weekOffset--; render(); });
+      nextWeekBtn.addEventListener('click', () => { weekOffset++; render(); });
+
+      schoolNameInput.addEventListener('change', () => {
+        schoolName = schoolNameInput.value.trim();
+        saveData();
+      });
+
+      loadData();
+      render();
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,731 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Family Contacts</title>
+  <link rel="stylesheet" href="/index.css">
+  <style>
+    * {
+      background: transparent !important;
+      background-color: transparent !important;
+      background-image: none !important;
+    }
+
+    body {
+      background: transparent !important;
+      font-family: 'Inter', sans-serif;
+      margin: 0;
+      padding: 0.75rem;
+      box-sizing: border-box;
+      font-size: 0.85rem;
+      color: #333;
+    }
+
+    [data-theme="dark"] body {
+      color: #a6a6d1;
+      background: transparent !important;
+    }
+
+    .widget-container {
+      background: transparent !important;
+      border: none !important;
+      box-shadow: none !important;
+      backdrop-filter: none !important;
+      border-radius: 12px;
+      padding: 0.5rem;
+      text-align: center;
+      width: 100%;
+      max-height: calc(100vh - 1.5rem);
+      overflow-y: auto;
+    }
+
+    .widget-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    [data-theme="dark"] .widget-header {
+      border-bottom-color: rgba(100, 100, 150, 0.3);
+    }
+
+    .widget-title {
+      font-size: 1.2rem;
+      font-weight: 700;
+      margin: 0;
+      color: inherit;
+    }
+
+    .header-controls {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+    }
+
+    .filter-btn {
+      background: rgba(255, 255, 255, 0.1) !important;
+      color: inherit !important;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 6px;
+      padding: 0.4rem 0.7rem;
+      cursor: pointer;
+      font-size: 0.75rem;
+      font-weight: 600;
+      transition: all 0.3s ease;
+    }
+
+    [data-theme="dark"] .filter-btn {
+      background: rgba(30, 30, 50, 0.3) !important;
+      border-color: rgba(100, 100, 150, 0.3);
+    }
+
+    .filter-btn.active {
+      background: rgba(0, 221, 235, 0.2) !important;
+      color: #00ddeb !important;
+      border-color: rgba(0, 221, 235, 0.4);
+    }
+
+    .filter-btn.emergency-active {
+      background: rgba(220, 53, 69, 0.2) !important;
+      color: #dc3545 !important;
+      border-color: rgba(220, 53, 69, 0.4);
+    }
+
+    .filter-btn:hover {
+      filter: brightness(1.1);
+      transform: translateY(-1px);
+    }
+
+    .add-toggle-btn {
+      background: linear-gradient(45deg, #00ddeb, #ff6b6b) !important;
+      color: #333 !important;
+      border: none;
+      border-radius: 8px;
+      padding: 8px 14px;
+      cursor: pointer;
+      font-size: 0.8rem;
+      font-weight: 600;
+      transition: all 0.3s ease;
+    }
+
+    [data-theme="dark"] .add-toggle-btn {
+      background: linear-gradient(45deg, #2e2767, #620808) !important;
+      color: #a6a6d1 !important;
+    }
+
+    .add-toggle-btn:hover {
+      filter: brightness(1.1);
+      transform: translateY(-1px);
+    }
+
+    .contacts-list {
+      margin-bottom: 1rem;
+      max-height: 380px;
+      overflow-y: auto;
+    }
+
+    .contacts-list::-webkit-scrollbar { width: 4px; }
+    .contacts-list::-webkit-scrollbar-thumb {
+      background: rgba(0, 221, 235, 0.5);
+      border-radius: 2px;
+    }
+
+    .contact-card {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      background: rgba(255, 255, 255, 0.05) !important;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      padding: 0.65rem 0.75rem;
+      margin-bottom: 0.5rem;
+      text-align: left;
+      transition: all 0.2s ease;
+    }
+
+    [data-theme="dark"] .contact-card {
+      background: rgba(30, 30, 50, 0.2) !important;
+      border-color: rgba(100, 100, 150, 0.2);
+    }
+
+    .contact-card.emergency {
+      border-left: 3px solid #dc3545;
+    }
+
+    .contact-card:hover {
+      background: rgba(255, 255, 255, 0.08) !important;
+      transform: translateY(-1px);
+    }
+
+    [data-theme="dark"] .contact-card:hover {
+      background: rgba(30, 30, 50, 0.35) !important;
+    }
+
+    .contact-avatar {
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.1rem;
+      font-weight: 700;
+      flex-shrink: 0;
+      background: rgba(0, 221, 235, 0.15) !important;
+      color: #00ddeb;
+      border: 2px solid rgba(0, 221, 235, 0.3);
+    }
+
+    .contact-avatar.emergency-avatar {
+      background: rgba(220, 53, 69, 0.15) !important;
+      color: #dc3545;
+      border-color: rgba(220, 53, 69, 0.3);
+    }
+
+    .contact-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .contact-name {
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: inherit;
+      margin-bottom: 0.1rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .contact-relation {
+      font-size: 0.7rem;
+      opacity: 0.6;
+      margin-bottom: 0.15rem;
+    }
+
+    .contact-phone {
+      font-size: 0.8rem;
+      font-weight: 500;
+      color: #00ddeb;
+    }
+
+    .contact-phone a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .contact-phone a:hover {
+      text-decoration: underline;
+    }
+
+    .contact-note {
+      font-size: 0.7rem;
+      opacity: 0.55;
+      margin-top: 0.1rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .emergency-badge {
+      background: rgba(220, 53, 69, 0.15) !important;
+      color: #dc3545;
+      font-size: 0.6rem;
+      font-weight: 700;
+      padding: 0.1rem 0.35rem;
+      border-radius: 4px;
+      border: 1px solid rgba(220, 53, 69, 0.25);
+      display: inline-block;
+      margin-bottom: 0.15rem;
+    }
+
+    .contact-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 0.3rem;
+      flex-shrink: 0;
+    }
+
+    .call-btn {
+      background: rgba(40, 167, 69, 0.15) !important;
+      color: #28a745 !important;
+      border: 1px solid rgba(40, 167, 69, 0.25);
+      border-radius: 5px;
+      padding: 0.3rem 0.6rem;
+      cursor: pointer;
+      font-size: 0.72rem;
+      font-weight: 600;
+      text-decoration: none;
+      display: block;
+      text-align: center;
+      transition: all 0.2s ease;
+    }
+
+    .call-btn:hover {
+      background: rgba(40, 167, 69, 0.25) !important;
+    }
+
+    .delete-contact-btn {
+      background: rgba(220, 53, 69, 0.12) !important;
+      color: #dc3545 !important;
+      border: 1px solid rgba(220, 53, 69, 0.2);
+      border-radius: 5px;
+      padding: 0.3rem 0.6rem;
+      cursor: pointer;
+      font-size: 0.72rem;
+      transition: all 0.2s ease;
+    }
+
+    .delete-contact-btn:hover {
+      background: rgba(220, 53, 69, 0.25) !important;
+    }
+
+    .no-contacts {
+      text-align: center;
+      opacity: 0.6;
+      font-style: italic;
+      padding: 2rem;
+      background: rgba(255, 255, 255, 0.04) !important;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 8px;
+    }
+
+    [data-theme="dark"] .no-contacts {
+      background: rgba(30, 30, 50, 0.15) !important;
+      border-color: rgba(100, 100, 150, 0.15);
+    }
+
+    .add-form {
+      background: rgba(255, 255, 255, 0.05) !important;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      padding: 0.75rem;
+    }
+
+    [data-theme="dark"] .add-form {
+      background: rgba(30, 30, 50, 0.2) !important;
+      border-color: rgba(100, 100, 150, 0.2);
+    }
+
+    .form-title {
+      font-size: 0.9rem;
+      font-weight: 600;
+      margin: 0 0 0.6rem 0;
+      text-align: left;
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.5rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .form-field {
+      display: flex;
+      flex-direction: column;
+      gap: 0.2rem;
+      text-align: left;
+    }
+
+    .form-field.full-width {
+      grid-column: 1 / -1;
+    }
+
+    .form-label {
+      font-size: 0.7rem;
+      font-weight: 600;
+      opacity: 0.7;
+    }
+
+    .form-input {
+      padding: 0.45rem 0.55rem;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.08) !important;
+      color: inherit;
+      font-size: 0.8rem;
+      font-family: inherit;
+    }
+
+    [data-theme="dark"] .form-input {
+      background: rgba(30, 30, 50, 0.3) !important;
+      border-color: rgba(100, 100, 150, 0.3);
+    }
+
+    .form-input::placeholder {
+      color: rgba(150, 150, 150, 0.7);
+    }
+
+    .form-input:focus {
+      outline: none;
+      border-color: #00ddeb;
+      box-shadow: 0 0 0 2px rgba(0, 221, 235, 0.15);
+    }
+
+    .form-check-row {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      margin-bottom: 0.5rem;
+      text-align: left;
+    }
+
+    .form-check-row input[type="checkbox"] {
+      accent-color: #dc3545;
+      width: 15px;
+      height: 15px;
+    }
+
+    .form-check-label {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: #dc3545;
+    }
+
+    .form-buttons {
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    .save-btn {
+      background: linear-gradient(45deg, #00ddeb, #ff6b6b) !important;
+      color: #333 !important;
+      border: none;
+      border-radius: 6px;
+      padding: 0.5rem 1rem;
+      cursor: pointer;
+      font-size: 0.8rem;
+      font-weight: 600;
+      transition: all 0.3s ease;
+      flex: 1;
+    }
+
+    [data-theme="dark"] .save-btn {
+      background: linear-gradient(45deg, #2e2767, #620808) !important;
+      color: #a6a6d1 !important;
+    }
+
+    .save-btn:hover {
+      filter: brightness(1.1);
+      transform: translateY(-1px);
+    }
+
+    .cancel-btn {
+      background: rgba(255, 255, 255, 0.1) !important;
+      color: inherit !important;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 6px;
+      padding: 0.5rem 0.75rem;
+      cursor: pointer;
+      font-size: 0.8rem;
+      font-weight: 600;
+      transition: all 0.3s ease;
+    }
+
+    [data-theme="dark"] .cancel-btn {
+      background: rgba(30, 30, 50, 0.3) !important;
+      border-color: rgba(100, 100, 150, 0.3);
+    }
+
+    .cancel-btn:hover {
+      background: rgba(255, 255, 255, 0.2) !important;
+    }
+
+    .error-message {
+      color: #dc3545;
+      background: rgba(220, 53, 69, 0.1) !important;
+      padding: 0.5rem;
+      border-radius: 6px;
+      margin: 0.5rem 0;
+      font-size: 0.8rem;
+      text-align: center;
+    }
+
+    [data-theme="dark"] .error-message {
+      color: #ff6b6b;
+    }
+
+    .success-message {
+      color: #28a745;
+      background: rgba(40, 167, 69, 0.1) !important;
+      padding: 0.5rem;
+      border-radius: 6px;
+      margin: 0.5rem 0;
+      font-size: 0.8rem;
+      text-align: center;
+    }
+
+    [data-theme="dark"] .success-message {
+      color: #00ddeb;
+      background: rgba(0, 221, 235, 0.1) !important;
+    }
+
+    .filter-row {
+      display: flex;
+      gap: 0.4rem;
+      margin-bottom: 0.75rem;
+      flex-wrap: wrap;
+    }
+  </style>
+</head>
+<body>
+  <div class="widget-container">
+    <div class="widget-header">
+      <h1 class="widget-title">📞 Family Contacts</h1>
+      <div class="header-controls">
+        <button id="addToggleBtn" class="add-toggle-btn">+ Add</button>
+      </div>
+    </div>
+
+    <div class="filter-row">
+      <button class="filter-btn active" data-filter="all" id="filterAll">All</button>
+      <button class="filter-btn" data-filter="emergency" id="filterEmergency">🚨 Emergency</button>
+      <button class="filter-btn" data-filter="family" id="filterFamily">Family</button>
+      <button class="filter-btn" data-filter="school" id="filterSchool">School</button>
+      <button class="filter-btn" data-filter="medical" id="filterMedical">Medical</button>
+      <button class="filter-btn" data-filter="other" id="filterOther">Other</button>
+    </div>
+
+    <div id="contactsList" class="contacts-list"></div>
+
+    <div id="errorMessage" class="error-message" style="display:none;"></div>
+    <div id="successMessage" class="success-message" style="display:none;"></div>
+
+    <div id="addForm" class="add-form" style="display:none;">
+      <div class="form-title">Add Contact</div>
+      <div class="form-check-row">
+        <input type="checkbox" id="isEmergency">
+        <label class="form-check-label" for="isEmergency">🚨 Emergency Contact</label>
+      </div>
+      <div class="form-grid">
+        <div class="form-field">
+          <label class="form-label">Name *</label>
+          <input type="text" id="inputName" class="form-input" placeholder="Full name" maxlength="60">
+        </div>
+        <div class="form-field">
+          <label class="form-label">Phone *</label>
+          <input type="tel" id="inputPhone" class="form-input" placeholder="(555) 555-5555" maxlength="30">
+        </div>
+        <div class="form-field">
+          <label class="form-label">Relationship</label>
+          <input type="text" id="inputRelation" class="form-input" placeholder="e.g. Mom, Doctor" maxlength="40">
+        </div>
+        <div class="form-field">
+          <label class="form-label">Category</label>
+          <select id="inputCategory" class="form-input">
+            <option value="family">Family</option>
+            <option value="school">School</option>
+            <option value="medical">Medical</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+        <div class="form-field full-width">
+          <label class="form-label">Note</label>
+          <input type="text" id="inputNote" class="form-input" placeholder="Optional note" maxlength="100">
+        </div>
+      </div>
+      <div class="form-buttons">
+        <button id="saveBtn" class="save-btn">Save Contact</button>
+        <button id="cancelBtn" class="cancel-btn">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const params = new URLSearchParams(window.location.search);
+      const theme = params.get('theme');
+      if (theme === 'dark' || theme === 'light') {
+        document.documentElement.setAttribute('data-theme', theme);
+      }
+
+      let contacts = [];
+      let activeFilter = 'all';
+      let showForm = false;
+
+      const contactsList = document.getElementById('contactsList');
+      const addToggleBtn = document.getElementById('addToggleBtn');
+      const addForm = document.getElementById('addForm');
+      const saveBtn = document.getElementById('saveBtn');
+      const cancelBtn = document.getElementById('cancelBtn');
+      const errorMessage = document.getElementById('errorMessage');
+      const successMessage = document.getElementById('successMessage');
+      const inputName = document.getElementById('inputName');
+      const inputPhone = document.getElementById('inputPhone');
+      const inputRelation = document.getElementById('inputRelation');
+      const inputCategory = document.getElementById('inputCategory');
+      const inputNote = document.getElementById('inputNote');
+      const isEmergency = document.getElementById('isEmergency');
+
+      function showError(msg) {
+        errorMessage.textContent = msg;
+        errorMessage.style.display = 'block';
+        successMessage.style.display = 'none';
+        setTimeout(() => { errorMessage.style.display = 'none'; }, 3000);
+      }
+
+      function showSuccess(msg) {
+        successMessage.textContent = msg;
+        successMessage.style.display = 'block';
+        errorMessage.style.display = 'none';
+        setTimeout(() => { successMessage.style.display = 'none'; }, 3000);
+      }
+
+      function loadData() {
+        try {
+          const saved = localStorage.getItem('familyContacts_data');
+          if (saved) contacts = JSON.parse(saved);
+        } catch (e) {
+          console.error('Error loading contacts:', e);
+          contacts = [];
+        }
+      }
+
+      function saveData() {
+        try {
+          localStorage.setItem('familyContacts_data', JSON.stringify(contacts));
+        } catch (e) {
+          console.error('Error saving contacts:', e);
+          showError('Failed to save contacts');
+        }
+      }
+
+      function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+      }
+
+      function getInitials(name) {
+        return name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+      }
+
+      function getFilteredContacts() {
+        if (activeFilter === 'all') return contacts;
+        if (activeFilter === 'emergency') return contacts.filter(c => c.emergency);
+        return contacts.filter(c => c.category === activeFilter);
+      }
+
+      function render() {
+        const filtered = getFilteredContacts();
+        const sorted = [...filtered].sort((a, b) => {
+          if (a.emergency && !b.emergency) return -1;
+          if (!a.emergency && b.emergency) return 1;
+          return a.name.localeCompare(b.name);
+        });
+
+        if (sorted.length === 0) {
+          contactsList.innerHTML = `<div class="no-contacts">${activeFilter === 'all' ? 'No contacts yet. Add your first contact!' : 'No contacts in this category.'}</div>`;
+          return;
+        }
+
+        contactsList.innerHTML = sorted.map(c => {
+          const initials = getInitials(c.name);
+          return `
+            <div class="contact-card ${c.emergency ? 'emergency' : ''}">
+              <div class="contact-avatar ${c.emergency ? 'emergency-avatar' : ''}">${initials}</div>
+              <div class="contact-info">
+                ${c.emergency ? '<span class="emergency-badge">EMERGENCY</span>' : ''}
+                <div class="contact-name">${escapeHtml(c.name)}</div>
+                ${c.relation ? `<div class="contact-relation">${escapeHtml(c.relation)}</div>` : ''}
+                <div class="contact-phone"><a href="tel:${escapeHtml(c.phone)}">${escapeHtml(c.phone)}</a></div>
+                ${c.note ? `<div class="contact-note">${escapeHtml(c.note)}</div>` : ''}
+              </div>
+              <div class="contact-actions">
+                <a href="tel:${escapeHtml(c.phone)}" class="call-btn">📞 Call</a>
+                <button class="delete-contact-btn" onclick="deleteContact(${c.id})">🗑️</button>
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+
+      window.deleteContact = function(id) {
+        const c = contacts.find(x => x.id === id);
+        if (c && confirm(`Remove "${c.name}" from contacts?`)) {
+          contacts = contacts.filter(x => x.id !== id);
+          saveData();
+          render();
+          showSuccess('Contact removed');
+        }
+      };
+
+      addToggleBtn.addEventListener('click', () => {
+        showForm = !showForm;
+        addForm.style.display = showForm ? 'block' : 'none';
+        addToggleBtn.textContent = showForm ? '✕ Cancel' : '+ Add';
+        if (showForm) inputName.focus();
+      });
+
+      cancelBtn.addEventListener('click', () => {
+        showForm = false;
+        addForm.style.display = 'none';
+        addToggleBtn.textContent = '+ Add';
+        clearForm();
+      });
+
+      function clearForm() {
+        inputName.value = '';
+        inputPhone.value = '';
+        inputRelation.value = '';
+        inputNote.value = '';
+        inputCategory.value = 'family';
+        isEmergency.checked = false;
+      }
+
+      saveBtn.addEventListener('click', () => {
+        const name = inputName.value.trim();
+        const phone = inputPhone.value.trim();
+
+        if (!name) { showError('Please enter a name'); return; }
+        if (!phone) { showError('Please enter a phone number'); return; }
+
+        const contact = {
+          id: Date.now(),
+          name,
+          phone,
+          relation: inputRelation.value.trim(),
+          category: inputCategory.value,
+          note: inputNote.value.trim(),
+          emergency: isEmergency.checked
+        };
+
+        contacts.push(contact);
+        saveData();
+        render();
+        showSuccess(`${name} added to contacts`);
+        clearForm();
+        showForm = false;
+        addForm.style.display = 'none';
+        addToggleBtn.textContent = '+ Add';
+      });
+
+      document.querySelectorAll('.filter-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('.filter-btn').forEach(b => {
+            b.classList.remove('active', 'emergency-active');
+          });
+          activeFilter = btn.dataset.filter;
+          if (activeFilter === 'emergency') {
+            btn.classList.add('emergency-active');
+          } else {
+            btn.classList.add('active');
+          }
+          render();
+        });
+      });
+
+      inputPhone.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') saveBtn.click();
+      });
+
+      loadData();
+      render();
+    });
+  </script>
+</body>
+</html>

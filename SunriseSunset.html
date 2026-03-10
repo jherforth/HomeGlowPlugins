@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Sunrise & Sunset</title>
+  <link rel="stylesheet" href="/index.css">
+  <style>
+    * {
+      background: transparent !important;
+      background-color: transparent !important;
+      background-image: none !important;
+    }
+
+    body {
+      background: transparent !important;
+      font-family: 'Inter', sans-serif;
+      margin: 0;
+      padding: 0.75rem;
+      box-sizing: border-box;
+      font-size: 0.85rem;
+      color: #333;
+    }
+
+    [data-theme="dark"] body {
+      color: #a6a6d1;
+      background: transparent !important;
+    }
+
+    .widget-container {
+      background: transparent !important;
+      border: none !important;
+      box-shadow: none !important;
+      backdrop-filter: none !important;
+      border-radius: 12px;
+      padding: 0.5rem;
+      text-align: center;
+      width: 100%;
+      max-height: calc(100vh - 1.5rem);
+      overflow-y: auto;
+    }
+
+    .widget-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    [data-theme="dark"] .widget-header {
+      border-bottom-color: rgba(100, 100, 150, 0.3);
+    }
+
+    .widget-title {
+      font-size: 1.2rem;
+      font-weight: 700;
+      margin: 0;
+      color: inherit;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .refresh-btn {
+      background: linear-gradient(45deg, #00ddeb, #ff6b6b) !important;
+      color: #333 !important;
+      border: none;
+      border-radius: 8px;
+      padding: 8px 14px;
+      cursor: pointer;
+      font-size: 0.8rem;
+      font-weight: 600;
+      transition: all 0.3s ease;
+    }
+
+    [data-theme="dark"] .refresh-btn {
+      background: linear-gradient(45deg, #2e2767, #620808) !important;
+      color: #a6a6d1 !important;
+    }
+
+    .refresh-btn:hover {
+      filter: brightness(1.1);
+      transform: translateY(-1px);
+    }
+
+    .location-section {
+      background: rgba(255, 255, 255, 0.05) !important;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      padding: 0.75rem;
+      margin-bottom: 1rem;
+      text-align: left;
+    }
+
+    [data-theme="dark"] .location-section {
+      background: rgba(30, 30, 50, 0.2) !important;
+      border-color: rgba(100, 100, 150, 0.2);
+    }
+
+    .section-title {
+      font-size: 0.9rem;
+      font-weight: 600;
+      margin: 0 0 0.5rem 0;
+      color: inherit;
+    }
+
+    .location-row {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+    }
+
+    .location-input {
+      flex: 1;
+      padding: 0.5rem;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.1) !important;
+      color: inherit;
+      font-size: 0.8rem;
+      font-family: inherit;
+      box-sizing: border-box;
+    }
+
+    [data-theme="dark"] .location-input {
+      background: rgba(30, 30, 50, 0.3) !important;
+      border-color: rgba(100, 100, 150, 0.3);
+    }
+
+    .location-input::placeholder {
+      color: rgba(150, 150, 150, 0.7);
+    }
+
+    .location-input:focus {
+      outline: none;
+      border-color: #00ddeb;
+      box-shadow: 0 0 0 2px rgba(0, 221, 235, 0.2);
+    }
+
+    .locate-btn {
+      background: linear-gradient(45deg, #00ddeb, #ff6b6b) !important;
+      color: #333 !important;
+      border: none;
+      border-radius: 6px;
+      padding: 0.5rem 0.75rem;
+      cursor: pointer;
+      font-size: 0.8rem;
+      font-weight: 600;
+      transition: all 0.3s ease;
+      white-space: nowrap;
+    }
+
+    [data-theme="dark"] .locate-btn {
+      background: linear-gradient(45deg, #2e2767, #620808) !important;
+      color: #a6a6d1 !important;
+    }
+
+    .locate-btn:hover {
+      filter: brightness(1.1);
+      transform: translateY(-1px);
+    }
+
+    .locate-btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .sun-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.75rem;
+      margin-bottom: 1rem;
+    }
+
+    .sun-card {
+      background: rgba(255, 255, 255, 0.05) !important;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      padding: 1rem 0.75rem;
+      text-align: center;
+    }
+
+    [data-theme="dark"] .sun-card {
+      background: rgba(30, 30, 50, 0.2) !important;
+      border-color: rgba(100, 100, 150, 0.2);
+    }
+
+    .sun-card.sunrise {
+      border-left: 3px solid #f5a623;
+    }
+
+    .sun-card.sunset {
+      border-left: 3px solid #e87040;
+    }
+
+    .sun-card.golden-morning {
+      border-left: 3px solid #ffd700;
+    }
+
+    .sun-card.golden-evening {
+      border-left: 3px solid #ff8c00;
+    }
+
+    .sun-icon {
+      font-size: 1.8rem;
+      margin-bottom: 0.25rem;
+      display: block;
+    }
+
+    .sun-label {
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      opacity: 0.7;
+      margin-bottom: 0.25rem;
+    }
+
+    .sun-time {
+      font-size: 1.3rem;
+      font-weight: 700;
+      color: #00ddeb;
+    }
+
+    [data-theme="dark"] .sun-time {
+      color: #00ddeb;
+    }
+
+    .sun-sub {
+      font-size: 0.7rem;
+      opacity: 0.7;
+      margin-top: 0.2rem;
+    }
+
+    .daylight-bar-section {
+      background: rgba(255, 255, 255, 0.05) !important;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      padding: 0.75rem;
+      margin-bottom: 1rem;
+    }
+
+    [data-theme="dark"] .daylight-bar-section {
+      background: rgba(30, 30, 50, 0.2) !important;
+      border-color: rgba(100, 100, 150, 0.2);
+    }
+
+    .daylight-label {
+      font-size: 0.8rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .daylight-hours {
+      color: #00ddeb;
+      font-size: 0.9rem;
+    }
+
+    .daylight-bar-track {
+      height: 12px;
+      background: rgba(255, 255, 255, 0.1) !important;
+      border-radius: 6px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    [data-theme="dark"] .daylight-bar-track {
+      background: rgba(30, 30, 50, 0.4) !important;
+    }
+
+    .daylight-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #f5a623, #ffd700, #e87040) !important;
+      border-radius: 6px;
+      transition: width 1s ease;
+      position: relative;
+    }
+
+    .daylight-bar-cursor {
+      position: absolute;
+      top: -3px;
+      width: 6px;
+      height: 18px;
+      background: #fff !important;
+      border-radius: 3px;
+      transform: translateX(-50%);
+      box-shadow: 0 0 4px rgba(0,0,0,0.3);
+    }
+
+    [data-theme="dark"] .daylight-bar-cursor {
+      background: #a6a6d1 !important;
+    }
+
+    .date-display {
+      font-size: 0.8rem;
+      opacity: 0.7;
+      margin-bottom: 1rem;
+      text-align: center;
+    }
+
+    .status-row {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      font-size: 0.8rem;
+      padding: 0.5rem;
+      border-radius: 6px;
+      margin-bottom: 1rem;
+    }
+
+    .status-row.is-day {
+      background: rgba(245, 166, 35, 0.1) !important;
+      color: #f5a623;
+      border: 1px solid rgba(245, 166, 35, 0.2);
+    }
+
+    .status-row.is-night {
+      background: rgba(100, 100, 150, 0.1) !important;
+      color: #a6a6d1;
+      border: 1px solid rgba(100, 100, 150, 0.2);
+    }
+
+    .status-row.is-golden {
+      background: rgba(255, 215, 0, 0.1) !important;
+      color: #ffd700;
+      border: 1px solid rgba(255, 215, 0, 0.2);
+      animation: glow 2s ease-in-out infinite;
+    }
+
+    @keyframes glow {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.7; }
+    }
+
+    .error-message {
+      color: #dc3545;
+      background: rgba(220, 53, 69, 0.1) !important;
+      padding: 0.5rem;
+      border-radius: 6px;
+      margin: 0.5rem 0;
+      font-size: 0.8rem;
+      text-align: center;
+    }
+
+    [data-theme="dark"] .error-message {
+      color: #ff6b6b;
+      background: rgba(255, 107, 107, 0.1) !important;
+    }
+
+    .loading-text {
+      opacity: 0.6;
+      font-style: italic;
+      text-align: center;
+      padding: 1.5rem;
+    }
+
+    .coord-display {
+      font-size: 0.7rem;
+      opacity: 0.5;
+      text-align: center;
+      margin-top: 0.25rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="widget-container">
+    <div class="widget-header">
+      <h1 class="widget-title">🌅 Sunrise &amp; Sunset</h1>
+      <button id="refreshBtn" class="refresh-btn">Refresh</button>
+    </div>
+
+    <div class="location-section">
+      <div class="section-title">Location</div>
+      <div class="location-row">
+        <input
+          type="text"
+          id="locationInput"
+          class="location-input"
+          placeholder="Lat, Lon (e.g. 40.7128, -74.0060)"
+          maxlength="40"
+        >
+        <button id="locateBtn" class="locate-btn">📍 Auto-Detect</button>
+      </div>
+    </div>
+
+    <div id="errorMessage" class="error-message" style="display:none;"></div>
+    <div id="mainContent">
+      <div class="loading-text">Enter a location or use auto-detect to get started.</div>
+    </div>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const params = new URLSearchParams(window.location.search);
+      const theme = params.get('theme');
+      if (theme === 'dark' || theme === 'light') {
+        document.documentElement.setAttribute('data-theme', theme);
+      }
+
+      const locationInput = document.getElementById('locationInput');
+      const locateBtn = document.getElementById('locateBtn');
+      const refreshBtn = document.getElementById('refreshBtn');
+      const errorMessage = document.getElementById('errorMessage');
+      const mainContent = document.getElementById('mainContent');
+
+      let lat = null;
+      let lon = null;
+
+      function showError(msg) {
+        errorMessage.textContent = msg;
+        errorMessage.style.display = 'block';
+        setTimeout(() => { errorMessage.style.display = 'none'; }, 4000);
+      }
+
+      function loadSavedLocation() {
+        try {
+          const saved = localStorage.getItem('sunriseSunset_location');
+          if (saved) {
+            const loc = JSON.parse(saved);
+            lat = loc.lat;
+            lon = loc.lon;
+            locationInput.value = `${lat}, ${lon}`;
+            fetchSunData();
+          }
+        } catch (e) {
+          console.error('Error loading location:', e);
+        }
+      }
+
+      function saveLocation(la, lo) {
+        try {
+          localStorage.setItem('sunriseSunset_location', JSON.stringify({ lat: la, lon: lo }));
+        } catch (e) {
+          console.error('Error saving location:', e);
+        }
+      }
+
+      function parseManualInput() {
+        const val = locationInput.value.trim();
+        if (!val) return false;
+        const parts = val.split(',');
+        if (parts.length !== 2) return false;
+        const la = parseFloat(parts[0].trim());
+        const lo = parseFloat(parts[1].trim());
+        if (isNaN(la) || isNaN(lo)) return false;
+        if (la < -90 || la > 90 || lo < -180 || lo > 180) return false;
+        lat = la;
+        lon = lo;
+        return true;
+      }
+
+      function toMinutes(dateObj) {
+        return dateObj.getHours() * 60 + dateObj.getMinutes() + dateObj.getSeconds() / 60;
+      }
+
+      function formatTime12(dateObj) {
+        let h = dateObj.getHours();
+        const m = String(dateObj.getMinutes()).padStart(2, '0');
+        const ampm = h >= 12 ? 'PM' : 'AM';
+        h = h % 12 || 12;
+        return `${h}:${m} ${ampm}`;
+      }
+
+      function calcSunTimes(la, lo, dateObj) {
+        const rad = Math.PI / 180;
+        const deg = 180 / Math.PI;
+
+        const dayOfYear = Math.floor((dateObj - new Date(dateObj.getFullYear(), 0, 0)) / 86400000);
+        const B = (360 / 365) * (dayOfYear - 81) * rad;
+        const eqTime = 9.87 * Math.sin(2 * B) - 7.53 * Math.cos(B) - 1.5 * Math.sin(B);
+        const declination = 23.45 * Math.sin(B) * rad;
+        const timezone = -dateObj.getTimezoneOffset() / 60;
+        const solarNoon = 12 - (lo / 15 - timezone) - eqTime / 60;
+        const cosH = (Math.cos(90.833 * rad) - Math.sin(la * rad) * Math.sin(declination))
+          / (Math.cos(la * rad) * Math.cos(declination));
+
+        if (cosH < -1) return { alwaysDay: true };
+        if (cosH > 1) return { alwaysNight: true };
+
+        const H = Math.acos(cosH) * deg / 15;
+        const sunriseDecimal = solarNoon - H;
+        const sunsetDecimal = solarNoon + H;
+
+        function decimalToDate(d) {
+          const h = Math.floor(d);
+          const m = Math.floor((d - h) * 60);
+          const s = Math.floor(((d - h) * 60 - m) * 60);
+          const result = new Date(dateObj);
+          result.setHours(h, m, s, 0);
+          return result;
+        }
+
+        const sunrise = decimalToDate(sunriseDecimal);
+        const sunset = decimalToDate(sunsetDecimal);
+        const goldenDuration = 45;
+        const goldenMorningEnd = new Date(sunrise.getTime() + goldenDuration * 60000);
+        const goldenEveningStart = new Date(sunset.getTime() - goldenDuration * 60000);
+
+        return { sunrise, sunset, goldenMorningEnd, goldenEveningStart };
+      }
+
+      function getCurrentStatus(now, data) {
+        if (data.alwaysDay) return { label: '☀️ Midnight Sun — Daylight all day', cls: 'is-day' };
+        if (data.alwaysNight) return { label: '🌑 Polar Night — No sunrise today', cls: 'is-night' };
+
+        const nowMs = now.getTime();
+        const srMs = data.sunrise.getTime();
+        const ssMs = data.sunset.getTime();
+        const gmEnd = data.goldenMorningEnd.getTime();
+        const geStart = data.goldenEveningStart.getTime();
+
+        if (nowMs >= srMs && nowMs <= gmEnd) return { label: '✨ Golden Hour — Morning light', cls: 'is-golden' };
+        if (nowMs >= geStart && nowMs <= ssMs) return { label: '✨ Golden Hour — Evening light', cls: 'is-golden' };
+        if (nowMs >= srMs && nowMs <= ssMs) return { label: '☀️ Daytime', cls: 'is-day' };
+        return { label: '🌙 Nighttime', cls: 'is-night' };
+      }
+
+      function fetchSunData() {
+        if (lat === null || lon === null) return;
+        const now = new Date();
+        const data = calcSunTimes(lat, lon, now);
+        renderContent(data, now);
+      }
+
+      function renderContent(data, now) {
+        if (data.alwaysDay || data.alwaysNight) {
+          const status = getCurrentStatus(now, data);
+          mainContent.innerHTML = `
+            <div class="status-row ${status.cls}">${status.label}</div>
+            <div class="loading-text">Unusual solar conditions at this latitude today.</div>
+            <div class="coord-display">${lat.toFixed(4)}°, ${lon.toFixed(4)}°</div>
+          `;
+          return;
+        }
+
+        const status = getCurrentStatus(now, data);
+        const nowMin = toMinutes(now);
+        const srMin = toMinutes(data.sunrise);
+        const ssMin = toMinutes(data.sunset);
+        const totalDayMin = ssMin - srMin;
+        const daylightH = Math.floor(totalDayMin / 60);
+        const daylightM = Math.round(totalDayMin % 60);
+
+        let progressPct = 0;
+        let cursorPct = 0;
+        if (nowMin >= srMin && nowMin <= ssMin) {
+          progressPct = ((nowMin - srMin) / totalDayMin) * 100;
+          cursorPct = progressPct;
+        } else if (nowMin > ssMin) {
+          progressPct = 100;
+          cursorPct = 100;
+        }
+
+        const dateStr = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+
+        mainContent.innerHTML = `
+          <div class="date-display">${dateStr}</div>
+          <div class="status-row ${status.cls}">${status.label}</div>
+          <div class="sun-grid">
+            <div class="sun-card sunrise">
+              <span class="sun-icon">🌄</span>
+              <div class="sun-label">Sunrise</div>
+              <div class="sun-time">${formatTime12(data.sunrise)}</div>
+            </div>
+            <div class="sun-card sunset">
+              <span class="sun-icon">🌇</span>
+              <div class="sun-label">Sunset</div>
+              <div class="sun-time">${formatTime12(data.sunset)}</div>
+            </div>
+            <div class="sun-card golden-morning">
+              <span class="sun-icon">🌤️</span>
+              <div class="sun-label">Golden Hour AM</div>
+              <div class="sun-time">${formatTime12(data.sunrise)}</div>
+              <div class="sun-sub">until ${formatTime12(data.goldenMorningEnd)}</div>
+            </div>
+            <div class="sun-card golden-evening">
+              <span class="sun-icon">🌆</span>
+              <div class="sun-label">Golden Hour PM</div>
+              <div class="sun-time">${formatTime12(data.goldenEveningStart)}</div>
+              <div class="sun-sub">until ${formatTime12(data.sunset)}</div>
+            </div>
+          </div>
+          <div class="daylight-bar-section">
+            <div class="daylight-label">
+              <span>Daylight Progress</span>
+              <span class="daylight-hours">${daylightH}h ${daylightM}m of daylight</span>
+            </div>
+            <div class="daylight-bar-track">
+              <div class="daylight-bar-fill" style="width: ${progressPct.toFixed(1)}%">
+                <div class="daylight-bar-cursor" style="left: 100%;"></div>
+              </div>
+            </div>
+            <div style="display:flex; justify-content:space-between; font-size:0.7rem; opacity:0.6; margin-top:0.3rem;">
+              <span>${formatTime12(data.sunrise)}</span>
+              <span>${formatTime12(data.sunset)}</span>
+            </div>
+          </div>
+          <div class="coord-display">${lat.toFixed(4)}°, ${lon.toFixed(4)}°</div>
+        `;
+      }
+
+      locateBtn.addEventListener('click', () => {
+        if (!navigator.geolocation) {
+          showError('Geolocation is not supported by this browser.');
+          return;
+        }
+        locateBtn.disabled = true;
+        locateBtn.textContent = 'Locating...';
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            lat = parseFloat(pos.coords.latitude.toFixed(4));
+            lon = parseFloat(pos.coords.longitude.toFixed(4));
+            locationInput.value = `${lat}, ${lon}`;
+            saveLocation(lat, lon);
+            fetchSunData();
+            locateBtn.disabled = false;
+            locateBtn.textContent = '📍 Auto-Detect';
+          },
+          (err) => {
+            showError('Could not get location. Please enter coordinates manually.');
+            locateBtn.disabled = false;
+            locateBtn.textContent = '📍 Auto-Detect';
+          }
+        );
+      });
+
+      locationInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+          if (parseManualInput()) {
+            saveLocation(lat, lon);
+            fetchSunData();
+          } else {
+            showError('Invalid format. Use: Latitude, Longitude (e.g. 40.7128, -74.0060)');
+          }
+        }
+      });
+
+      refreshBtn.addEventListener('click', () => {
+        if (parseManualInput()) {
+          saveLocation(lat, lon);
+          fetchSunData();
+        } else if (lat !== null) {
+          fetchSunData();
+        } else {
+          showError('Enter a location first.');
+        }
+      });
+
+      loadSavedLocation();
+
+      setInterval(() => {
+        if (lat !== null && lon !== null) fetchSunData();
+      }, 60000);
+    });
+  </script>
+</body>
+</html>

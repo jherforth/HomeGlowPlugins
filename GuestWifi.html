@@ -1,0 +1,774 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Guest Wi-Fi</title>
+  <link rel="stylesheet" href="/index.css">
+  <style>
+    * {
+      background: transparent !important;
+      background-color: transparent !important;
+      background-image: none !important;
+    }
+
+    body {
+      background: transparent !important;
+      font-family: 'Inter', sans-serif;
+      margin: 0;
+      padding: 0.75rem;
+      box-sizing: border-box;
+      font-size: 0.85rem;
+      color: #333;
+    }
+
+    [data-theme="dark"] body {
+      color: #a6a6d1;
+      background: transparent !important;
+    }
+
+    .widget-container {
+      background: transparent !important;
+      border: none !important;
+      box-shadow: none !important;
+      backdrop-filter: none !important;
+      border-radius: 12px;
+      padding: 0.5rem;
+      text-align: center;
+      width: 100%;
+      max-height: calc(100vh - 1.5rem);
+      overflow-y: auto;
+    }
+
+    .widget-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    [data-theme="dark"] .widget-header {
+      border-bottom-color: rgba(100, 100, 150, 0.3);
+    }
+
+    .widget-title {
+      font-size: 1.2rem;
+      font-weight: 700;
+      margin: 0;
+      color: inherit;
+    }
+
+    .edit-btn {
+      background: linear-gradient(45deg, #00ddeb, #ff6b6b) !important;
+      color: #333 !important;
+      border: none;
+      border-radius: 8px;
+      padding: 8px 14px;
+      cursor: pointer;
+      font-size: 0.8rem;
+      font-weight: 600;
+      transition: all 0.3s ease;
+    }
+
+    [data-theme="dark"] .edit-btn {
+      background: linear-gradient(45deg, #2e2767, #620808) !important;
+      color: #a6a6d1 !important;
+    }
+
+    .edit-btn:hover {
+      filter: brightness(1.1);
+      transform: translateY(-1px);
+    }
+
+    .network-list {
+      margin-bottom: 1rem;
+    }
+
+    .network-card {
+      background: rgba(255, 255, 255, 0.05) !important;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 10px;
+      padding: 1rem;
+      margin-bottom: 0.75rem;
+      position: relative;
+    }
+
+    [data-theme="dark"] .network-card {
+      background: rgba(30, 30, 50, 0.2) !important;
+      border-color: rgba(100, 100, 150, 0.2);
+    }
+
+    .network-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.75rem;
+    }
+
+    .network-name-display {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #00ddeb;
+      text-align: left;
+      word-break: break-all;
+    }
+
+    .wifi-icon {
+      font-size: 1.4rem;
+      flex-shrink: 0;
+    }
+
+    .password-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 0.75rem;
+      background: rgba(255, 255, 255, 0.05) !important;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 6px;
+      padding: 0.5rem 0.75rem;
+    }
+
+    [data-theme="dark"] .password-row {
+      background: rgba(30, 30, 50, 0.3) !important;
+      border-color: rgba(100, 100, 150, 0.2);
+    }
+
+    .password-label {
+      font-size: 0.7rem;
+      font-weight: 600;
+      opacity: 0.6;
+      white-space: nowrap;
+    }
+
+    .password-text {
+      flex: 1;
+      font-size: 0.9rem;
+      font-weight: 600;
+      font-family: 'Courier New', monospace;
+      color: inherit;
+      word-break: break-all;
+      text-align: left;
+    }
+
+    .password-text.hidden {
+      letter-spacing: 0.15em;
+      filter: blur(5px);
+      user-select: none;
+    }
+
+    .reveal-btn {
+      background: rgba(255, 255, 255, 0.1) !important;
+      color: inherit !important;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 4px;
+      padding: 0.2rem 0.5rem;
+      cursor: pointer;
+      font-size: 0.7rem;
+      transition: all 0.2s ease;
+      flex-shrink: 0;
+    }
+
+    [data-theme="dark"] .reveal-btn {
+      background: rgba(30, 30, 50, 0.4) !important;
+      border-color: rgba(100, 100, 150, 0.3);
+    }
+
+    .reveal-btn:hover {
+      background: rgba(255, 255, 255, 0.2) !important;
+    }
+
+    .qr-wrapper {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 0.5rem 0;
+    }
+
+    .qr-canvas {
+      border-radius: 6px;
+      background: #fff !important;
+      padding: 8px;
+    }
+
+    .qr-hint {
+      font-size: 0.72rem;
+      opacity: 0.6;
+      margin-top: 0.4rem;
+      text-align: center;
+    }
+
+    .no-network-type {
+      font-size: 0.7rem;
+      opacity: 0.55;
+      margin-top: 0.3rem;
+    }
+
+    .network-type-badge {
+      font-size: 0.65rem;
+      font-weight: 600;
+      padding: 0.12rem 0.4rem;
+      border-radius: 4px;
+      background: rgba(0, 221, 235, 0.12) !important;
+      color: #00ddeb;
+      border: 1px solid rgba(0, 221, 235, 0.25);
+    }
+
+    .delete-network-btn {
+      background: rgba(220, 53, 69, 0.12) !important;
+      color: #dc3545 !important;
+      border: 1px solid rgba(220, 53, 69, 0.2);
+      border-radius: 5px;
+      padding: 0.25rem 0.5rem;
+      cursor: pointer;
+      font-size: 0.72rem;
+      transition: all 0.2s ease;
+    }
+
+    .delete-network-btn:hover {
+      background: rgba(220, 53, 69, 0.25) !important;
+    }
+
+    .no-networks {
+      text-align: center;
+      opacity: 0.6;
+      font-style: italic;
+      padding: 2rem;
+      background: rgba(255, 255, 255, 0.04) !important;
+      border: 1px dashed rgba(255, 255, 255, 0.15);
+      border-radius: 10px;
+    }
+
+    [data-theme="dark"] .no-networks {
+      background: rgba(30, 30, 50, 0.15) !important;
+      border-color: rgba(100, 100, 150, 0.2);
+    }
+
+    .add-form {
+      background: rgba(255, 255, 255, 0.05) !important;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      padding: 0.75rem;
+      margin-top: 0.5rem;
+    }
+
+    [data-theme="dark"] .add-form {
+      background: rgba(30, 30, 50, 0.2) !important;
+      border-color: rgba(100, 100, 150, 0.2);
+    }
+
+    .form-title {
+      font-size: 0.9rem;
+      font-weight: 600;
+      margin: 0 0 0.6rem 0;
+      text-align: left;
+    }
+
+    .form-field {
+      margin-bottom: 0.5rem;
+      text-align: left;
+    }
+
+    .form-label {
+      display: block;
+      font-size: 0.7rem;
+      font-weight: 600;
+      opacity: 0.7;
+      margin-bottom: 0.2rem;
+    }
+
+    .form-input {
+      width: 100%;
+      padding: 0.45rem 0.55rem;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.08) !important;
+      color: inherit;
+      font-size: 0.8rem;
+      font-family: inherit;
+      box-sizing: border-box;
+    }
+
+    [data-theme="dark"] .form-input {
+      background: rgba(30, 30, 50, 0.3) !important;
+      border-color: rgba(100, 100, 150, 0.3);
+    }
+
+    .form-input::placeholder {
+      color: rgba(150, 150, 150, 0.7);
+    }
+
+    .form-input:focus {
+      outline: none;
+      border-color: #00ddeb;
+      box-shadow: 0 0 0 2px rgba(0, 221, 235, 0.15);
+    }
+
+    .form-buttons {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 0.5rem;
+    }
+
+    .save-btn {
+      background: linear-gradient(45deg, #00ddeb, #ff6b6b) !important;
+      color: #333 !important;
+      border: none;
+      border-radius: 6px;
+      padding: 0.5rem 1rem;
+      cursor: pointer;
+      font-size: 0.8rem;
+      font-weight: 600;
+      transition: all 0.3s ease;
+      flex: 1;
+    }
+
+    [data-theme="dark"] .save-btn {
+      background: linear-gradient(45deg, #2e2767, #620808) !important;
+      color: #a6a6d1 !important;
+    }
+
+    .save-btn:hover {
+      filter: brightness(1.1);
+      transform: translateY(-1px);
+    }
+
+    .cancel-btn {
+      background: rgba(255, 255, 255, 0.1) !important;
+      color: inherit !important;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 6px;
+      padding: 0.5rem 0.75rem;
+      cursor: pointer;
+      font-size: 0.8rem;
+      font-weight: 600;
+      transition: all 0.3s ease;
+    }
+
+    [data-theme="dark"] .cancel-btn {
+      background: rgba(30, 30, 50, 0.3) !important;
+      border-color: rgba(100, 100, 150, 0.3);
+    }
+
+    .cancel-btn:hover {
+      background: rgba(255, 255, 255, 0.2) !important;
+    }
+
+    .error-message {
+      color: #dc3545;
+      background: rgba(220, 53, 69, 0.1) !important;
+      padding: 0.5rem;
+      border-radius: 6px;
+      margin: 0.5rem 0;
+      font-size: 0.8rem;
+      text-align: center;
+    }
+
+    [data-theme="dark"] .error-message {
+      color: #ff6b6b;
+    }
+
+    .success-message {
+      color: #28a745;
+      background: rgba(40, 167, 69, 0.1) !important;
+      padding: 0.5rem;
+      border-radius: 6px;
+      margin: 0.5rem 0;
+      font-size: 0.8rem;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="widget-container">
+    <div class="widget-header">
+      <h1 class="widget-title">📶 Guest Wi-Fi</h1>
+      <button id="editBtn" class="edit-btn">+ Add Network</button>
+    </div>
+
+    <div id="networkList" class="network-list"></div>
+
+    <div id="errorMessage" class="error-message" style="display:none;"></div>
+    <div id="successMessage" class="success-message" style="display:none;"></div>
+
+    <div id="addForm" class="add-form" style="display:none;">
+      <div class="form-title">Add Wi-Fi Network</div>
+      <div class="form-field">
+        <label class="form-label">Network Name (SSID) *</label>
+        <input type="text" id="inputSSID" class="form-input" placeholder="e.g. HomeGuest_5G" maxlength="64">
+      </div>
+      <div class="form-field">
+        <label class="form-label">Password</label>
+        <input type="text" id="inputPassword" class="form-input" placeholder="Leave blank if open network" maxlength="64">
+      </div>
+      <div class="form-field">
+        <label class="form-label">Security Type</label>
+        <select id="inputSecurity" class="form-input">
+          <option value="WPA">WPA / WPA2 / WPA3</option>
+          <option value="WEP">WEP</option>
+          <option value="nopass">No Password (Open)</option>
+        </select>
+      </div>
+      <div class="form-field">
+        <label class="form-label">Label (optional)</label>
+        <input type="text" id="inputLabel" class="form-input" placeholder="e.g. Guest Network, Kids Network" maxlength="40">
+      </div>
+      <div class="form-buttons">
+        <button id="saveBtn" class="save-btn">Save Network</button>
+        <button id="cancelBtn" class="cancel-btn">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const params = new URLSearchParams(window.location.search);
+      const theme = params.get('theme');
+      if (theme === 'dark' || theme === 'light') {
+        document.documentElement.setAttribute('data-theme', theme);
+      }
+
+      let networks = [];
+      let revealedIds = new Set();
+      let showForm = false;
+
+      const networkList = document.getElementById('networkList');
+      const editBtn = document.getElementById('editBtn');
+      const addForm = document.getElementById('addForm');
+      const saveBtn = document.getElementById('saveBtn');
+      const cancelBtn = document.getElementById('cancelBtn');
+      const errorMessage = document.getElementById('errorMessage');
+      const successMessage = document.getElementById('successMessage');
+      const inputSSID = document.getElementById('inputSSID');
+      const inputPassword = document.getElementById('inputPassword');
+      const inputSecurity = document.getElementById('inputSecurity');
+      const inputLabel = document.getElementById('inputLabel');
+
+      function showError(msg) {
+        errorMessage.textContent = msg;
+        errorMessage.style.display = 'block';
+        successMessage.style.display = 'none';
+        setTimeout(() => { errorMessage.style.display = 'none'; }, 3000);
+      }
+
+      function showSuccess(msg) {
+        successMessage.textContent = msg;
+        successMessage.style.display = 'block';
+        errorMessage.style.display = 'none';
+        setTimeout(() => { successMessage.style.display = 'none'; }, 3000);
+      }
+
+      function loadData() {
+        try {
+          const saved = localStorage.getItem('guestWifi_networks');
+          if (saved) networks = JSON.parse(saved);
+        } catch (e) {
+          console.error('Error loading networks:', e);
+          networks = [];
+        }
+      }
+
+      function saveData() {
+        try {
+          localStorage.setItem('guestWifi_networks', JSON.stringify(networks));
+        } catch (e) {
+          console.error('Error saving networks:', e);
+          showError('Failed to save');
+        }
+      }
+
+      function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+      }
+
+      function buildQRString(ssid, password, security) {
+        if (security === 'nopass') return `WIFI:T:nopass;S:${ssid};;`;
+        return `WIFI:T:${security};S:${ssid};P:${password};;`;
+      }
+
+      function drawQR(canvasId, data) {
+        const canvas = document.getElementById(canvasId);
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        const size = canvas.width;
+
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, size, size);
+
+        const modules = generateQRModules(data);
+        if (!modules) {
+          ctx.fillStyle = '#dc3545';
+          ctx.font = '10px Arial';
+          ctx.fillText('QR Error', 4, size / 2);
+          return;
+        }
+
+        const moduleCount = modules.length;
+        const cellSize = Math.floor((size - 16) / moduleCount);
+        const offset = Math.floor((size - cellSize * moduleCount) / 2);
+
+        ctx.fillStyle = '#000000';
+        for (let row = 0; row < moduleCount; row++) {
+          for (let col = 0; col < moduleCount; col++) {
+            if (modules[row][col]) {
+              ctx.fillRect(offset + col * cellSize, offset + row * cellSize, cellSize, cellSize);
+            }
+          }
+        }
+      }
+
+      function generateQRModules(text) {
+        try {
+          const bytes = encodeUTF8(text);
+          const dataBits = encodeBytes(bytes);
+          const version = 4;
+          const ecLevel = 'M';
+          const totalDataBits = 272;
+
+          while (dataBits.length < totalDataBits) dataBits.push(0);
+          const padded = dataBits.slice(0, totalDataBits);
+
+          const size = 4 * version + 17;
+          const matrix = Array.from({ length: size }, () => Array(size).fill(null));
+
+          addFinderPattern(matrix, 0, 0);
+          addFinderPattern(matrix, size - 7, 0);
+          addFinderPattern(matrix, 0, size - 7);
+          addAlignmentPattern(matrix, size);
+          addTimingPatterns(matrix, size);
+
+          const dataModules = getDataModulePositions(matrix, size);
+          const masked = applyMask(matrix, padded, dataModules, size, 0);
+
+          return masked;
+        } catch (e) {
+          return null;
+        }
+      }
+
+      function encodeUTF8(str) {
+        const out = [];
+        for (let i = 0; i < str.length; i++) {
+          const code = str.charCodeAt(i);
+          if (code < 0x80) {
+            out.push(code);
+          } else if (code < 0x800) {
+            out.push(0xC0 | (code >> 6), 0x80 | (code & 0x3F));
+          } else {
+            out.push(0xE0 | (code >> 12), 0x80 | ((code >> 6) & 0x3F), 0x80 | (code & 0x3F));
+          }
+        }
+        return out;
+      }
+
+      function encodeBytes(bytes) {
+        const bits = [];
+        const push = (val, len) => {
+          for (let i = len - 1; i >= 0; i--) bits.push((val >> i) & 1);
+        };
+        push(0b0100, 4);
+        push(bytes.length, 8);
+        bytes.forEach(b => push(b, 8));
+        push(0b0000, 4);
+        while (bits.length % 8 !== 0) bits.push(0);
+        const pads = [0xEC, 0x11];
+        let pi = 0;
+        while (bits.length < 272) { push(pads[pi % 2], 8); pi++; }
+        return bits;
+      }
+
+      function addFinderPattern(matrix, row, col) {
+        for (let r = 0; r < 7; r++) {
+          for (let c = 0; c < 7; c++) {
+            const edge = r === 0 || r === 6 || c === 0 || c === 6;
+            const inner = r >= 2 && r <= 4 && c >= 2 && c <= 4;
+            matrix[row + r][col + c] = edge || inner ? 1 : 0;
+          }
+        }
+        const sRow = row === 0 ? 7 : (row > 0 ? row - 1 : 7);
+        const sCol = col === 0 ? 7 : (col > 0 ? col - 1 : 7);
+        for (let r = -1; r <= 7; r++) {
+          for (let c = -1; c <= 7; c++) {
+            const mr = row + r, mc = col + c;
+            if (mr >= 0 && mr < matrix.length && mc >= 0 && mc < matrix[0].length && matrix[mr][mc] === null) {
+              matrix[mr][mc] = 0;
+            }
+          }
+        }
+      }
+
+      function addAlignmentPattern(matrix, size) {
+        const pos = size - 7;
+        for (let r = -2; r <= 2; r++) {
+          for (let c = -2; c <= 2; c++) {
+            const edge = Math.abs(r) === 2 || Math.abs(c) === 2;
+            const center = r === 0 && c === 0;
+            if (matrix[pos + r][pos + c] === null) {
+              matrix[pos + r][pos + c] = edge || center ? 1 : 0;
+            }
+          }
+        }
+      }
+
+      function addTimingPatterns(matrix, size) {
+        for (let i = 8; i < size - 8; i++) {
+          if (matrix[6][i] === null) matrix[6][i] = i % 2 === 0 ? 1 : 0;
+          if (matrix[i][6] === null) matrix[i][6] = i % 2 === 0 ? 1 : 0;
+        }
+        if (matrix[13][8] === null) matrix[13][8] = 1;
+      }
+
+      function getDataModulePositions(matrix, size) {
+        const positions = [];
+        let up = true;
+        for (let col = size - 1; col >= 1; col -= 2) {
+          if (col === 6) col--;
+          const rows = up ? Array.from({ length: size }, (_, i) => size - 1 - i) : Array.from({ length: size }, (_, i) => i);
+          for (const row of rows) {
+            for (const c of [col, col - 1]) {
+              if (matrix[row][c] === null) positions.push([row, c]);
+            }
+          }
+          up = !up;
+        }
+        return positions;
+      }
+
+      function applyMask(matrix, bits, positions, size, maskPattern) {
+        const result = matrix.map(r => r.map(v => v === null ? 0 : v));
+        positions.forEach(([row, col], i) => {
+          const bit = i < bits.length ? bits[i] : 0;
+          const maskBit = (row + col) % 2 === 0 ? 1 : 0;
+          result[row][col] = bit ^ maskBit;
+        });
+        return result;
+      }
+
+      function render() {
+        if (networks.length === 0) {
+          networkList.innerHTML = `
+            <div class="no-networks">
+              No networks added yet.<br>Add your guest Wi-Fi details to display a QR code.
+            </div>`;
+          return;
+        }
+
+        networkList.innerHTML = networks.map(n => {
+          const isRevealed = revealedIds.has(n.id);
+          const hasPassword = n.security !== 'nopass' && n.password;
+          const displayLabel = n.label || n.ssid;
+
+          return `
+            <div class="network-card">
+              <div class="network-card-header">
+                <div>
+                  <div class="network-name-display">${escapeHtml(displayLabel)}</div>
+                  ${n.label && n.label !== n.ssid ? `<div style="font-size:0.72rem;opacity:0.6;margin-top:0.15rem;">${escapeHtml(n.ssid)}</div>` : ''}
+                  <div style="margin-top:0.3rem;display:flex;align-items:center;gap:0.4rem;">
+                    <span class="network-type-badge">${n.security === 'nopass' ? 'Open' : n.security}</span>
+                  </div>
+                </div>
+                <div style="display:flex;flex-direction:column;align-items:flex-end;gap:0.35rem;">
+                  <span class="wifi-icon">📶</span>
+                  <button class="delete-network-btn" onclick="deleteNetwork(${n.id})">🗑️</button>
+                </div>
+              </div>
+              ${hasPassword ? `
+                <div class="password-row">
+                  <span class="password-label">Password:</span>
+                  <span class="password-text ${isRevealed ? '' : 'hidden'}" id="pw_${n.id}">${escapeHtml(n.password)}</span>
+                  <button class="reveal-btn" onclick="toggleReveal(${n.id})">${isRevealed ? '🙈 Hide' : '👁️ Show'}</button>
+                </div>` : `<div class="no-network-type" style="margin-bottom:0.5rem;">Open network — no password required</div>`}
+              <div class="qr-wrapper">
+                <canvas id="qr_${n.id}" class="qr-canvas" width="160" height="160"></canvas>
+              </div>
+              <div class="qr-hint">Scan to connect instantly</div>
+            </div>
+          `;
+        }).join('');
+
+        networks.forEach(n => {
+          const qrData = buildQRString(n.ssid, n.password || '', n.security);
+          setTimeout(() => drawQR(`qr_${n.id}`, qrData), 0);
+        });
+      }
+
+      window.toggleReveal = function(id) {
+        if (revealedIds.has(id)) {
+          revealedIds.delete(id);
+        } else {
+          revealedIds.add(id);
+        }
+        render();
+      };
+
+      window.deleteNetwork = function(id) {
+        const n = networks.find(x => x.id === id);
+        if (n && confirm(`Remove "${n.label || n.ssid}" from the board?`)) {
+          networks = networks.filter(x => x.id !== id);
+          revealedIds.delete(id);
+          saveData();
+          render();
+          showSuccess('Network removed');
+        }
+      };
+
+      editBtn.addEventListener('click', () => {
+        showForm = !showForm;
+        addForm.style.display = showForm ? 'block' : 'none';
+        editBtn.textContent = showForm ? '✕ Cancel' : '+ Add Network';
+        if (showForm) inputSSID.focus();
+      });
+
+      cancelBtn.addEventListener('click', () => {
+        showForm = false;
+        addForm.style.display = 'none';
+        editBtn.textContent = '+ Add Network';
+        clearForm();
+      });
+
+      function clearForm() {
+        inputSSID.value = '';
+        inputPassword.value = '';
+        inputSecurity.value = 'WPA';
+        inputLabel.value = '';
+      }
+
+      saveBtn.addEventListener('click', () => {
+        const ssid = inputSSID.value.trim();
+        if (!ssid) { showError('Please enter the network name (SSID)'); return; }
+
+        const security = inputSecurity.value;
+        const password = security !== 'nopass' ? inputPassword.value.trim() : '';
+
+        const network = {
+          id: Date.now(),
+          ssid,
+          password,
+          security,
+          label: inputLabel.value.trim()
+        };
+
+        networks.push(network);
+        saveData();
+        render();
+        showSuccess(`Network "${ssid}" added`);
+        clearForm();
+        showForm = false;
+        addForm.style.display = 'none';
+        editBtn.textContent = '+ Add Network';
+      });
+
+      inputSSID.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') saveBtn.click();
+      });
+
+      loadData();
+      render();
+    });
+  </script>
+</body>
+</html>
