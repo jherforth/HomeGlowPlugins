@@ -35,8 +35,8 @@
       padding: 0.5rem;
       text-align: center;
       width: 100%;
-      max-height: calc(100vh - 1.5rem);
-      overflow-y: auto;
+      box-sizing: border-box;
+      overflow: hidden;
     }
 
     .widget-header {
@@ -113,6 +113,7 @@
 
     .location-input {
       flex: 1;
+      min-width: 0;
       padding: 0.5rem;
       border: 1px solid rgba(255, 255, 255, 0.2);
       border-radius: 4px;
@@ -143,12 +144,13 @@
       color: #333 !important;
       border: none;
       border-radius: 6px;
-      padding: 0.5rem 0.75rem;
+      padding: 0.5rem 0.6rem;
       cursor: pointer;
-      font-size: 0.8rem;
+      font-size: 0.75rem;
       font-weight: 600;
       transition: all 0.3s ease;
       white-space: nowrap;
+      flex-shrink: 0;
     }
 
     [data-theme="dark"] .locate-btn {

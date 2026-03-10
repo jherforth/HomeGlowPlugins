@@ -693,10 +693,15 @@
           renderNews();
         } catch (err) {
           console.error('RSS fetch error:', err);
+          const proxyHost = new URL(PROXY).hostname;
           newsList.innerHTML = `
             <div class="error-state">
-              Could not load headlines.<br>
-              <span style="font-size:0.72rem;opacity:0.7;">The feed may be unavailable or blocked. Try a different source.</span>
+              Could not load headlines for <strong>${escapeHtml(feed.name)}</strong>.<br>
+              <span style="font-size:0.72rem;opacity:0.8;display:block;margin-top:0.4rem;">
+                If this app uses a proxy whitelist, add the following to allow it:
+              </span>
+              <code style="display:block;margin:0.4rem 0;padding:0.3rem 0.5rem;background:rgba(0,0,0,0.15);border-radius:4px;font-size:0.72rem;word-break:break-all;">${escapeHtml(proxyHost)}</code>
+              <span style="font-size:0.7rem;opacity:0.6;">The feed URL may also be unavailable or have changed.</span>
             </div>`;
           newsItems = [];
         } finally {

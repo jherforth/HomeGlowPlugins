@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <title>Guest Wi-Fi</title>
   <link rel="stylesheet" href="/index.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <style>
     * {
       background: transparent !important;
@@ -190,6 +191,14 @@
       border-radius: 6px;
       background: #fff !important;
       padding: 8px;
+      display: inline-block;
+      line-height: 0;
+    }
+
+    .qr-canvas img,
+    .qr-canvas canvas {
+      display: block !important;
+      background: #fff !important;
     }
 
     .qr-hint {
@@ -485,166 +494,32 @@
       }
 
       function buildQRString(ssid, password, security) {
-        if (security === 'nopass') return `WIFI:T:nopass;S:${ssid};;`;
-        return `WIFI:T:${security};S:${ssid};P:${password};;`;
+        const escapePart = (s) => s.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/:/g, '\\:');
+        if (security === 'nopass') return `WIFI:T:nopass;S:${escapePart(ssid)};;`;
+        return `WIFI:T:${security};S:${escapePart(ssid)};P:${escapePart(password)};;`;
       }
 
-      function drawQR(canvasId, data) {
-        const canvas = document.getElementById(canvasId);
-        if (!canvas) return;
-        const ctx = canvas.getContext('2d');
-        const size = canvas.width;
+      const qrInstances = {};
 
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(0, 0, size, size);
-
-        const modules = generateQRModules(data);
-        if (!modules) {
-          ctx.fillStyle = '#dc3545';
-          ctx.font = '10px Arial';
-          ctx.fillText('QR Error', 4, size / 2);
-          return;
+      function drawQR(containerId, data) {
+        const el = document.getElementById(containerId);
+        if (!el) return;
+        el.innerHTML = '';
+        if (qrInstances[containerId]) {
+          delete qrInstances[containerId];
         }
-
-        const moduleCount = modules.length;
-        const cellSize = Math.floor((size - 16) / moduleCount);
-        const offset = Math.floor((size - cellSize * moduleCount) / 2);
-
-        ctx.fillStyle = '#000000';
-        for (let row = 0; row < moduleCount; row++) {
-          for (let col = 0; col < moduleCount; col++) {
-            if (modules[row][col]) {
-              ctx.fillRect(offset + col * cellSize, offset + row * cellSize, cellSize, cellSize);
-            }
-          }
-        }
-      }
-
-      function generateQRModules(text) {
         try {
-          const bytes = encodeUTF8(text);
-          const dataBits = encodeBytes(bytes);
-          const version = 4;
-          const ecLevel = 'M';
-          const totalDataBits = 272;
-
-          while (dataBits.length < totalDataBits) dataBits.push(0);
-          const padded = dataBits.slice(0, totalDataBits);
-
-          const size = 4 * version + 17;
-          const matrix = Array.from({ length: size }, () => Array(size).fill(null));
-
-          addFinderPattern(matrix, 0, 0);
-          addFinderPattern(matrix, size - 7, 0);
-          addFinderPattern(matrix, 0, size - 7);
-          addAlignmentPattern(matrix, size);
-          addTimingPatterns(matrix, size);
-
-          const dataModules = getDataModulePositions(matrix, size);
-          const masked = applyMask(matrix, padded, dataModules, size, 0);
-
-          return masked;
+          qrInstances[containerId] = new QRCode(el, {
+            text: data,
+            width: 160,
+            height: 160,
+            colorDark: '#000000',
+            colorLight: '#ffffff',
+            correctLevel: QRCode.CorrectLevel.M
+          });
         } catch (e) {
-          return null;
+          el.innerHTML = '<span style="color:#dc3545;font-size:0.75rem;">QR Error</span>';
         }
-      }
-
-      function encodeUTF8(str) {
-        const out = [];
-        for (let i = 0; i < str.length; i++) {
-          const code = str.charCodeAt(i);
-          if (code < 0x80) {
-            out.push(code);
-          } else if (code < 0x800) {
-            out.push(0xC0 | (code >> 6), 0x80 | (code & 0x3F));
-          } else {
-            out.push(0xE0 | (code >> 12), 0x80 | ((code >> 6) & 0x3F), 0x80 | (code & 0x3F));
-          }
-        }
-        return out;
-      }
-
-      function encodeBytes(bytes) {
-        const bits = [];
-        const push = (val, len) => {
-          for (let i = len - 1; i >= 0; i--) bits.push((val >> i) & 1);
-        };
-        push(0b0100, 4);
-        push(bytes.length, 8);
-        bytes.forEach(b => push(b, 8));
-        push(0b0000, 4);
-        while (bits.length % 8 !== 0) bits.push(0);
-        const pads = [0xEC, 0x11];
-        let pi = 0;
-        while (bits.length < 272) { push(pads[pi % 2], 8); pi++; }
-        return bits;
-      }
-
-      function addFinderPattern(matrix, row, col) {
-        for (let r = 0; r < 7; r++) {
-          for (let c = 0; c < 7; c++) {
-            const edge = r === 0 || r === 6 || c === 0 || c === 6;
-            const inner = r >= 2 && r <= 4 && c >= 2 && c <= 4;
-            matrix[row + r][col + c] = edge || inner ? 1 : 0;
-          }
-        }
-        const sRow = row === 0 ? 7 : (row > 0 ? row - 1 : 7);
-        const sCol = col === 0 ? 7 : (col > 0 ? col - 1 : 7);
-        for (let r = -1; r <= 7; r++) {
-          for (let c = -1; c <= 7; c++) {
-            const mr = row + r, mc = col + c;
-            if (mr >= 0 && mr < matrix.length && mc >= 0 && mc < matrix[0].length && matrix[mr][mc] === null) {
-              matrix[mr][mc] = 0;
-            }
-          }
-        }
-      }
-
-      function addAlignmentPattern(matrix, size) {
-        const pos = size - 7;
-        for (let r = -2; r <= 2; r++) {
-          for (let c = -2; c <= 2; c++) {
-            const edge = Math.abs(r) === 2 || Math.abs(c) === 2;
-            const center = r === 0 && c === 0;
-            if (matrix[pos + r][pos + c] === null) {
-              matrix[pos + r][pos + c] = edge || center ? 1 : 0;
-            }
-          }
-        }
-      }
-
-      function addTimingPatterns(matrix, size) {
-        for (let i = 8; i < size - 8; i++) {
-          if (matrix[6][i] === null) matrix[6][i] = i % 2 === 0 ? 1 : 0;
-          if (matrix[i][6] === null) matrix[i][6] = i % 2 === 0 ? 1 : 0;
-        }
-        if (matrix[13][8] === null) matrix[13][8] = 1;
-      }
-
-      function getDataModulePositions(matrix, size) {
-        const positions = [];
-        let up = true;
-        for (let col = size - 1; col >= 1; col -= 2) {
-          if (col === 6) col--;
-          const rows = up ? Array.from({ length: size }, (_, i) => size - 1 - i) : Array.from({ length: size }, (_, i) => i);
-          for (const row of rows) {
-            for (const c of [col, col - 1]) {
-              if (matrix[row][c] === null) positions.push([row, c]);
-            }
-          }
-          up = !up;
-        }
-        return positions;
-      }
-
-      function applyMask(matrix, bits, positions, size, maskPattern) {
-        const result = matrix.map(r => r.map(v => v === null ? 0 : v));
-        positions.forEach(([row, col], i) => {
-          const bit = i < bits.length ? bits[i] : 0;
-          const maskBit = (row + col) % 2 === 0 ? 1 : 0;
-          result[row][col] = bit ^ maskBit;
-        });
-        return result;
       }
 
       function render() {
@@ -683,7 +558,7 @@
                   <button class="reveal-btn" onclick="toggleReveal(${n.id})">${isRevealed ? '🙈 Hide' : '👁️ Show'}</button>
                 </div>` : `<div class="no-network-type" style="margin-bottom:0.5rem;">Open network — no password required</div>`}
               <div class="qr-wrapper">
-                <canvas id="qr_${n.id}" class="qr-canvas" width="160" height="160"></canvas>
+                <div id="qr_${n.id}" class="qr-canvas"></div>
               </div>
               <div class="qr-hint">Scan to connect instantly</div>
             </div>
