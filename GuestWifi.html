@@ -582,13 +582,12 @@
 
       window.deleteNetwork = function(id) {
         const n = networks.find(x => x.id === id);
-        if (n && confirm(`Remove "${n.label || n.ssid}" from the board?`)) {
-          networks = networks.filter(x => x.id !== id);
-          revealedIds.delete(id);
-          saveData();
-          render();
-          showSuccess('Network removed');
-        }
+        if (!n) return;
+        networks = networks.filter(x => x.id !== id);
+        revealedIds.delete(id);
+        saveData();
+        render();
+        showSuccess(`"${n.label || n.ssid}" removed`);
       };
 
       editBtn.addEventListener('click', () => {
