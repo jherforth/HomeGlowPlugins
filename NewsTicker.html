@@ -491,7 +491,7 @@
         document.documentElement.setAttribute('data-theme', theme);
       }
 
-      const PROXY = 'https://api.allorigins.win/get?url=';
+      const PROXY = 'https://api.allorigins.win/raw?url=';
       const REFRESH_MS = 10 * 60 * 1000;
 
       const PRESETS = [
@@ -675,33 +675,39 @@
           const proxyUrl = PROXY + encodeURIComponent(feed.url);
           const response = await fetch(proxyUrl);
           if (!response.ok) throw new Error('Network error');
-          const data = await response.json();
-          const xmlStr = data.contents;
+          const xmlStr = await response.text();
+          if (!xmlStr || xmlStr.trim().length === 0) throw new Error('Empty response');
           const parser = new DOMParser();
           const xml = parser.parseFromString(xmlStr, 'application/xml');
 
+          if (xml.querySelector('parsererror')) throw new Error('Invalid XML');
+
           const items = Array.from(xml.querySelectorAll('item')).slice(0, 20);
-          newsItems = items.map(item => ({
-            title: item.querySelector('title')?.textContent || 'Untitled',
-            link: item.querySelector('link')?.textContent || '#',
-            description: item.querySelector('description')?.textContent || '',
-            pubDate: item.querySelector('pubDate')?.textContent || '',
-            source: feed.name
-          }));
+          newsItems = items.map(item => {
+            const linkEl = item.querySelector('link');
+            const link = linkEl
+              ? (linkEl.textContent.trim() || linkEl.nextSibling?.nodeValue?.trim() || '#')
+              : '#';
+            return {
+              title: item.querySelector('title')?.textContent?.trim() || 'Untitled',
+              link,
+              description: item.querySelector('description')?.textContent || '',
+              pubDate: item.querySelector('pubDate')?.textContent || '',
+              source: feed.name
+            };
+          });
 
           lastFetchTime = new Date();
           renderNews();
         } catch (err) {
           console.error('RSS fetch error:', err);
-          const proxyHost = new URL(PROXY).hostname;
           newsList.innerHTML = `
             <div class="error-state">
               Could not load headlines for <strong>${escapeHtml(feed.name)}</strong>.<br>
               <span style="font-size:0.72rem;opacity:0.8;display:block;margin-top:0.4rem;">
-                If this app uses a proxy whitelist, add the following to allow it:
+                Make sure <strong>api.allorigins.win</strong> is allowed in the proxy whitelist.
               </span>
-              <code style="display:block;margin:0.4rem 0;padding:0.3rem 0.5rem;background:rgba(0,0,0,0.15);border-radius:4px;font-size:0.72rem;word-break:break-all;">${escapeHtml(proxyHost)}</code>
-              <span style="font-size:0.7rem;opacity:0.6;">The feed URL may also be unavailable or have changed.</span>
+              <span style="font-size:0.7rem;opacity:0.6;display:block;margin-top:0.3rem;">The feed URL may also be unavailable or have changed.</span>
             </div>`;
           newsItems = [];
         } finally {
