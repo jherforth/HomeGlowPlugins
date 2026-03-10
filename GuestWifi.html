@@ -200,7 +200,8 @@
       background: #fff !important;
     }
 
-    .qr-canvas img {
+    .qr-canvas img,
+    .qr-canvas table {
       display: none !important;
     }
 
@@ -570,7 +571,7 @@
 
         networks.forEach(n => {
           const qrData = buildQRString(n.ssid, n.password || '', n.security);
-          setTimeout(() => drawQR(`qr_${n.id}`, qrData), 0);
+          drawQR(`qr_${n.id}`, qrData);
         });
       }
 
