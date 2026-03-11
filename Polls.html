@@ -505,18 +505,19 @@
     }
 
     function renderUserSelection() {
+      const apiBase = window.location.origin;
       const userGrid = document.getElementById('userGrid');
-      
+
       if (users.length === 0) {
         userGrid.innerHTML = '<div class="no-polls">No family members found</div>';
         return;
       }
-      
+
       userGrid.innerHTML = users.map(user => `
         <div class="user-option" onclick="selectUser(${JSON.stringify(user).replace(/"/g, '&quot;')})">
           <div class="user-avatar">
-            ${user.profile_picture ? 
-              `<img src="${user.profile_picture}" alt="${user.username}">` : 
+            ${user.profile_picture ?
+              `<img src="${apiBase}/Uploads/users/${user.profile_picture}" alt="${user.username}">` :
               `<span style="font-size: 1.5rem;">👤</span>`
             }
           </div>

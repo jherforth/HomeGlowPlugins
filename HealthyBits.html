@@ -610,11 +610,12 @@
 
     // Render users grid
     function renderUsers() {
+      const apiBase = window.location.origin;
       const container = document.getElementById('users-grid');
       container.innerHTML = users.map(user => `
         <div class="user-card" data-user-id="${user.id}">
-          ${user.profile_picture ? 
-            `<img src="${user.profile_picture}" alt="${user.username}" class="user-avatar">` :
+          ${user.profile_picture ?
+            `<img src="${apiBase}/Uploads/users/${user.profile_picture}" alt="${user.username}" class="user-avatar">` :
             `<div class="user-avatar-placeholder">${user.username.charAt(0).toUpperCase()}</div>`
           }
           <div class="user-name">${user.username}</div>
@@ -850,9 +851,10 @@
 
     // Update progress display
     function updateProgress() {
+      const apiBase = window.location.origin;
       const progressContainer = document.getElementById('progress-grid');
       const dateKey = currentDate.toISOString().split('T')[0];
-      
+
       progressContainer.innerHTML = users.map(user => {
         const userHabits = habits[user.id] || [];
         const userCompletions = completions[dateKey]?.[user.id] || {};
@@ -863,8 +865,8 @@
         return `
           <div class="progress-card">
             <div class="progress-user">
-              ${user.profile_picture ? 
-                `<img src="${user.profile_picture}" alt="${user.username}" class="progress-avatar">` :
+              ${user.profile_picture ?
+                `<img src="${apiBase}/Uploads/users/${user.profile_picture}" alt="${user.username}" class="progress-avatar">` :
                 `<div class="progress-avatar-placeholder">${user.username.charAt(0).toUpperCase()}</div>`
               }
               <span>${user.username}</span>

@@ -583,7 +583,10 @@
     function getMemberAvatar(member) {
       if (member.userId) {
         const user = allUsers.find(u => u.id === member.userId);
-        return user?.profile_picture;
+        if (user?.profile_picture) {
+          const apiBase = window.location.origin;
+          return `${apiBase}/Uploads/users/${user.profile_picture}`;
+        }
       }
       return null;
     }
@@ -689,8 +692,9 @@
         avatarEl.className = 'user-option-avatar';
 
         if (user.profile_picture) {
+          const apiBase = window.location.origin;
           const img = document.createElement('img');
-          img.src = user.profile_picture;
+          img.src = `${apiBase}/Uploads/users/${user.profile_picture}`;
           img.alt = user.username;
           avatarEl.appendChild(img);
         } else {

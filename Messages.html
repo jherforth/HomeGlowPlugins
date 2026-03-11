@@ -954,29 +954,30 @@
       }
 
       function renderUserSelection() {
+        const apiBase = window.location.origin;
         userGrid.innerHTML = '';
-        
+
         users.forEach(user => {
           const userCard = document.createElement('div');
           userCard.className = 'user-card';
           userCard.onclick = () => selectUser(user);
-          
+
           const avatar = document.createElement('div');
           avatar.className = 'user-avatar';
-          
+
           if (user.profile_picture) {
             const img = document.createElement('img');
-            img.src = user.profile_picture;
+            img.src = `${apiBase}/Uploads/users/${user.profile_picture}`;
             img.alt = user.username;
             avatar.appendChild(img);
           } else {
             avatar.textContent = user.username.charAt(0).toUpperCase();
           }
-          
+
           const name = document.createElement('div');
           name.className = 'user-name';
           name.textContent = user.username;
-          
+
           userCard.appendChild(avatar);
           userCard.appendChild(name);
           userGrid.appendChild(userCard);
@@ -1016,17 +1017,18 @@
 
       function updateCurrentUserDisplay() {
         if (!currentUser) return;
-        
+
+        const apiBase = window.location.origin;
         currentUserAvatar.innerHTML = '';
         if (currentUser.profile_picture) {
           const img = document.createElement('img');
-          img.src = currentUser.profile_picture;
+          img.src = `${apiBase}/Uploads/users/${currentUser.profile_picture}`;
           img.alt = currentUser.username;
           currentUserAvatar.appendChild(img);
         } else {
           currentUserAvatar.textContent = currentUser.username.charAt(0).toUpperCase();
         }
-        
+
         currentUserName.textContent = currentUser.username;
       }
 
@@ -1187,10 +1189,11 @@
           
           const avatar = document.createElement('div');
           avatar.className = 'message-avatar';
-          
+
           if (message.authorAvatar) {
+            const apiBase = window.location.origin;
             const img = document.createElement('img');
-            img.src = message.authorAvatar;
+            img.src = `${apiBase}/Uploads/users/${message.authorAvatar}`;
             img.alt = message.authorName;
             avatar.appendChild(img);
           } else {
