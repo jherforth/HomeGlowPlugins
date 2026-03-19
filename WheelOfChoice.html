@@ -1,0 +1,745 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Spin the Wheel</title>
+  <link rel="stylesheet" href="/index.css">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Fredoka+One&family=Nunito:wght@400;600;700;800&display=swap');
+
+    * {
+      background: transparent !important;
+      background-color: transparent !important;
+      background-image: none !important;
+      box-sizing: border-box;
+    }
+
+    body {
+      background: transparent !important;
+      font-family: 'Nunito', sans-serif;
+      margin: 0;
+      padding: 0.75rem;
+      font-size: 0.85rem;
+      color: #333;
+    }
+
+    [data-theme="dark"] body {
+      color: #a6a6d1;
+    }
+
+    .widget-container {
+      background: transparent !important;
+      border: none !important;
+      box-shadow: none !important;
+      backdrop-filter: none !important;
+      border-radius: 12px;
+      padding: 0.5rem;
+      text-align: center;
+      width: 100%;
+      max-height: calc(100vh - 1.5rem);
+      overflow-y: auto;
+    }
+
+    .widget-title {
+      font-family: 'Fredoka One', cursive;
+      font-size: 1.5rem;
+      margin: 0 0 1rem 0;
+      color: inherit;
+      letter-spacing: 0.02em;
+    }
+
+    /* ── Wheel area ── */
+    .wheel-area {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin-bottom: 1rem;
+    }
+
+    .wheel-wrapper {
+      position: relative;
+      width: 240px;
+      height: 240px;
+    }
+
+    canvas#wheelCanvas {
+      display: block;
+      border-radius: 50%;
+      filter: drop-shadow(0 4px 16px rgba(0,0,0,0.25));
+    }
+
+    /* The pointer arrow sitting on top */
+    .pointer {
+      position: absolute;
+      top: -14px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 0;
+      height: 0;
+      border-left: 12px solid transparent;
+      border-right: 12px solid transparent;
+      border-top: 28px solid #ff6b6b;
+      filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
+      z-index: 10;
+    }
+
+    [data-theme="dark"] .pointer {
+      border-top-color: #ff6b6b;
+    }
+
+    /* Center hub */
+    .hub {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: #fff !important;
+      border: 3px solid rgba(0,0,0,0.15);
+      z-index: 5;
+    }
+
+    [data-theme="dark"] .hub {
+      background: #1e1e32 !important;
+      border-color: rgba(255,255,255,0.2);
+    }
+
+    /* Spin button */
+    .spin-btn {
+      margin-top: 1rem;
+      background: linear-gradient(45deg, #00ddeb, #ff6b6b) !important;
+      color: #fff !important;
+      border: none;
+      border-radius: 50px;
+      padding: 0.6rem 2rem;
+      font-family: 'Fredoka One', cursive;
+      font-size: 1.1rem;
+      letter-spacing: 0.05em;
+      cursor: pointer;
+      transition: transform 0.2s, filter 0.2s;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+
+    [data-theme="dark"] .spin-btn {
+      background: linear-gradient(45deg, #2e2767, #620808) !important;
+      color: #a6a6d1 !important;
+    }
+
+    .spin-btn:hover:not(:disabled) {
+      filter: brightness(1.1);
+      transform: translateY(-2px) scale(1.04);
+    }
+
+    .spin-btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    /* Result banner */
+    .result-banner {
+      margin-top: 0.75rem;
+      padding: 0.6rem 1rem;
+      border-radius: 12px;
+      font-family: 'Fredoka One', cursive;
+      font-size: 1.1rem;
+      letter-spacing: 0.03em;
+      background: rgba(0, 221, 235, 0.12) !important;
+      border: 2px solid rgba(0, 221, 235, 0.4);
+      color: #00ddeb;
+      transition: opacity 0.4s;
+      min-height: 2rem;
+    }
+
+    .result-banner:empty {
+      opacity: 0;
+      border-color: transparent;
+    }
+
+    /* ── Members section ── */
+    .members-section {
+      background: rgba(255,255,255,0.05) !important;
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 12px;
+      padding: 0.75rem;
+      margin-top: 0.25rem;
+    }
+
+    [data-theme="dark"] .members-section {
+      background: rgba(30,30,50,0.2) !important;
+      border-color: rgba(100,100,150,0.2);
+    }
+
+    .section-title {
+      font-family: 'Fredoka One', cursive;
+      font-size: 0.95rem;
+      letter-spacing: 0.02em;
+      margin: 0 0 0.6rem 0;
+      opacity: 0.85;
+    }
+
+    /* User picker grid (from API) */
+    .user-selector {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(68px, 1fr));
+      gap: 0.4rem;
+      margin-bottom: 0.6rem;
+    }
+
+    .user-option {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 0.4rem 0.25rem;
+      border: 2px solid transparent;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+      background: rgba(255,255,255,0.05) !important;
+    }
+
+    [data-theme="dark"] .user-option {
+      background: rgba(30,30,50,0.2) !important;
+    }
+
+    .user-option:hover {
+      border-color: #00ddeb;
+      transform: translateY(-1px);
+    }
+
+    .user-option.on-wheel {
+      border-color: #00ddeb;
+      background: rgba(0,221,235,0.1) !important;
+    }
+
+    .user-option-avatar {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      margin-bottom: 0.2rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 1rem;
+      overflow: hidden;
+      background: rgba(255,255,255,0.1) !important;
+    }
+
+    .user-option-avatar img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      border-radius: 50%;
+    }
+
+    .user-option-name {
+      font-size: 0.65rem;
+      font-weight: 700;
+      text-transform: capitalize;
+      text-align: center;
+      line-height: 1.2;
+    }
+
+    .user-option-check {
+      font-size: 0.6rem;
+      color: #00ddeb;
+      font-weight: 800;
+      height: 0.7rem;
+    }
+
+    /* Custom name add */
+    .add-custom-row {
+      display: flex;
+      gap: 0.4rem;
+      margin-bottom: 0.4rem;
+    }
+
+    .add-custom-input {
+      flex: 1;
+      padding: 0.4rem 0.55rem;
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 6px;
+      background: rgba(255,255,255,0.08) !important;
+      color: inherit;
+      font-family: 'Nunito', sans-serif;
+      font-size: 0.8rem;
+    }
+
+    [data-theme="dark"] .add-custom-input {
+      background: rgba(30,30,50,0.3) !important;
+      border-color: rgba(100,100,150,0.3);
+    }
+
+    .add-custom-input::placeholder { color: rgba(150,150,150,0.7); }
+    .add-custom-input:focus { outline: none; border-color: #00ddeb; }
+
+    .add-custom-btn {
+      background: linear-gradient(45deg, #00ddeb, #ff6b6b) !important;
+      color: #333 !important;
+      border: none;
+      border-radius: 6px;
+      padding: 0.4rem 0.8rem;
+      cursor: pointer;
+      font-family: 'Nunito', sans-serif;
+      font-size: 0.8rem;
+      font-weight: 700;
+      transition: all 0.2s;
+      flex-shrink: 0;
+    }
+
+    [data-theme="dark"] .add-custom-btn {
+      background: linear-gradient(45deg, #2e2767, #620808) !important;
+      color: #a6a6d1 !important;
+    }
+
+    .add-custom-btn:hover { filter: brightness(1.1); transform: translateY(-1px); }
+
+    /* Chips for current wheel entries */
+    .wheel-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+      margin-top: 0.4rem;
+    }
+
+    .chip {
+      display: flex;
+      align-items: center;
+      gap: 0.3rem;
+      padding: 0.2rem 0.5rem 0.2rem 0.4rem;
+      border-radius: 20px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      border: 1px solid rgba(0,221,235,0.35);
+      background: rgba(0,221,235,0.1) !important;
+      color: #00ddeb;
+    }
+
+    .chip-remove {
+      background: none !important;
+      border: none;
+      cursor: pointer;
+      color: #ff6b6b;
+      font-size: 0.8rem;
+      line-height: 1;
+      padding: 0;
+      opacity: 0.8;
+      transition: opacity 0.15s;
+    }
+
+    .chip-remove:hover { opacity: 1; }
+
+    .no-members {
+      font-size: 0.78rem;
+      opacity: 0.55;
+      font-style: italic;
+      padding: 0.5rem 0;
+    }
+
+    .empty-wheel-msg {
+      font-size: 0.78rem;
+      opacity: 0.55;
+      font-style: italic;
+      margin-top: 0.5rem;
+    }
+
+    /* Toggle user-selector button */
+    .toggle-users-btn {
+      background: rgba(255,255,255,0.08) !important;
+      color: inherit !important;
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 6px;
+      padding: 0.3rem 0.7rem;
+      cursor: pointer;
+      font-size: 0.75rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+      transition: all 0.2s;
+    }
+
+    [data-theme="dark"] .toggle-users-btn {
+      background: rgba(30,30,50,0.25) !important;
+      border-color: rgba(100,100,150,0.2);
+    }
+
+    .toggle-users-btn:hover {
+      background: rgba(0,221,235,0.1) !important;
+      border-color: rgba(0,221,235,0.3);
+      color: #00ddeb !important;
+    }
+
+    /* Confetti burst */
+    @keyframes confettiFall {
+      0%   { transform: translateY(0) rotate(0deg); opacity: 1; }
+      100% { transform: translateY(80px) rotate(720deg); opacity: 0; }
+    }
+    .confetti-piece {
+      position: absolute;
+      width: 8px;
+      height: 8px;
+      border-radius: 2px;
+      pointer-events: none;
+      animation: confettiFall 0.9s ease-out forwards;
+    }
+  </style>
+</head>
+<body>
+<div class="widget-container">
+  <h1 class="widget-title">🎡 Spin the Wheel</h1>
+
+  <!-- Wheel -->
+  <div class="wheel-area">
+    <div class="wheel-wrapper" id="wheelWrapper">
+      <div class="pointer"></div>
+      <canvas id="wheelCanvas" width="240" height="240"></canvas>
+      <div class="hub"></div>
+    </div>
+    <button id="spinBtn" class="spin-btn">SPIN!</button>
+    <div id="resultBanner" class="result-banner"></div>
+  </div>
+
+  <!-- Members -->
+  <div class="members-section">
+    <div class="section-title">Wheel Members</div>
+
+    <button id="toggleUsersBtn" class="toggle-users-btn">+ Add from Users</button>
+    <div id="userSelector" class="user-selector" style="display:none;"></div>
+
+    <div class="add-custom-row">
+      <input type="text" id="customInput" class="add-custom-input" placeholder="Add custom name…" maxlength="30">
+      <button id="addCustomBtn" class="add-custom-btn">Add</button>
+    </div>
+
+    <div id="wheelChips" class="wheel-chips"></div>
+    <div id="noMembersMsg" class="no-members" style="display:none;">Add at least 2 members to spin!</div>
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  // ── Theme ──
+  const params = new URLSearchParams(window.location.search);
+  const theme = params.get('theme');
+  if (theme === 'dark' || theme === 'light') document.documentElement.setAttribute('data-theme', theme);
+  const isDark = () => document.documentElement.getAttribute('data-theme') === 'dark';
+
+  // ── State ──
+  let members = [];          // { id, label, fromUserId? }
+  let allUsers = [];
+  let spinning = false;
+  let currentAngle = 0;      // radians, total rotation applied
+
+  // Vivid slice colours (alternating pair)
+  const COLORS_LIGHT = [
+    ['#ff6b6b','#fff'], ['#00ddeb','#fff'], ['#ffd166','#333'],
+    ['#06d6a0','#fff'], ['#a29bfe','#fff'], ['#fd79a8','#fff'],
+    ['#fdcb6e','#333'], ['#55efc4','#333'], ['#e17055','#fff'], ['#74b9ff','#fff']
+  ];
+  const COLORS_DARK = [
+    ['#620808','#ff9999'], ['#1a5c66','#7fffff'], ['#5c4a00','#ffd166'],
+    ['#014d39','#55efc4'], ['#2e2767','#d4d0ff'], ['#5c1a35','#ffb3d9'],
+    ['#5c3d00','#fdcb6e'], ['#1a4d3c','#55efc4'], ['#5c2e00','#ffa07a'], ['#1a3c5c','#74b9ff']
+  ];
+  const colors = () => isDark() ? COLORS_DARK : COLORS_LIGHT;
+
+  // ── Storage ──
+  function save() {
+    localStorage.setItem('spinWheel_members', JSON.stringify(members));
+  }
+  function load() {
+    try {
+      const s = localStorage.getItem('spinWheel_members');
+      if (s) members = JSON.parse(s);
+    } catch(e) { members = []; }
+  }
+
+  // ── Canvas drawing ──
+  const canvas = document.getElementById('wheelCanvas');
+  const ctx = canvas.getContext('2d');
+  const CX = canvas.width / 2, CY = canvas.height / 2, R = CX - 2;
+
+  function drawWheel(rotationOffset) {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const n = members.length;
+
+    if (n === 0) {
+      // Placeholder grey wheel
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(CX, CY, R, 0, Math.PI * 2);
+      ctx.fillStyle = isDark() ? '#2e2e48' : '#e0e0e0';
+      ctx.fill();
+      ctx.restore();
+      ctx.save();
+      ctx.fillStyle = isDark() ? 'rgba(166,166,209,0.4)' : 'rgba(0,0,0,0.25)';
+      ctx.font = 'bold 13px Nunito, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('Add members', CX, CY);
+      ctx.restore();
+      return;
+    }
+
+    const arc = (Math.PI * 2) / n;
+
+    for (let i = 0; i < n; i++) {
+      const startAngle = rotationOffset + i * arc;
+      const endAngle   = startAngle + arc;
+      const [bg, fg] = colors()[i % colors().length];
+
+      // Slice
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(CX, CY);
+      ctx.arc(CX, CY, R, startAngle, endAngle);
+      ctx.closePath();
+      ctx.fillStyle = bg;
+      ctx.fill();
+      ctx.strokeStyle = isDark() ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.restore();
+
+      // Label
+      ctx.save();
+      const mid = startAngle + arc / 2;
+      const labelR = R * 0.62;
+      const tx = CX + labelR * Math.cos(mid);
+      const ty = CY + labelR * Math.sin(mid);
+      ctx.translate(tx, ty);
+      ctx.rotate(mid + Math.PI / 2);
+      ctx.fillStyle = fg;
+      ctx.font = 'bold 11px Nunito, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+
+      const label = members[i].label;
+      const maxChars = n <= 4 ? 12 : n <= 6 ? 9 : 7;
+      ctx.fillText(label.length > maxChars ? label.slice(0, maxChars - 1) + '…' : label, 0, 0);
+      ctx.restore();
+    }
+
+    // Outer ring
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(CX, CY, R, 0, Math.PI * 2);
+    ctx.strokeStyle = isDark() ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.1)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // ── Spin logic ──
+  let animFrame = null;
+  const spinBtn = document.getElementById('spinBtn');
+  const resultBanner = document.getElementById('resultBanner');
+
+  spinBtn.addEventListener('click', () => {
+    if (spinning || members.length < 2) return;
+
+    resultBanner.textContent = '';
+    spinning = true;
+    spinBtn.disabled = true;
+
+    const extraSpins = (Math.floor(Math.random() * 5) + 5) * Math.PI * 2; // 5–9 full turns
+    const randomExtra = Math.random() * Math.PI * 2;
+    const totalRotation = extraSpins + randomExtra;
+    const duration = 3500 + Math.random() * 1000; // 3.5–4.5 s
+    const startTime = performance.now();
+    const startAngle = currentAngle;
+
+    function easeOut(t) { return 1 - Math.pow(1 - t, 4); }
+
+    function frame(now) {
+      const elapsed = now - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      currentAngle = startAngle + totalRotation * easeOut(progress);
+      drawWheel(currentAngle);
+
+      if (progress < 1) {
+        animFrame = requestAnimationFrame(frame);
+      } else {
+        spinning = false;
+        spinBtn.disabled = false;
+        announceWinner();
+        spawnConfetti();
+      }
+    }
+
+    animFrame = requestAnimationFrame(frame);
+  });
+
+  function announceWinner() {
+    // The pointer is at the top (angle = -π/2 from canvas default, which starts at 3-o'clock).
+    // We need to find which slice is under the top (angle = -π/2 relative to the wheel's frame).
+    const n = members.length;
+    const arc = (Math.PI * 2) / n;
+    // Normalize the rotation so we know which slice is at the top pointer.
+    const pointerAngle = -Math.PI / 2;
+    // The slice i starts at currentAngle + i*arc.
+    // We want (pointerAngle - currentAngle) mod (2π) / arc
+    let relative = ((pointerAngle - currentAngle) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
+    const index = Math.floor(relative / arc) % n;
+    const winner = members[index];
+    resultBanner.textContent = `🎉 ${winner.label}!`;
+  }
+
+  function spawnConfetti() {
+    const wrapper = document.getElementById('wheelWrapper');
+    const confettiColors = ['#ff6b6b','#00ddeb','#ffd166','#06d6a0','#a29bfe'];
+    for (let i = 0; i < 18; i++) {
+      const el = document.createElement('div');
+      el.className = 'confetti-piece';
+      el.style.cssText = `
+        left: ${40 + Math.random() * 120}px;
+        top:  ${40 + Math.random() * 120}px;
+        background: ${confettiColors[i % confettiColors.length]} !important;
+        background-color: ${confettiColors[i % confettiColors.length]} !important;
+        animation-delay: ${Math.random() * 0.3}s;
+        transform: rotate(${Math.random()*360}deg);
+        border-radius: ${Math.random() > 0.5 ? '50%' : '2px'};
+      `;
+      wrapper.appendChild(el);
+      setTimeout(() => el.remove(), 1200);
+    }
+  }
+
+  // ── Member management ──
+  function addMember(label, fromUserId = null) {
+    label = label.trim();
+    if (!label) return;
+    if (members.some(m => m.label.toLowerCase() === label.toLowerCase())) return;
+    members.push({ id: Date.now(), label, fromUserId });
+    save();
+    renderAll();
+  }
+
+  function removeMember(id) {
+    members = members.filter(m => m.id !== id);
+    save();
+    renderAll();
+  }
+
+  function renderAll() {
+    drawWheel(currentAngle);
+    renderChips();
+    renderUserSelector();
+    updateSpinBtn();
+    document.getElementById('noMembersMsg').style.display = members.length < 2 ? 'block' : 'none';
+  }
+
+  function renderChips() {
+    const container = document.getElementById('wheelChips');
+    container.innerHTML = '';
+    members.forEach(m => {
+      const chip = document.createElement('div');
+      chip.className = 'chip';
+      chip.innerHTML = `<span>${escHtml(m.label)}</span><button class="chip-remove" title="Remove">✕</button>`;
+      chip.querySelector('.chip-remove').onclick = () => removeMember(m.id);
+      container.appendChild(chip);
+    });
+  }
+
+  function updateSpinBtn() {
+    spinBtn.disabled = members.length < 2;
+  }
+
+  // ── User API ──
+  async function fetchUsers() {
+    try {
+      const res = await fetch('/api/users');
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      allUsers = Array.isArray(data) ? data.filter(u => u.id !== 0) : [];
+    } catch(e) { allUsers = []; }
+    renderUserSelector();
+  }
+
+  function renderUserSelector() {
+    const grid = document.getElementById('userSelector');
+    if (allUsers.length === 0) {
+      grid.innerHTML = '<div class="no-members">No users found</div>';
+      return;
+    }
+    const apiBase = window.location.origin;
+    grid.innerHTML = '';
+    allUsers.forEach(user => {
+      const onWheel = members.some(m => m.fromUserId === user.id);
+      const el = document.createElement('div');
+      el.className = `user-option${onWheel ? ' on-wheel' : ''}`;
+
+      const avatar = document.createElement('div');
+      avatar.className = 'user-option-avatar';
+      if (user.profile_picture) {
+        const img = document.createElement('img');
+        img.src = `${apiBase}/Uploads/users/${user.profile_picture}`;
+        img.alt = user.username;
+        img.onerror = () => { img.style.display = 'none'; avatar.textContent = user.username.charAt(0).toUpperCase(); };
+        avatar.appendChild(img);
+      } else {
+        avatar.textContent = user.username.charAt(0).toUpperCase();
+      }
+
+      const name = document.createElement('div');
+      name.className = 'user-option-name';
+      name.textContent = user.username;
+
+      const check = document.createElement('div');
+      check.className = 'user-option-check';
+      check.textContent = onWheel ? '✓ On wheel' : '';
+
+      el.appendChild(avatar);
+      el.appendChild(name);
+      el.appendChild(check);
+
+      el.onclick = () => {
+        if (onWheel) {
+          // Remove from wheel
+          members = members.filter(m => m.fromUserId !== user.id);
+          save();
+          renderAll();
+        } else {
+          addMember(user.username, user.id);
+        }
+      };
+
+      grid.appendChild(el);
+    });
+  }
+
+  // ── UI wiring ──
+  document.getElementById('toggleUsersBtn').addEventListener('click', () => {
+    const sel = document.getElementById('userSelector');
+    const visible = sel.style.display !== 'none';
+    sel.style.display = visible ? 'none' : 'grid';
+    document.getElementById('toggleUsersBtn').textContent = visible ? '+ Add from Users' : '– Hide Users';
+  });
+
+  document.getElementById('addCustomBtn').addEventListener('click', () => {
+    const inp = document.getElementById('customInput');
+    addMember(inp.value);
+    inp.value = '';
+  });
+
+  document.getElementById('customInput').addEventListener('keypress', e => {
+    if (e.key === 'Enter') document.getElementById('addCustomBtn').click();
+  });
+
+  function escHtml(t) {
+    const d = document.createElement('div');
+    d.textContent = t;
+    return d.innerHTML;
+  }
+
+  // ── Init ──
+  load();
+  fetchUsers();
+  renderAll();
+});
+</script>
+</body>
+</html>
