@@ -1,0 +1,785 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Emoji Story</title>
+  <link rel="stylesheet" href="/index.css">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Righteous&family=Nunito:wght@500;600;700;800&display=swap');
+
+    * {
+      background: transparent !important;
+      background-color: transparent !important;
+      background-image: none !important;
+      box-sizing: border-box;
+    }
+
+    body {
+      background: transparent !important;
+      font-family: 'Nunito', sans-serif;
+      margin: 0;
+      padding: 0.75rem;
+      font-size: 0.85rem;
+      color: #2c2c2c;
+    }
+
+    [data-theme="dark"] body { color: #a6a6d1; }
+
+    .widget-container {
+      background: transparent !important;
+      border: none !important;
+      box-shadow: none !important;
+      backdrop-filter: none !important;
+      border-radius: 12px;
+      padding: 0.5rem;
+      width: 100%;
+      max-height: calc(100vh - 1.5rem);
+      overflow-y: auto;
+    }
+
+    /* ── Header ── */
+    .widget-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.75rem;
+    }
+
+    .widget-title {
+      font-family: 'Righteous', cursive;
+      font-size: 1.3rem;
+      margin: 0;
+      color: inherit;
+      letter-spacing: 0.04em;
+    }
+
+    .date-badge {
+      font-size: 0.65rem;
+      font-weight: 700;
+      padding: 0.25rem 0.6rem;
+      border-radius: 20px;
+      border: 1px solid rgba(128,128,128,0.2);
+      opacity: 0.6;
+      white-space: nowrap;
+    }
+
+    /* ── Round tabs ── */
+    .round-tabs {
+      display: flex;
+      gap: 0.4rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .round-tab {
+      flex: 1;
+      padding: 0.4rem;
+      border-radius: 8px;
+      border: 2px solid rgba(128,128,128,0.2);
+      text-align: center;
+      font-size: 0.72rem;
+      font-weight: 800;
+      cursor: pointer;
+      transition: all 0.2s;
+      background: rgba(255,255,255,0.04) !important;
+      color: inherit;
+      opacity: 0.5;
+    }
+
+    [data-theme="dark"] .round-tab {
+      background: rgba(30,30,50,0.2) !important;
+    }
+
+    .round-tab.active {
+      opacity: 1;
+      border-color: #00ddeb;
+      background: rgba(0,221,235,0.08) !important;
+      color: #00ddeb;
+    }
+
+    .round-tab.won {
+      border-color: #06d6a0;
+      background: rgba(6,214,160,0.1) !important;
+      color: #06d6a0;
+      opacity: 1;
+    }
+
+    .round-tab.lost {
+      border-color: #ff6b6b;
+      background: rgba(255,107,107,0.1) !important;
+      color: #ff6b6b;
+      opacity: 1;
+    }
+
+    /* ── Category + difficulty pill ── */
+    .meta-row {
+      display: flex;
+      justify-content: center;
+      gap: 0.4rem;
+      margin-bottom: 0.75rem;
+      flex-wrap: wrap;
+    }
+
+    .pill {
+      font-size: 0.65rem;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 0.2rem 0.6rem;
+      border-radius: 20px;
+      border: 1px solid rgba(128,128,128,0.2);
+      opacity: 0.6;
+    }
+
+    .pill.easy { color: #06d6a0; border-color: rgba(6,214,160,0.35); background: rgba(6,214,160,0.08) !important; opacity: 1; }
+    .pill.hard { color: #ff6b6b; border-color: rgba(255,107,107,0.35); background: rgba(255,107,107,0.08) !important; opacity: 1; }
+
+    /* ── Emoji sequence ── */
+    .emoji-sequence {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.3rem;
+      margin-bottom: 0.75rem;
+      min-height: 70px;
+      padding: 0.75rem;
+      border: 1px solid rgba(128,128,128,0.15);
+      border-radius: 12px;
+      background: rgba(255,255,255,0.03) !important;
+    }
+
+    [data-theme="dark"] .emoji-sequence {
+      background: rgba(30,30,50,0.15) !important;
+    }
+
+    .emoji-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.15rem;
+      transition: all 0.3s;
+    }
+
+    .emoji-glyph {
+      font-size: 2.2rem;
+      line-height: 1;
+      filter: none;
+      transition: filter 0.4s, transform 0.3s;
+    }
+
+    .emoji-item.hidden .emoji-glyph {
+      filter: blur(8px) grayscale(1);
+    }
+
+    .emoji-item.revealed .emoji-glyph {
+      animation: emojiReveal 0.4s cubic-bezier(0.175,0.885,0.32,1.275) both;
+    }
+
+    @keyframes emojiReveal {
+      0%   { transform: scale(0) rotate(-20deg); opacity: 0; }
+      100% { transform: scale(1) rotate(0deg);   opacity: 1; }
+    }
+
+    .emoji-hint {
+      font-size: 0.55rem;
+      font-weight: 700;
+      opacity: 0;
+      color: #00ddeb;
+      text-align: center;
+      max-width: 50px;
+      line-height: 1.2;
+      transition: opacity 0.3s;
+      min-height: 0.7rem;
+    }
+
+    .emoji-item.revealed .emoji-hint {
+      opacity: 1;
+    }
+
+    .emoji-separator {
+      font-size: 1rem;
+      opacity: 0.3;
+      align-self: center;
+    }
+
+    /* ── Wrong guesses / lives ── */
+    .lives-row {
+      display: flex;
+      justify-content: center;
+      gap: 0.35rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .life {
+      font-size: 1.1rem;
+      transition: all 0.3s;
+    }
+
+    .life.lost {
+      filter: grayscale(1);
+      opacity: 0.25;
+      transform: scale(0.8);
+    }
+
+    /* ── Choices ── */
+    .choices {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.4rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .choice-btn {
+      padding: 0.55rem 0.4rem;
+      border: 2px solid rgba(128,128,128,0.2);
+      border-radius: 10px;
+      cursor: pointer;
+      font-family: 'Nunito', sans-serif;
+      font-size: 0.78rem;
+      font-weight: 700;
+      text-align: center;
+      transition: all 0.2s;
+      background: rgba(255,255,255,0.05) !important;
+      color: inherit;
+      line-height: 1.3;
+    }
+
+    [data-theme="dark"] .choice-btn {
+      background: rgba(30,30,50,0.2) !important;
+    }
+
+    .choice-btn:hover:not(:disabled) {
+      transform: translateY(-2px);
+      border-color: #00ddeb;
+      background: rgba(0,221,235,0.08) !important;
+    }
+
+    .choice-btn:disabled { cursor: default; pointer-events: none; }
+
+    .choice-btn.correct {
+      background: rgba(6,214,160,0.2) !important;
+      border-color: #06d6a0;
+      color: #06d6a0;
+    }
+
+    .choice-btn.wrong-pick {
+      background: rgba(255,107,107,0.15) !important;
+      border-color: #ff6b6b;
+      color: #ff6b6b;
+      opacity: 0.6;
+    }
+
+    .choice-btn.reveal-correct {
+      background: rgba(6,214,160,0.08) !important;
+      border-color: rgba(6,214,160,0.3);
+      color: #06d6a0;
+      opacity: 0.7;
+    }
+
+    /* ── Status ── */
+    .status-msg {
+      text-align: center;
+      font-family: 'Righteous', cursive;
+      font-size: 0.95rem;
+      margin-bottom: 0.5rem;
+      min-height: 1.2rem;
+      color: inherit;
+      letter-spacing: 0.03em;
+    }
+
+    .status-msg.win  { color: #06d6a0; animation: statusPop 0.4s cubic-bezier(0.175,0.885,0.32,1.275) both; }
+    .status-msg.lose { color: #ff6b6b; }
+
+    @keyframes statusPop {
+      0%   { transform: scale(0.8); opacity: 0; }
+      100% { transform: scale(1);   opacity: 1; }
+    }
+
+    /* ── Next puzzle / done ── */
+    .action-btn {
+      display: block;
+      width: 100%;
+      background: linear-gradient(45deg, #00ddeb, #a29bfe) !important;
+      color: #fff !important;
+      border: none;
+      border-radius: 10px;
+      padding: 0.65rem;
+      font-family: 'Righteous', cursive;
+      font-size: 0.9rem;
+      letter-spacing: 0.04em;
+      cursor: pointer;
+      transition: filter 0.2s, transform 0.2s;
+      margin-bottom: 0.5rem;
+    }
+
+    [data-theme="dark"] .action-btn {
+      background: linear-gradient(45deg, #2e2767, #1a1a4a) !important;
+      color: #a6a6d1 !important;
+    }
+
+    .action-btn:hover { filter: brightness(1.1); transform: translateY(-1px); }
+    .action-btn.hidden { display: none; }
+
+    /* ── All done for today ── */
+    .all-done {
+      text-align: center;
+      padding: 0.75rem;
+      border: 1px solid rgba(128,128,128,0.15);
+      border-radius: 10px;
+      font-size: 0.78rem;
+      font-weight: 700;
+      opacity: 0.6;
+      line-height: 1.8;
+    }
+
+    /* ── Streak ── */
+    .streak-row {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.75rem;
+      font-weight: 800;
+      opacity: 0.65;
+      margin-top: 0.35rem;
+    }
+
+    /* ── Animations ── */
+    @keyframes shake {
+      0%,100% { transform: translateX(0); }
+      20%      { transform: translateX(-6px); }
+      40%      { transform: translateX(6px); }
+      60%      { transform: translateX(-4px); }
+      80%      { transform: translateX(4px); }
+    }
+    .shake { animation: shake 0.4s ease; }
+
+    /* ── Confetti ── */
+    @keyframes confettiFall {
+      0%   { transform: translateY(-10px) rotate(0deg); opacity: 1; }
+      100% { transform: translateY(130px) rotate(720deg); opacity: 0; }
+    }
+    .confetti-piece {
+      position: fixed;
+      width: 9px; height: 9px;
+      pointer-events: none;
+      animation: confettiFall 1.2s ease-out forwards;
+      z-index: 999;
+    }
+  </style>
+</head>
+<body>
+<div class="widget-container">
+
+  <div class="widget-header">
+    <h1 class="widget-title">🎭 Emoji Story</h1>
+    <div class="date-badge" id="dateBadge"></div>
+  </div>
+
+  <!-- Round tabs -->
+  <div class="round-tabs" id="roundTabs">
+    <div class="round-tab active" data-round="0">⭐ Easy</div>
+    <div class="round-tab" data-round="1">🔥 Hard</div>
+  </div>
+
+  <!-- Game area -->
+  <div id="gameArea"></div>
+
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+
+  // ── Theme ──
+  const params = new URLSearchParams(window.location.search);
+  const th = params.get('theme');
+  if (th === 'dark' || th === 'light') document.documentElement.setAttribute('data-theme', th);
+
+  const TODAY = new Date().toISOString().split('T')[0];
+  const dayNum = Math.floor((new Date(TODAY) - new Date('2024-01-01')) / 86400000);
+
+  document.getElementById('dateBadge').textContent = new Date().toLocaleDateString('en-US', {
+    month: 'short', day: 'numeric'
+  });
+
+  // ── Puzzle bank ──
+  // Each puzzle: { emojis: [{e, hint}], answer, choices, category, difficulty }
+  // choices: array of 4 strings (answer is always one of them)
+  const PUZZLES = {
+    easy: [
+      // 🎬 Movies
+      { emojis:[{e:'🦁',h:'Lion'},{e:'👑',h:'Crown'},{e:'🌅',h:'Sunrise'}], answer:'The Lion King', choices:['The Lion King','Jungle Book','Madagascar','Brother Bear'], category:'🎬 Movie' },
+      { emojis:[{e:'🧊',h:'Ice'},{e:'❄️',h:'Freeze'},{e:'👸',h:'Princess'}], answer:'Frozen', choices:['Frozen','Cinderella','Brave','Moana'], category:'🎬 Movie' },
+      { emojis:[{e:'🕷️',h:'Spider'},{e:'👨',h:'Man'},{e:'🏙️',h:'City'}], answer:'Spider-Man', choices:['Spider-Man','Batman','Superman','Ant-Man'], category:'🎬 Movie' },
+      { emojis:[{e:'🚂',h:'Train'},{e:'⭐',h:'Star'},{e:'🎄',h:'Christmas'}], answer:'The Polar Express', choices:['The Polar Express','Elf','Home Alone','Klaus'], category:'🎬 Movie' },
+      { emojis:[{e:'🐠',h:'Fish'},{e:'🔍',h:'Search'},{e:'🌊',h:'Ocean'}], answer:'Finding Nemo', choices:['Finding Nemo','The Little Mermaid','Shark Tale','Finding Dory'], category:'🎬 Movie' },
+      { emojis:[{e:'🧸',h:'Toy'},{e:'📖',h:'Story'},{e:'🚀',h:'Rocket'}], answer:'Toy Story', choices:['Toy Story','WALL-E','Up','Monsters Inc'], category:'🎬 Movie' },
+      { emojis:[{e:'🍫',h:'Chocolate'},{e:'🏭',h:'Factory'},{e:'🎩',h:'Top Hat'}], answer:'Charlie and the Chocolate Factory', choices:['Charlie and the Chocolate Factory','Willy Wonka','Candy Land','Sugar Rush'], category:'🎬 Movie' },
+      { emojis:[{e:'🦸',h:'Hero'},{e:'👨‍👩‍👧‍👦',h:'Family'},{e:'🦹',h:'Villain'}], answer:'The Incredibles', choices:['The Incredibles','Big Hero 6','Hancock','Megamind'], category:'🎬 Movie' },
+      { emojis:[{e:'🐟',h:'Fish'},{e:'🌊',h:'Ocean'},{e:'💙',h:'Blue'}], answer:'Finding Dory', choices:['Finding Dory','Finding Nemo','The Little Mermaid','Luca'], category:'🎬 Movie' },
+      { emojis:[{e:'🌹',h:'Rose'},{e:'👹',h:'Beast'},{e:'🏰',h:'Castle'}], answer:'Beauty and the Beast', choices:['Beauty and the Beast','Shrek','Tangled','Enchanted'], category:'🎬 Movie' },
+
+      // 📚 Books
+      { emojis:[{e:'🧙',h:'Wizard'},{e:'⚡',h:'Lightning'},{e:'🏫',h:'School'}], answer:'Harry Potter', choices:['Harry Potter','The Hobbit','Percy Jackson','Narnia'], category:'📚 Book' },
+      { emojis:[{e:'🐛',h:'Caterpillar'},{e:'🍎',h:'Apple'},{e:'🦋',h:'Butterfly'}], answer:'The Very Hungry Caterpillar', choices:['The Very Hungry Caterpillar','James and the Giant Peach','Charlotte\'s Web','Bambi'], category:'📚 Book' },
+      { emojis:[{e:'🐷',h:'Pig'},{e:'🏠',h:'House'},{e:'🐺',h:'Wolf'}], answer:'Three Little Pigs', choices:['Three Little Pigs','Charlotte\'s Web','Animal Farm','Babe'], category:'📚 Book' },
+      { emojis:[{e:'👦',h:'Boy'},{e:'🌲',h:'Tree'},{e:'❤️',h:'Love'}], answer:'The Giving Tree', choices:['The Giving Tree','Where the Wild Things Are','A Tree Grows in Brooklyn','Winnie the Pooh'], category:'📚 Book' },
+      { emojis:[{e:'🐻',h:'Bear'},{e:'🍯',h:'Honey'},{e:'🌳',h:'Forest'}], answer:'Winnie the Pooh', choices:['Winnie the Pooh','Paddington Bear','Baloo','The Jungle Book'], category:'📚 Book' },
+
+      // 🎵 Songs
+      { emojis:[{e:'🌈',h:'Rainbow'},{e:'☁️',h:'Cloud'},{e:'⬆️',h:'Above'}], answer:'Somewhere Over the Rainbow', choices:['Somewhere Over the Rainbow','Walking on Sunshine','Here Comes the Sun','Colors of the Wind'], category:'🎵 Song' },
+      { emojis:[{e:'🎄',h:'Christmas'},{e:'🦌',h:'Reindeer'},{e:'🔴',h:'Red'}], answer:'Rudolph the Red-Nosed Reindeer', choices:['Rudolph the Red-Nosed Reindeer','Jingle Bells','Frosty the Snowman','Deck the Halls'], category:'🎵 Song' },
+      { emojis:[{e:'🌟',h:'Star'},{e:'✨',h:'Twinkle'},{e:'🌙',h:'Night'}], answer:'Twinkle Twinkle Little Star', choices:['Twinkle Twinkle Little Star','Star Light Star Bright','You Are My Sunshine','Moon River'], category:'🎵 Song' },
+      { emojis:[{e:'🎂',h:'Birthday'},{e:'🎉',h:'Happy'},{e:'🎁',h:'You'}], answer:'Happy Birthday', choices:['Happy Birthday','Celebration','For He\'s a Jolly Good Fellow','Congratulations'], category:'🎵 Song' },
+
+      // 📺 TV Shows
+      { emojis:[{e:'🧽',h:'Sponge'},{e:'👖',h:'Pants'},{e:'🌊',h:'Sea'}], answer:'SpongeBob SquarePants', choices:['SpongeBob SquarePants','Octonauts','Bluey','Peppa Pig'], category:'📺 TV Show' },
+      { emojis:[{e:'🐾',h:'Paw'},{e:'🚓',h:'Patrol'},{e:'🐕',h:'Dog'}], answer:'Paw Patrol', choices:['Paw Patrol','Bluey','Pound Puppies','101 Dalmatians'], category:'📺 TV Show' },
+      { emojis:[{e:'🐷',h:'Peppa'},{e:'🌧️',h:'Muddy'},{e:'💦',h:'Puddles'}], answer:'Peppa Pig', choices:['Peppa Pig','Olivia','Babe','Charlotte\'s Web'], category:'📺 TV Show' },
+
+      // 💬 Phrases
+      { emojis:[{e:'🍎',h:'Apple'},{e:'📅',h:'Day'},{e:'👨‍⚕️',h:'Doctor'}], answer:'An Apple a Day Keeps the Doctor Away', choices:['An Apple a Day Keeps the Doctor Away','The Doctor Is In','Healthy Eating','Forbidden Fruit'], category:'💬 Phrase' },
+      { emojis:[{e:'🐦',h:'Bird'},{e:'⏰',h:'Early'},{e:'🪱',h:'Worm'}], answer:'The Early Bird Catches the Worm', choices:['The Early Bird Catches the Worm','Rise and Shine','Morning Person','Wake Up Call'], category:'💬 Phrase' },
+      { emojis:[{e:'🌧️',h:'Rain'},{e:'🌈',h:'Rainbow'},{e:'⬆️',h:'After'}], answer:'After Every Rain Comes a Rainbow', choices:['After Every Rain Comes a Rainbow','Silver Lining','Sunshine After Rain','Every Cloud'], category:'💬 Phrase' },
+      { emojis:[{e:'💰',h:'Money'},{e:'🗣️',h:'Talks'},{e:'🚶',h:'Walk'}], answer:'Money Talks', choices:['Money Talks','Cash is King','Pay Day','Talk is Cheap'], category:'💬 Phrase' },
+      { emojis:[{e:'🪞',h:'Mirror'},{e:'🪞',h:'Mirror'},{e:'🧱',h:'Wall'}], answer:'Mirror Mirror on the Wall', choices:['Mirror Mirror on the Wall','Snow White','Reflection','Fairest of Them All'], category:'💬 Phrase' },
+    ],
+
+    hard: [
+      // 🎬 Movies
+      { emojis:[{e:'💊',h:'Pill'},{e:'🐰',h:'Rabbit'},{e:'🕳️',h:'Hole'}], answer:'The Matrix', choices:['The Matrix','Inception','Alice in Wonderland','Doctor Strange'], category:'🎬 Movie' },
+      { emojis:[{e:'🔨',h:'Hammer'},{e:'⚡',h:'Thunder'},{e:'🌈',h:'Bridge'}], answer:'Thor', choices:['Thor','Captain America','Iron Man','Black Panther'], category:'🎬 Movie' },
+      { emojis:[{e:'🃏',h:'Joker'},{e:'😂',h:'Laugh'},{e:'🌆',h:'Gotham'}], answer:'Joker', choices:['Joker','The Dark Knight','Suicide Squad','Batman Forever'], category:'🎬 Movie' },
+      { emojis:[{e:'🌊',h:'Wave'},{e:'🏄',h:'Surf'},{e:'👻',h:'Ghost'}], answer:'Point Break', choices:['Point Break','Top Gun','Speed','Die Hard'], category:'🎬 Movie' },
+      { emojis:[{e:'🌀',h:'Dream'},{e:'🏙️',h:'City'},{e:'🌀',h:'Spin'}], answer:'Inception', choices:['Inception','Interstellar','The Matrix','Doctor Strange'], category:'🎬 Movie' },
+      { emojis:[{e:'🐺',h:'Wolf'},{e:'🌕',h:'Full Moon'},{e:'🩸',h:'Blood'}], answer:'An American Werewolf in London', choices:['An American Werewolf in London','Twilight','The Howling','Wolfman'], category:'🎬 Movie' },
+      { emojis:[{e:'🧠',h:'Brain'},{e:'🥊',h:'Fight'},{e:'💊',h:'Club'}], answer:'Fight Club', choices:['Fight Club','Rocky','The Warriors','Warrior'], category:'🎬 Movie' },
+      { emojis:[{e:'🦋',h:'Butterfly'},{e:'😴',h:'Sleep'},{e:'❓',h:'Effect'}], answer:'The Butterfly Effect', choices:['The Butterfly Effect','Groundhog Day','Interstellar','Primer'], category:'🎬 Movie' },
+      { emojis:[{e:'🎻',h:'Violin'},{e:'🔪',h:'Knife'},{e:'🚿',h:'Shower'}], answer:'Psycho', choices:['Psycho','Scream','Halloween','The Shining'], category:'🎬 Movie' },
+      { emojis:[{e:'🌽',h:'Corn'},{e:'👨‍🚀',h:'Astronaut'},{e:'⏱️',h:'Time'}], answer:'Interstellar', choices:['Interstellar','The Martian','Gravity','Ad Astra'], category:'🎬 Movie' },
+
+      // 📚 Books
+      { emojis:[{e:'🐳',h:'Whale'},{e:'🚢',h:'Ship'},{e:'🎣',h:'Hunt'}], answer:'Moby Dick', choices:['Moby Dick','Life of Pi','The Old Man and the Sea','Twenty Thousand Leagues'], category:'📚 Book' },
+      { emojis:[{e:'🕰️',h:'Time'},{e:'⚔️',h:'War'},{e:'😌',h:'Peace'}], answer:'War and Peace', choices:['War and Peace','Les Misérables','Anna Karenina','Crime and Punishment'], category:'📚 Book' },
+      { emojis:[{e:'🔪',h:'Crime'},{e:'💰',h:'Greed'},{e:'😰',h:'Punishment'}], answer:'Crime and Punishment', choices:['Crime and Punishment','The Trial','Lolita','The Brothers Karamazov'], category:'📚 Book' },
+      { emojis:[{e:'🏝️',h:'Island'},{e:'👦',h:'Boys'},{e:'🪰',h:'Flies'}], answer:'Lord of the Flies', choices:['Lord of the Flies','The Swiss Family Robinson','Treasure Island','Robinson Crusoe'], category:'📚 Book' },
+      { emojis:[{e:'👁️',h:'Eye'},{e:'📺',h:'Screen'},{e:'🏛️',h:'Government'}], answer:'1984', choices:['1984','Brave New World','Fahrenheit 451','The Handmaid\'s Tale'], category:'📚 Book' },
+      { emojis:[{e:'🌾',h:'Farm'},{e:'🐖',h:'Pig'},{e:'🏛️',h:'Power'}], answer:'Animal Farm', choices:['Animal Farm','Charlotte\'s Web','Watership Down','Babe'], category:'📚 Book' },
+      { emojis:[{e:'🦅',h:'Eagle'},{e:'💍',h:'Ring'},{e:'🌋',h:'Mountain'}], answer:'The Lord of the Rings', choices:['The Lord of the Rings','The Hobbit','Eragon','The Silmarillion'], category:'📚 Book' },
+
+      // 🎵 Songs
+      { emojis:[{e:'🎸',h:'Guitar'},{e:'🔥',h:'Fire'},{e:'🌧️',h:'Rain'}], answer:'Smoke on the Water', choices:['Smoke on the Water','Highway to Hell','Fire and Rain','Riders on the Storm'], category:'🎵 Song' },
+      { emojis:[{e:'🏨',h:'Hotel'},{e:'🌵',h:'California'},{e:'🚪',h:'Never Leave'}], answer:'Hotel California', choices:['Hotel California','Take It Easy','Desperado','Life in the Fast Lane'], category:'🎵 Song' },
+      { emojis:[{e:'👁️',h:'Eye'},{e:'🐯',h:'Tiger'},{e:'🏆',h:'Champion'}], answer:'Eye of the Tiger', choices:['Eye of the Tiger','Roar','We Are the Champions','Eye of the Storm'], category:'🎵 Song' },
+      { emojis:[{e:'🎩',h:'Billie'},{e:'👖',h:'Jean'},{e:'👑',h:'King'}], answer:'Billie Jean', choices:['Billie Jean','Beat It','Thriller','Smooth Criminal'], category:'🎵 Song' },
+      { emojis:[{e:'🌊',h:'Wave'},{e:'🏄',h:'Surfing'},{e:'🇺🇸',h:'USA'}], answer:'Surfin\' USA', choices:['Surfin\' USA','California Girls','Good Vibrations','Kokomo'], category:'🎵 Song' },
+      { emojis:[{e:'🌙',h:'Moon'},{e:'🚶',h:'Walk'},{e:'🕺',h:'Dance'}], answer:'Moonwalk', choices:['Moonwalk','Billie Jean','Thriller','Man in the Mirror'], category:'🎵 Song' },
+
+      // 📺 TV Shows
+      { emojis:[{e:'🧨',h:'Breaking'},{e:'⚗️',h:'Chemistry'},{e:'💊',h:'Bad'}], answer:'Breaking Bad', choices:['Breaking Bad','Better Call Saul','Ozark','Narcos'], category:'📺 TV Show' },
+      { emojis:[{e:'🐉',h:'Dragon'},{e:'⚔️',h:'Thrones'},{e:'❄️',h:'Winter'}], answer:'Game of Thrones', choices:['Game of Thrones','House of the Dragon','Vikings','The Last Kingdom'], category:'📺 TV Show' },
+      { emojis:[{e:'🌲',h:'Twin'},{e:'🌲',h:'Peaks'},{e:'🦉',h:'Mystery'}], answer:'Twin Peaks', choices:['Twin Peaks','The X-Files','True Detective','Fargo'], category:'📺 TV Show' },
+      { emojis:[{e:'🧟',h:'Dead'},{e:'🚶',h:'Walking'},{e:'🌎',h:'World'}], answer:'The Walking Dead', choices:['The Walking Dead','Fear the Walking Dead','Z Nation','28 Days Later'], category:'📺 TV Show' },
+      { emojis:[{e:'🏝️',h:'Lost'},{e:'✈️',h:'Plane'},{e:'❓',h:'Mystery'}], answer:'Lost', choices:['Lost','Castaway','Survivor','The Island'], category:'📺 TV Show' },
+      { emojis:[{e:'🌌',h:'Space'},{e:'🖖',h:'Trek'},{e:'⭐',h:'Star'}], answer:'Star Trek', choices:['Star Trek','Star Wars','Battlestar Galactica','Firefly'], category:'📺 TV Show' },
+
+      // 💬 Phrases / Idioms
+      { emojis:[{e:'🐘',h:'Elephant'},{e:'🏠',h:'Room'},{e:'🤫',h:'Ignore'}], answer:'Elephant in the Room', choices:['Elephant in the Room','Pink Elephant','Bull in a China Shop','The Big Picture'], category:'💬 Phrase' },
+      { emojis:[{e:'🌧️',h:'Rain'},{e:'🐈',h:'Cats'},{e:'🐕',h:'Dogs'}], answer:'Raining Cats and Dogs', choices:['Raining Cats and Dogs','Every Dog Has Its Day','Cat Got Your Tongue','Dog Days of Summer'], category:'💬 Phrase' },
+      { emojis:[{e:'🔪',h:'Knife'},{e:'🦷',h:'Teeth'},{e:'😬',h:'Gritted'}], answer:'Bite the Bullet', choices:['Bite the Bullet','Face the Music','Bite off More Than You Can Chew','Grin and Bear It'], category:'💬 Phrase' },
+      { emojis:[{e:'🐝',h:'Bee'},{e:'🌿',h:'Knees'},{e:'✨',h:'Best'}], answer:'The Bee\'s Knees', choices:['The Bee\'s Knees','The Cat\'s Pajamas','Top Banana','The Real McCoy'], category:'💬 Phrase' },
+      { emojis:[{e:'🥾',h:'Boot'},{e:'👢',h:'Other'},{e:'🦶',h:'Foot'}], answer:'The Boot is on the Other Foot', choices:['The Boot is on the Other Foot','Put Your Foot Down','Get Cold Feet','Start from Scratch'], category:'💬 Phrase' },
+    ],
+  };
+
+  const MAX_WRONG = 4;
+
+  // ── State ──
+  let currentRound = 0; // 0 = easy, 1 = hard
+  let rounds = [
+    { puzzle: null, wrongCount: 0, revealedHints: [], gameOver: false, gameResult: null, wrongPicks: new Set() },
+    { puzzle: null, wrongCount: 0, revealedHints: [], gameOver: false, gameResult: null, wrongPicks: new Set() },
+  ];
+
+  // ── Seeded shuffle ──
+  function seededShuffle(arr, seed) {
+    const a = [...arr];
+    for (let i = a.length - 1; i > 0; i--) {
+      seed = (seed * 1664525 + 1013904223) & 0xffffffff;
+      const j = Math.abs(seed) % (i + 1);
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
+  // ── Pick today's puzzles ──
+  function pickTodayPuzzles() {
+    const easyPool = seededShuffle(PUZZLES.easy, dayNum);
+    const hardPool = seededShuffle(PUZZLES.hard, dayNum + 999);
+    const easyPuzzle = easyPool[dayNum % easyPool.length];
+    const hardPuzzle = hardPool[dayNum % hardPool.length];
+
+    // Shuffle choices
+    easyPuzzle.choices = seededShuffle(easyPuzzle.choices, dayNum + 1);
+    hardPuzzle.choices = seededShuffle(hardPuzzle.choices, dayNum + 2);
+
+    rounds[0].puzzle = easyPuzzle;
+    rounds[1].puzzle = hardPuzzle;
+  }
+
+  // ── Persist ──
+  function loadState() {
+    try {
+      const s = JSON.parse(localStorage.getItem('emojiStory_state') || 'null');
+      if (!s || s.date !== TODAY) return false;
+
+      rounds[0].wrongCount    = s.r0.wrongCount;
+      rounds[0].revealedHints = s.r0.revealedHints;
+      rounds[0].gameOver      = s.r0.gameOver;
+      rounds[0].gameResult    = s.r0.gameResult;
+      rounds[0].wrongPicks    = new Set(s.r0.wrongPicks);
+
+      rounds[1].wrongCount    = s.r1.wrongCount;
+      rounds[1].revealedHints = s.r1.revealedHints;
+      rounds[1].gameOver      = s.r1.gameOver;
+      rounds[1].gameResult    = s.r1.gameResult;
+      rounds[1].wrongPicks    = new Set(s.r1.wrongPicks);
+
+      currentRound = s.currentRound;
+      return true;
+    } catch(e) { return false; }
+  }
+
+  function saveState() {
+    localStorage.setItem('emojiStory_state', JSON.stringify({
+      date: TODAY,
+      currentRound,
+      r0: { wrongCount: rounds[0].wrongCount, revealedHints: rounds[0].revealedHints, gameOver: rounds[0].gameOver, gameResult: rounds[0].gameResult, wrongPicks: [...rounds[0].wrongPicks] },
+      r1: { wrongCount: rounds[1].wrongCount, revealedHints: rounds[1].revealedHints, gameOver: rounds[1].gameOver, gameResult: rounds[1].gameResult, wrongPicks: [...rounds[1].wrongPicks] },
+    }));
+  }
+
+  // ── Streak ──
+  function loadStreak() {
+    try { return JSON.parse(localStorage.getItem('emojiStory_streak') || '{"count":0,"lastWin":""}'); }
+    catch(e) { return { count: 0, lastWin: '' }; }
+  }
+
+  function saveStreak() {
+    const bothWon = rounds[0].gameResult === 'win' && rounds[1].gameResult === 'win';
+    if (!bothWon) return;
+    const streak = loadStreak();
+    const yesterday = new Date(TODAY);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yStr = yesterday.toISOString().split('T')[0];
+    streak.count = (streak.lastWin === yStr) ? streak.count + 1 : 1;
+    streak.lastWin = TODAY;
+    localStorage.setItem('emojiStory_streak', JSON.stringify(streak));
+  }
+
+  // ── Render tabs ──
+  function renderTabs() {
+    document.querySelectorAll('.round-tab').forEach((tab, i) => {
+      tab.className = 'round-tab';
+      if (i === currentRound) tab.classList.add('active');
+      if (rounds[i].gameResult === 'win')  tab.classList.add('won');
+      if (rounds[i].gameResult === 'lose') tab.classList.add('lost');
+    });
+  }
+
+  // ── Render game ──
+  function renderGame() {
+    renderTabs();
+    const r = rounds[currentRound];
+    const puzzle = r.puzzle;
+    const area = document.getElementById('gameArea');
+    area.innerHTML = '';
+
+    // Meta row
+    const meta = document.createElement('div');
+    meta.className = 'meta-row';
+    const catPill = document.createElement('div');
+    catPill.className = 'pill';
+    catPill.textContent = puzzle.category;
+    const diffPill = document.createElement('div');
+    diffPill.className = `pill ${currentRound === 0 ? 'easy' : 'hard'}`;
+    diffPill.textContent = currentRound === 0 ? '⭐ Easy' : '🔥 Hard';
+    meta.appendChild(catPill);
+    meta.appendChild(diffPill);
+    area.appendChild(meta);
+
+    // Emoji sequence
+    const seq = document.createElement('div');
+    seq.className = 'emoji-sequence';
+    seq.id = 'emojiSeq';
+    puzzle.emojis.forEach((item, idx) => {
+      if (idx > 0) {
+        const sep = document.createElement('span');
+        sep.className = 'emoji-separator';
+        sep.textContent = '+';
+        seq.appendChild(sep);
+      }
+      const el = document.createElement('div');
+      el.className = 'emoji-item';
+      const isRevealed = r.revealedHints.includes(idx) || r.gameOver;
+      if (isRevealed) el.classList.add('revealed');
+
+      const glyph = document.createElement('div');
+      glyph.className = 'emoji-glyph';
+      glyph.textContent = item.e;
+
+      const hint = document.createElement('div');
+      hint.className = 'emoji-hint';
+      hint.textContent = item.h;
+
+      el.appendChild(glyph);
+      el.appendChild(hint);
+      seq.appendChild(el);
+    });
+    area.appendChild(seq);
+
+    // Lives
+    const lives = document.createElement('div');
+    lives.className = 'lives-row';
+    for (let i = 0; i < MAX_WRONG; i++) {
+      const life = document.createElement('span');
+      life.className = 'life' + (i < r.wrongCount ? ' lost' : '');
+      life.textContent = '❤️';
+      lives.appendChild(life);
+    }
+    area.appendChild(lives);
+
+    // Status
+    const status = document.createElement('div');
+    status.className = 'status-msg' + (r.gameResult === 'win' ? ' win' : r.gameResult === 'lose' ? ' lose' : '');
+    if (r.gameResult === 'win')  status.textContent = currentRound === 0 ? '🎉 Nailed it!' : '🔥 Genius!';
+    else if (r.gameResult === 'lose') status.textContent = `It was: ${puzzle.answer}`;
+    area.appendChild(status);
+
+    // Choices
+    const choices = document.createElement('div');
+    choices.className = 'choices';
+    puzzle.choices.forEach(choice => {
+      const btn = document.createElement('button');
+      btn.className = 'choice-btn';
+      btn.textContent = choice;
+
+      if (r.gameOver) {
+        btn.disabled = true;
+        if (choice === puzzle.answer) btn.classList.add(r.gameResult === 'win' ? 'correct' : 'reveal-correct');
+        else if (r.wrongPicks.has(choice)) btn.classList.add('wrong-pick');
+      }
+
+      btn.addEventListener('click', () => handleGuess(choice));
+      choices.appendChild(btn);
+    });
+    area.appendChild(choices);
+
+    // Action button
+    const r0done = rounds[0].gameOver;
+    const r1done = rounds[1].gameOver;
+
+    if (r.gameOver) {
+      if (currentRound === 0 && !r1done) {
+        const btn = document.createElement('button');
+        btn.className = 'action-btn';
+        btn.textContent = '🔥 Try the Hard One →';
+        btn.addEventListener('click', () => { currentRound = 1; saveState(); renderGame(); });
+        area.appendChild(btn);
+      } else if (r0done && r1done) {
+        // Both done
+        const streak = loadStreak();
+        if (streak.count > 1) {
+          const sr = document.createElement('div');
+          sr.className = 'streak-row';
+          sr.textContent = `🔥 ${streak.count} day streak!`;
+          area.appendChild(sr);
+        }
+        const done = document.createElement('div');
+        done.className = 'all-done';
+        const wins = [rounds[0].gameResult === 'win', rounds[1].gameResult === 'win'].filter(Boolean).length;
+        done.innerHTML = wins === 2 ? '🏆 Perfect score today!<br>Come back tomorrow!' : wins === 1 ? '⭐ One down!<br>Come back tomorrow!' : '💪 Better luck tomorrow!';
+        area.appendChild(done);
+      }
+    }
+  }
+
+  // ── Handle guess ──
+  function handleGuess(choice) {
+    const r = rounds[currentRound];
+    if (r.gameOver) return;
+
+    if (choice === r.puzzle.answer) {
+      r.gameOver = true;
+      r.gameResult = 'win';
+      // Reveal all hints on win
+      r.revealedHints = r.puzzle.emojis.map((_, i) => i);
+      saveState();
+      saveStreak();
+      renderGame();
+      spawnConfetti();
+    } else {
+      r.wrongCount++;
+      r.wrongPicks.add(choice);
+
+      // Reveal one new hint
+      const unrevealed = r.puzzle.emojis.map((_, i) => i).filter(i => !r.revealedHints.includes(i));
+      if (unrevealed.length > 0) {
+        // Reveal a random unrevealed hint
+        const seed = r.wrongCount * dayNum + currentRound;
+        const idx = unrevealed[Math.abs(seed) % unrevealed.length];
+        r.revealedHints.push(idx);
+      }
+
+      if (r.wrongCount >= MAX_WRONG) {
+        r.gameOver = true;
+        r.gameResult = 'lose';
+        r.revealedHints = r.puzzle.emojis.map((_, i) => i);
+      }
+
+      saveState();
+      renderGame();
+
+      // Shake sequence
+      const seq = document.getElementById('emojiSeq');
+      if (seq) { seq.classList.add('shake'); setTimeout(() => seq.classList.remove('shake'), 400); }
+    }
+  }
+
+  // ── Confetti ──
+  function spawnConfetti() {
+    const colors = ['#ff6b6b','#00ddeb','#ffd166','#06d6a0','#a29bfe','#fd79a8'];
+    for (let i = 0; i < 40; i++) {
+      const el = document.createElement('div');
+      el.className = 'confetti-piece';
+      el.style.cssText = `
+        left: ${5 + Math.random() * 90}%;
+        top: ${5 + Math.random() * 40}%;
+        background: ${colors[i % colors.length]} !important;
+        background-color: ${colors[i % colors.length]} !important;
+        animation-delay: ${Math.random() * 0.5}s;
+        animation-duration: ${1 + Math.random() * 0.5}s;
+        border-radius: ${Math.random() > 0.5 ? '50%' : '2px'};
+      `;
+      document.body.appendChild(el);
+      setTimeout(() => el.remove(), 2000);
+    }
+  }
+
+  // ── Tab clicks ──
+  document.querySelectorAll('.round-tab').forEach((tab, i) => {
+    tab.addEventListener('click', () => {
+      currentRound = i;
+      saveState();
+      renderGame();
+    });
+  });
+
+  // ── Init ──
+  pickTodayPuzzles();
+  loadState();
+  renderGame();
+});
+</script>
+</body>
+</html>
