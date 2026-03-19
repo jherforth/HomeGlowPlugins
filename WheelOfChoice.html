@@ -648,14 +648,20 @@ document.addEventListener('DOMContentLoaded', () => {
     spinBtn.disabled = members.length < 2;
   }
 
-  // ── User API ──
+  // ── User API ── (mirrors DailyRotation exactly)
   async function fetchUsers() {
     try {
-      const res = await fetch('/api/users');
-      if (!res.ok) throw new Error();
-      const data = await res.json();
-      allUsers = Array.isArray(data) ? data.filter(u => u.id !== 0) : [];
-    } catch(e) { allUsers = []; }
+      const response = await fetch('/api/users');
+      if (!response.ok) throw new Error('Failed to fetch users');
+      const data = await response.json();
+      allUsers = Array.isArray(data) ? data.filter(user => user.id !== 0) : [];
+    } catch (error) {
+      console.error('Error fetching users:', error);
+      allUsers = [];
+      const grid = document.getElementById('userSelector');
+      grid.innerHTML = '<div class="no-members" style="color:#ff6b6b;">Could not load users. Check connection.</div>';
+      return;
+    }
     renderUserSelector();
   }
 
@@ -665,20 +671,26 @@ document.addEventListener('DOMContentLoaded', () => {
       grid.innerHTML = '<div class="no-members">No users found</div>';
       return;
     }
-    const apiBase = window.location.origin;
     grid.innerHTML = '';
     allUsers.forEach(user => {
       const onWheel = members.some(m => m.fromUserId === user.id);
       const el = document.createElement('div');
       el.className = `user-option${onWheel ? ' on-wheel' : ''}`;
 
+      // Avatar — mirrors DailyRotation's getMemberAvatar pattern
       const avatar = document.createElement('div');
       avatar.className = 'user-option-avatar';
       if (user.profile_picture) {
+        const apiBase = window.location.origin;
         const img = document.createElement('img');
         img.src = `${apiBase}/Uploads/users/${user.profile_picture}`;
         img.alt = user.username;
-        img.onerror = () => { img.style.display = 'none'; avatar.textContent = user.username.charAt(0).toUpperCase(); };
+        img.onerror = () => {
+          img.style.display = 'none';
+          const fallback = document.createElement('span');
+          fallback.textContent = user.username.charAt(0).toUpperCase();
+          avatar.appendChild(fallback);
+        };
         avatar.appendChild(img);
       } else {
         avatar.textContent = user.username.charAt(0).toUpperCase();
@@ -698,7 +710,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
       el.onclick = () => {
         if (onWheel) {
-          // Remove from wheel
           members = members.filter(m => m.fromUserId !== user.id);
           save();
           renderAll();
