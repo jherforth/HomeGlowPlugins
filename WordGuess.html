@@ -1,0 +1,947 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Word Guess</title>
+  <link rel="stylesheet" href="/index.css">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@400;600;700;800&family=Quicksand:wght@500;600;700&display=swap');
+
+    * {
+      background: transparent !important;
+      background-color: transparent !important;
+      background-image: none !important;
+      box-sizing: border-box;
+    }
+
+    body {
+      background: transparent !important;
+      font-family: 'Quicksand', sans-serif;
+      margin: 0;
+      padding: 0.75rem;
+      font-size: 0.85rem;
+      color: #2c2c2c;
+    }
+
+    [data-theme="dark"] body { color: #a6a6d1; }
+
+    .widget-container {
+      background: transparent !important;
+      border: none !important;
+      box-shadow: none !important;
+      backdrop-filter: none !important;
+      border-radius: 12px;
+      padding: 0.5rem;
+      width: 100%;
+      max-height: calc(100vh - 1.5rem);
+      overflow-y: auto;
+    }
+
+    /* ── Header ── */
+    .widget-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.75rem;
+    }
+
+    .widget-title {
+      font-family: 'Baloo 2', cursive;
+      font-size: 1.3rem;
+      font-weight: 800;
+      margin: 0;
+      color: inherit;
+      line-height: 1;
+    }
+
+    .theme-badge {
+      font-size: 0.7rem;
+      font-weight: 700;
+      padding: 0.25rem 0.65rem;
+      border-radius: 20px;
+      border: 1px solid rgba(128,128,128,0.2);
+      opacity: 0.75;
+    }
+
+    /* ── Difficulty toggle ── */
+    .diff-row {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .diff-label {
+      font-size: 0.72rem;
+      font-weight: 700;
+      opacity: 0.6;
+    }
+
+    .diff-label.active { opacity: 1; color: #00ddeb; }
+
+    .diff-toggle {
+      position: relative;
+      width: 42px;
+      height: 22px;
+    }
+
+    .diff-toggle input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+      position: absolute;
+    }
+
+    .diff-slider {
+      position: absolute;
+      inset: 0;
+      border-radius: 22px;
+      background: rgba(128,128,128,0.25) !important;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .diff-slider::before {
+      content: '';
+      position: absolute;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #fff !important;
+      top: 3px;
+      left: 3px;
+      transition: transform 0.2s;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+
+    .diff-toggle input:checked + .diff-slider { background: #ff6b6b !important; }
+    .diff-toggle input:checked + .diff-slider::before { transform: translateX(20px); }
+
+    /* ── Visual stage ── */
+    .stage {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      margin-bottom: 0.75rem;
+      min-height: 140px;
+    }
+
+    .stage svg {
+      filter: drop-shadow(0 2px 8px rgba(0,0,0,0.1));
+    }
+
+    /* ── Category chip ── */
+    .category-chip {
+      text-align: center;
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      opacity: 0.45;
+      margin-bottom: 0.6rem;
+    }
+
+    /* ── Word display ── */
+    .word-display {
+      display: flex;
+      justify-content: center;
+      gap: 0.4rem;
+      flex-wrap: wrap;
+      margin-bottom: 0.75rem;
+      min-height: 2.5rem;
+      align-items: flex-end;
+    }
+
+    .letter-slot {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.15rem;
+    }
+
+    .letter-char {
+      font-family: 'Baloo 2', cursive;
+      font-size: 1.5rem;
+      font-weight: 800;
+      line-height: 1;
+      min-width: 1.4rem;
+      text-align: center;
+      color: inherit;
+      transition: all 0.3s;
+    }
+
+    .letter-char.revealed {
+      animation: popIn 0.3s cubic-bezier(0.175,0.885,0.32,1.275) both;
+    }
+
+    @keyframes popIn {
+      0%   { transform: scale(0); opacity: 0; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+
+    .letter-line {
+      width: 100%;
+      height: 2px;
+      border-radius: 2px;
+      background: rgba(128,128,128,0.35) !important;
+      min-width: 1.4rem;
+    }
+
+    /* ── Wrong guesses ── */
+    .wrong-row {
+      display: flex;
+      justify-content: center;
+      gap: 0.3rem;
+      flex-wrap: wrap;
+      margin-bottom: 0.75rem;
+      min-height: 1.5rem;
+    }
+
+    .wrong-letter {
+      font-family: 'Baloo 2', cursive;
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: #ff6b6b;
+      opacity: 0.7;
+      animation: fadeIn 0.2s ease both;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: scale(0.5); }
+      to   { opacity: 0.7; transform: scale(1); }
+    }
+
+    /* ── Keyboard ── */
+    .keyboard {
+      display: grid;
+      grid-template-columns: repeat(9, 1fr);
+      gap: 0.3rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .key {
+      font-family: 'Baloo 2', cursive;
+      font-size: 0.85rem;
+      font-weight: 700;
+      padding: 0.45rem 0;
+      border: 1px solid rgba(128,128,128,0.2);
+      border-radius: 7px;
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.15s;
+      background: rgba(255,255,255,0.06) !important;
+      color: inherit;
+      user-select: none;
+    }
+
+    [data-theme="dark"] .key {
+      background: rgba(30,30,50,0.2) !important;
+    }
+
+    .key:hover:not(:disabled):not(.used) {
+      transform: translateY(-2px);
+      border-color: #00ddeb;
+      background: rgba(0,221,235,0.1) !important;
+    }
+
+    .key.correct {
+      background: rgba(6,214,160,0.2) !important;
+      border-color: rgba(6,214,160,0.4);
+      color: #06d6a0;
+      cursor: default;
+    }
+
+    .key.wrong {
+      background: rgba(255,107,107,0.15) !important;
+      border-color: rgba(255,107,107,0.3);
+      color: #ff6b6b;
+      opacity: 0.5;
+      cursor: default;
+    }
+
+    .key:disabled, .key.used {
+      cursor: default;
+      pointer-events: none;
+    }
+
+    /* ── Status / result ── */
+    .status-msg {
+      text-align: center;
+      font-family: 'Baloo 2', cursive;
+      font-size: 1.1rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+      min-height: 1.5rem;
+      color: inherit;
+    }
+
+    .status-msg.win  { color: #06d6a0; animation: bounce 0.5s ease both; }
+    .status-msg.lose { color: #ff6b6b; }
+
+    @keyframes bounce {
+      0%,100% { transform: translateY(0); }
+      40%      { transform: translateY(-8px); }
+      60%      { transform: translateY(-4px); }
+    }
+
+    /* ── Next round button ── */
+    .next-btn {
+      display: block;
+      width: 100%;
+      background: linear-gradient(45deg, #00ddeb, #06d6a0) !important;
+      color: #fff !important;
+      border: none;
+      border-radius: 10px;
+      padding: 0.65rem;
+      font-family: 'Baloo 2', cursive;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: filter 0.2s, transform 0.2s;
+      margin-bottom: 0.5rem;
+    }
+
+    [data-theme="dark"] .next-btn {
+      background: linear-gradient(45deg, #2e2767, #014d39) !important;
+      color: #a6a6d1 !important;
+    }
+
+    .next-btn:hover { filter: brightness(1.1); transform: translateY(-1px); }
+    .next-btn.hidden { display: none; }
+
+    /* ── Word of the Day badge ── */
+    .wotd-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      font-size: 0.68rem;
+      font-weight: 700;
+      padding: 0.2rem 0.55rem;
+      border-radius: 20px;
+      background: rgba(0,221,235,0.1) !important;
+      border: 1px solid rgba(0,221,235,0.3);
+      color: #00ddeb;
+      margin-bottom: 0.5rem;
+    }
+
+    /* ── Confetti ── */
+    @keyframes confettiFall {
+      0%   { transform: translateY(-20px) rotate(0deg); opacity: 1; }
+      100% { transform: translateY(120px) rotate(720deg); opacity: 0; }
+    }
+
+    .confetti-piece {
+      position: fixed;
+      width: 9px;
+      height: 9px;
+      pointer-events: none;
+      animation: confettiFall 1.2s ease-out forwards;
+      z-index: 999;
+    }
+
+    /* ── Animations ── */
+    @keyframes wiggle {
+      0%,100% { transform: rotate(0deg); }
+      25%      { transform: rotate(-5deg); }
+      75%      { transform: rotate(5deg); }
+    }
+
+    .wiggle { animation: wiggle 0.4s ease; }
+  </style>
+</head>
+<body>
+<div class="widget-container">
+
+  <div class="widget-header">
+    <h1 class="widget-title" id="gameTitle">🌱 Word Guess</h1>
+    <div class="theme-badge" id="themeBadge"></div>
+  </div>
+
+  <!-- Difficulty -->
+  <div class="diff-row">
+    <span class="diff-label active" id="easyLabel">Easy</span>
+    <label class="diff-toggle">
+      <input type="checkbox" id="diffToggle">
+      <span class="diff-slider"></span>
+    </label>
+    <span class="diff-label" id="hardLabel">Hard</span>
+  </div>
+
+  <!-- Visual stage -->
+  <div class="stage" id="stage"></div>
+
+  <!-- WOTD badge (first round only) -->
+  <div style="text-align:center;" id="wotdBadgeWrap" class="hidden"></div>
+
+  <!-- Category -->
+  <div class="category-chip" id="categoryChip"></div>
+
+  <!-- Word slots -->
+  <div class="word-display" id="wordDisplay"></div>
+
+  <!-- Wrong letters -->
+  <div class="wrong-row" id="wrongRow"></div>
+
+  <!-- Status -->
+  <div class="status-msg" id="statusMsg"></div>
+
+  <!-- Next round -->
+  <button class="next-btn hidden" id="nextBtn">Next Round →</button>
+
+  <!-- Keyboard -->
+  <div class="keyboard" id="keyboard"></div>
+
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+
+  // ── Theme ──
+  const params = new URLSearchParams(window.location.search);
+  const th = params.get('theme');
+  if (th === 'dark' || th === 'light') document.documentElement.setAttribute('data-theme', th);
+
+  // ── Themes (rotate by day mod 4) ──
+  const THEMES = [
+    {
+      key: 'sprout',
+      name: '🌱 Sprout',
+      emoji: '🌱',
+      maxWrong: 7,
+      drawStage: drawSprout
+    },
+    {
+      key: 'rocket',
+      name: '🚀 Rocket',
+      emoji: '🚀',
+      maxWrong: 7,
+      drawStage: drawRocket
+    },
+    {
+      key: 'egg',
+      name: '🐣 Egg',
+      emoji: '🐣',
+      maxWrong: 7,
+      drawStage: drawEgg
+    },
+    {
+      key: 'sandcastle',
+      name: '🏰 Sandcastle',
+      emoji: '🏰',
+      maxWrong: 7,
+      drawStage: drawSandcastle
+    }
+  ];
+
+  const TODAY = new Date().toISOString().split('T')[0];
+  const dayNum = Math.floor((new Date(TODAY) - new Date('2024-01-01')) / 86400000);
+  const currentTheme = THEMES[dayNum % THEMES.length];
+
+  document.getElementById('gameTitle').textContent = `${currentTheme.emoji} Word Guess`;
+  document.getElementById('themeBadge').textContent = currentTheme.name;
+
+  // ── Word banks ──
+  const WORDS = {
+    easy: {
+      Animals:   ['cat','dog','fox','owl','bee','ant','hen','ram','cow','pig','bat','emu','yak','elk'],
+      Food:      ['cake','milk','rice','soup','corn','fish','plum','lime','pear','bean','egg','ham','jam'],
+      Nature:    ['tree','rain','snow','lake','hill','leaf','seed','rock','wave','mist','moon','sun','fog'],
+      Places:    ['park','farm','cave','city','pool','barn','lake','pier','dock','mall','road','town'],
+      Things:    ['book','ball','bell','boat','bowl','cape','card','cart','chip','clue','coat','coin','door'],
+    },
+    hard: {
+      Animals:   ['elephant','crocodile','flamingo','porcupine','chameleon','armadillo','wolverine','albatross'],
+      Food:      ['blueberry','asparagus','artichoke','raspberry','pineapple','cinnamon','avocado','courgette'],
+      Nature:    ['avalanche','thunderstorm','waterfall','quicksand','lightning','hurricane','whirlpool','earthquake'],
+      Places:    ['cathedral','peninsula','archipelago','marketplace','observatory','countryside','metropolis'],
+      Things:    ['telescope','parachute','microscope','calculator','skateboard','trampoline','binoculars','thermometer'],
+    }
+  };
+
+  const CATEGORIES = ['Animals','Food','Nature','Places','Things'];
+
+  // ── State ──
+  let difficulty = 'easy';
+  let isFirstRound = true;
+  let currentWord = '';
+  let currentCategory = '';
+  let guessed = new Set();
+  let wrongCount = 0;
+  let gameOver = false;
+  let wotdWord = '';
+
+  // ── Load WOTD ──
+  const WORD_LIST = [
+    'ephemeral','serendipity','melancholy','luminous','resilience',
+    'wanderlust','eloquent','tenacious','whimsical','serenity',
+    'labyrinth','magnanimous','perseverance','jubilant','sagacious',
+    'effervescent','intrepid','benevolent','pensive','vivacious',
+    'sanguine','ardent','profound','solace','diligent',
+    'gregarious','empathy','candor','mirth','zeal'
+  ];
+  wotdWord = WORD_LIST[dayNum % WORD_LIST.length].toLowerCase();
+
+  // Check cache from WotD widget
+  try {
+    const cached = JSON.parse(localStorage.getItem('wotd_cache') || 'null');
+    if (cached && cached.date === TODAY && cached.word) {
+      wotdWord = cached.word.toLowerCase().replace(/[^a-z]/g,'');
+    }
+  } catch(e) {}
+
+  // ── Difficulty toggle ──
+  const diffToggle = document.getElementById('diffToggle');
+  diffToggle.addEventListener('change', () => {
+    difficulty = diffToggle.checked ? 'hard' : 'easy';
+    document.getElementById('easyLabel').classList.toggle('active', !diffToggle.checked);
+    document.getElementById('hardLabel').classList.toggle('active', diffToggle.checked);
+    if (gameOver) startRound(); // restart with new difficulty if round over
+  });
+
+  // ── Start round ──
+  function startRound() {
+    guessed = new Set();
+    wrongCount = 0;
+    gameOver = false;
+
+    document.getElementById('statusMsg').textContent = '';
+    document.getElementById('statusMsg').className = 'status-msg';
+    document.getElementById('nextBtn').classList.add('hidden');
+
+    if (isFirstRound) {
+      currentWord = wotdWord;
+      currentCategory = 'Word of the Day';
+      const badge = document.getElementById('wotdBadgeWrap');
+      badge.innerHTML = `<div class="wotd-badge">📖 Today's Word of the Day</div>`;
+      badge.classList.remove('hidden');
+    } else {
+      document.getElementById('wotdBadgeWrap').classList.add('hidden');
+      currentCategory = CATEGORIES[Math.floor(Math.random() * CATEGORIES.length)];
+      const bank = WORDS[difficulty][currentCategory];
+      currentWord = bank[Math.floor(Math.random() * bank.length)].toLowerCase();
+    }
+
+    document.getElementById('categoryChip').textContent = currentCategory;
+    renderWordDisplay();
+    renderKeyboard();
+    renderStage();
+    renderWrongRow();
+  }
+
+  // ── Render word ──
+  function renderWordDisplay() {
+    const el = document.getElementById('wordDisplay');
+    el.innerHTML = '';
+    currentWord.split('').forEach(ch => {
+      const slot = document.createElement('div');
+      slot.className = 'letter-slot';
+      const char = document.createElement('div');
+      char.className = 'letter-char' + (guessed.has(ch) ? ' revealed' : '');
+      char.textContent = guessed.has(ch) ? ch.toUpperCase() : '';
+      const line = document.createElement('div');
+      line.className = 'letter-line';
+      slot.appendChild(char);
+      slot.appendChild(line);
+      el.appendChild(slot);
+    });
+  }
+
+  // ── Render keyboard ──
+  function renderKeyboard() {
+    const kb = document.getElementById('keyboard');
+    kb.innerHTML = '';
+    'abcdefghijklmnopqrstuvwxyz'.split('').forEach(letter => {
+      const key = document.createElement('div');
+      key.className = 'key';
+      key.textContent = letter.toUpperCase();
+      key.dataset.letter = letter;
+      if (guessed.has(letter)) {
+        key.classList.add(currentWord.includes(letter) ? 'correct' : 'wrong');
+      }
+      key.addEventListener('click', () => handleGuess(letter));
+      kb.appendChild(key);
+    });
+  }
+
+  // ── Handle guess ──
+  function handleGuess(letter) {
+    if (gameOver || guessed.has(letter)) return;
+    guessed.add(letter);
+
+    if (!currentWord.includes(letter)) {
+      wrongCount++;
+      // Wiggle stage
+      const svg = document.querySelector('#stage svg');
+      if (svg) { svg.classList.add('wiggle'); setTimeout(() => svg.classList.remove('wiggle'), 400); }
+    }
+
+    renderWordDisplay();
+    renderKeyboard();
+    renderStage();
+    renderWrongRow();
+    checkEndCondition();
+  }
+
+  // Physical keyboard support
+  document.addEventListener('keydown', e => {
+    const l = e.key.toLowerCase();
+    if (/^[a-z]$/.test(l) && !gameOver) handleGuess(l);
+  });
+
+  // ── Wrong letters row ──
+  function renderWrongRow() {
+    const el = document.getElementById('wrongRow');
+    el.innerHTML = '';
+    [...guessed].filter(l => !currentWord.includes(l)).forEach(l => {
+      const span = document.createElement('span');
+      span.className = 'wrong-letter';
+      span.textContent = l.toUpperCase();
+      el.appendChild(span);
+    });
+  }
+
+  // ── End condition ──
+  function checkEndCondition() {
+    const won = currentWord.split('').every(ch => guessed.has(ch));
+    const lost = wrongCount >= currentTheme.maxWrong;
+
+    if (won) {
+      gameOver = true;
+      const msg = document.getElementById('statusMsg');
+      msg.textContent = isFirstRound ? '🎉 Word of the Day — Nailed it!' : '🎉 You got it!';
+      msg.className = 'status-msg win';
+      isFirstRound = false;
+      document.getElementById('nextBtn').classList.remove('hidden');
+      spawnConfetti();
+    } else if (lost) {
+      gameOver = true;
+      // Reveal word
+      currentWord.split('').forEach(ch => guessed.add(ch));
+      renderWordDisplay();
+      const msg = document.getElementById('statusMsg');
+      msg.textContent = `The word was: ${currentWord.toUpperCase()}`;
+      msg.className = 'status-msg lose';
+      isFirstRound = false;
+      document.getElementById('nextBtn').classList.remove('hidden');
+      document.getElementById('nextBtn').textContent = 'Try Another →';
+      renderStage(); // show final state
+    }
+  }
+
+  // ── Next round ──
+  document.getElementById('nextBtn').addEventListener('click', () => {
+    document.getElementById('nextBtn').textContent = 'Next Round →';
+    startRound();
+  });
+
+  // ── Confetti ──
+  function spawnConfetti() {
+    const colors = ['#ff6b6b','#00ddeb','#ffd166','#06d6a0','#a29bfe','#fd79a8','#fdcb6e'];
+    for (let i = 0; i < 40; i++) {
+      const el = document.createElement('div');
+      el.className = 'confetti-piece';
+      el.style.cssText = `
+        left: ${10 + Math.random() * 80}%;
+        top: ${10 + Math.random() * 40}%;
+        background: ${colors[i % colors.length]} !important;
+        background-color: ${colors[i % colors.length]} !important;
+        animation-delay: ${Math.random() * 0.5}s;
+        animation-duration: ${0.9 + Math.random() * 0.6}s;
+        border-radius: ${Math.random() > 0.5 ? '50%' : '2px'};
+        transform: rotate(${Math.random()*360}deg);
+      `;
+      document.body.appendChild(el);
+      setTimeout(() => el.remove(), 2000);
+    }
+  }
+
+  // ── Stage renderers ──
+  function isDark() { return document.documentElement.getAttribute('data-theme') === 'dark'; }
+  function stroke() { return isDark() ? '#a6a6d1' : '#444'; }
+  function fill(c)  { return c; }
+
+  // Stages use wrongCount 0–7 to show progressive states
+  function renderStage() { currentTheme.drawStage(wrongCount, currentTheme.maxWrong); }
+
+  // 🌱 SPROUT — grows wrong → wilts, grows right
+  function drawSprout(wrong, max) {
+    const pct = wrong / max;
+    const stage = document.getElementById('stage');
+    const w = 160, h = 140;
+    const s = stroke();
+
+    // Stem height decreases as wrong guesses increase (wilting)
+    const stemH = Math.max(10, 80 - wrong * 10);
+    const droop = wrong * 8; // leaves droop
+
+    // Colours shift from green to brown
+    const green = `hsl(${130 - wrong * 15}, ${80 - wrong * 8}%, ${40 + wrong * 3}%)`;
+    const leafCol = wrong >= max ? '#8B6914' : green;
+    const stemCol = wrong >= max ? '#8B6914' : green;
+    const potCol  = isDark() ? '#4a3728' : '#c8956c';
+    const soilCol = isDark() ? '#3a2a1e' : '#a0714f';
+
+    let svg = `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg">`;
+
+    // Pot
+    svg += `<path d="M55,${h-20} L50,${h-5} Q80,${h} ${w/2},${h} Q${w-20},${h} ${w-50},${h-5} L${w-55},${h-20} Z" fill="${potCol}" stroke="none"/>`;
+    svg += `<rect x="48" y="${h-22}" width="64" height="6" rx="3" fill="${soilCol}"/>`;
+
+    // Stem
+    const stemBot = h - 22;
+    const stemTop = stemBot - stemH;
+    svg += `<line x1="${w/2}" y1="${stemBot}" x2="${w/2}" y2="${stemTop}" stroke="${stemCol}" stroke-width="3" stroke-linecap="round"/>`;
+
+    // Leaves (appear after wrong guesses 0 = full, more wrong = wilt)
+    if (wrong < max) {
+      // Left leaf
+      const lx = w/2 - 5;
+      const ly = stemTop + stemH * 0.5;
+      const drL = wrong * 4;
+      svg += `<path d="M${lx},${ly} Q${lx-25},${ly-20+drL} ${lx-28},${ly+10+drL}" fill="${leafCol}" opacity="0.9"/>`;
+      // Right leaf
+      const rx2 = w/2 + 5;
+      svg += `<path d="M${rx2},${ly} Q${rx2+25},${ly-20+drL} ${rx2+28},${ly+10+drL}" fill="${leafCol}" opacity="0.9"/>`;
+    }
+
+    // Flower / head
+    if (wrong === 0) {
+      // Full bloom — sun-yellow flower
+      const fx = w/2, fy = stemTop - 4;
+      const petalCol = '#ffd166';
+      for (let i = 0; i < 8; i++) {
+        const angle = (i * 45) * Math.PI / 180;
+        const px = fx + Math.cos(angle) * 14;
+        const py = fy + Math.sin(angle) * 14;
+        svg += `<ellipse cx="${px}" cy="${py}" rx="6" ry="4" fill="${petalCol}" transform="rotate(${i*45},${px},${py})" opacity="0.9"/>`;
+      }
+      svg += `<circle cx="${fx}" cy="${fy}" r="8" fill="#f4a261"/>`;
+    } else if (wrong <= 3) {
+      // Budding
+      svg += `<circle cx="${w/2}" cy="${stemTop}" r="${8 - wrong}}" fill="${leafCol}" opacity="0.85"/>`;
+    } else if (wrong < max) {
+      // Wilting bud
+      svg += `<circle cx="${w/2}" cy="${stemTop + wrong * 2}" r="5" fill="${stemCol}" opacity="0.6"/>`;
+    } else {
+      // Dead — brown dot
+      svg += `<circle cx="${w/2}" cy="${stemBot - 8}" r="4" fill="#8B6914" opacity="0.5"/>`;
+    }
+
+    svg += `</svg>`;
+    stage.innerHTML = svg;
+  }
+
+  // 🚀 ROCKET — countdown, launches on win, fizzles on loss
+  function drawRocket(wrong, max) {
+    const stage = document.getElementById('stage');
+    const w = 160, h = 140;
+    const s = stroke();
+    const countLeft = max - wrong;
+    const launched = wrong >= max;
+
+    // Rocket position — moves up as count decreases
+    const rocketY = launched ? -20 : 30 + wrong * 8;
+    const flameH = Math.max(0, 20 - wrong * 2);
+
+    const bodyCol  = isDark() ? '#74b9ff' : '#0984e3';
+    const noseCol  = isDark() ? '#fd79a8' : '#e84393';
+    const finCol   = isDark() ? '#a29bfe' : '#6c5ce7';
+    const flameCol = '#ff6b6b';
+
+    let svg = `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg">`;
+
+    // Launch pad
+    svg += `<rect x="60" y="${h-12}" width="40" height="8" rx="3" fill="${isDark()?'#555':'#b2bec3'}"/>`;
+    svg += `<rect x="55" y="${h-6}" width="50" height="4" rx="2" fill="${isDark()?'#444':'#636e72'}"/>`;
+
+    // Countdown numbers
+    if (!launched) {
+      svg += `<text x="${w/2}" y="${h-18}" text-anchor="middle" font-family="Baloo 2, cursive" font-size="11" font-weight="700" fill="${isDark()?'#a6a6d1':'#636e72'}" opacity="0.7">T-${countLeft}</text>`;
+    }
+
+    const rx = w/2, ry = rocketY;
+
+    // Flame
+    if (wrong > 0 && !launched) {
+      svg += `<ellipse cx="${rx}" cy="${ry+32+flameH/2}" rx="7" ry="${flameH/2+4}" fill="${flameCol}" opacity="0.8"/>`;
+      svg += `<ellipse cx="${rx}" cy="${ry+30+flameH/2}" rx="4" ry="${flameH/2}" fill="#ffd166" opacity="0.9"/>`;
+    }
+
+    if (launched) {
+      // Smoke / fizzle
+      for (let i = 0; i < 5; i++) {
+        svg += `<circle cx="${rx + (i-2)*12}" cy="${h-30+i*5}" r="${4+i*2}" fill="${isDark()?'#555':'#b2bec3'}" opacity="${0.4-i*0.06}"/>`;
+      }
+      svg += `<text x="${w/2}" y="${h-55}" text-anchor="middle" font-size="28">💨</text>`;
+    } else {
+      // Fins
+      svg += `<path d="M${rx-10},${ry+26} L${rx-18},${ry+36} L${rx-10},${ry+32} Z" fill="${finCol}"/>`;
+      svg += `<path d="M${rx+10},${ry+26} L${rx+18},${ry+36} L${rx+10},${ry+32} Z" fill="${finCol}"/>`;
+      // Body
+      svg += `<rect x="${rx-10}" y="${ry+8}" width="20" height="24" rx="4" fill="${bodyCol}"/>`;
+      // Nose
+      svg += `<path d="M${rx},${ry} Q${rx-10},${ry+8} ${rx-10},${ry+10} L${rx+10},${ry+10} Q${rx+10},${ry+8} ${rx},${ry} Z" fill="${noseCol}"/>`;
+      // Window
+      svg += `<circle cx="${rx}" cy="${ry+17}" r="5" fill="${isDark()?'#1a1a2e':'#dfe6e9'}" stroke="${isDark()?'#74b9ff':'#0984e3'}" stroke-width="1.5"/>`;
+      // Boosters below
+      svg += `<rect x="${rx-15}" y="${ry+26}" width="6" height="10" rx="2" fill="${finCol}" opacity="0.7"/>`;
+      svg += `<rect x="${rx+9}" y="${ry+26}" width="6" height="10" rx="2" fill="${finCol}" opacity="0.7"/>`;
+    }
+
+    svg += `</svg>`;
+    stage.innerHTML = svg;
+  }
+
+  // 🐣 EGG — cracks more with each wrong guess
+  function drawEgg(wrong, max) {
+    const stage = document.getElementById('stage');
+    const w = 160, h = 140;
+    const cracked = wrong >= max;
+
+    const eggCol   = isDark() ? '#ffeaa7' : '#fff9c4';
+    const crackCol = isDark() ? '#636e72' : '#b2bec3';
+    const shellCol = isDark() ? '#fdcb6e' : '#f9ca24';
+    const nestCol  = isDark() ? '#6d4c41' : '#a1887f';
+
+    let svg = `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg">`;
+
+    // Nest
+    svg += `<ellipse cx="${w/2}" cy="${h-10}" rx="45" ry="12" fill="${nestCol}" opacity="0.7"/>`;
+    for (let i = 0; i < 5; i++) {
+      svg += `<path d="M${w/2-35+i*14},${h-10} Q${w/2-28+i*14},${h-20} ${w/2-20+i*14},${h-10}" stroke="${isDark()?'#4e342e':'#795548'}" stroke-width="2" fill="none"/>`;
+    }
+
+    if (cracked) {
+      // Broken egg + chick
+      svg += `<path d="M${w/2-28},${h-22} Q${w/2-15},${h-60} ${w/2},${h-65} Q${w/2+15},${h-60} ${w/2+28},${h-22} Z" fill="${shellCol}" opacity="0.6"/>`;
+      svg += `<path d="M${w/2-20},${h-22} L${w/2-5},${h-42} L${w/2+5},${h-35} L${w/2+20},${h-22}" stroke="${crackCol}" stroke-width="2" fill="none"/>`;
+      // Chick peeking
+      svg += `<circle cx="${w/2}" cy="${h-50}" r="16" fill="#ffd166"/>`;
+      svg += `<circle cx="${w/2-6}" cy="${h-54}" r="2.5" fill="#2d3436"/>`;
+      svg += `<circle cx="${w/2+6}" cy="${h-54}" r="2.5" fill="#2d3436"/>`;
+      svg += `<path d="M${w/2-4},${h-46} Q${w/2},${h-42} ${w/2+4},${h-46}" fill="#f0932b"/>`;
+      svg += `<text x="${w/2}" y="${h-70}" text-anchor="middle" font-size="14">🐥</text>`;
+    } else {
+      // Egg body
+      svg += `<path d="M${w/2},${h-22} Q${w/2-35},${h-30} ${w/2-28},${h-70} Q${w/2-18},${h-95} ${w/2},${h-98} Q${w/2+18},${h-95} ${w/2+28},${h-70} Q${w/2+35},${h-30} ${w/2},${h-22} Z" fill="${eggCol}" stroke="${shellCol}" stroke-width="2"/>`;
+
+      // Progressive cracks
+      const cracks = [
+        `M${w/2},${h-70} L${w/2-8},${h-58} L${w/2-2},${h-50}`,
+        `M${w/2+5},${h-75} L${w/2+14},${h-62}`,
+        `M${w/2-10},${h-60} L${w/2-18},${h-52} L${w/2-10},${h-45}`,
+        `M${w/2},${h-80} L${w/2+8},${h-68} L${w/2+2},${h-58}`,
+        `M${w/2-5},${h-85} L${w/2-16},${h-72}`,
+        `M${w/2+12},${h-55} L${w/2+20},${h-45} L${w/2+12},${h-38}`,
+        `M${w/2-2},${h-42} L${w/2+10},${h-35}`,
+      ];
+
+      for (let i = 0; i < wrong; i++) {
+        svg += `<path d="${cracks[i]}" stroke="${crackCol}" stroke-width="1.8" fill="none" stroke-linecap="round"/>`;
+      }
+
+      // Wobble eyes when close to cracking
+      if (wrong >= max - 2) {
+        svg += `<circle cx="${w/2-7}" cy="${h-72}" r="3" fill="#2d3436"/>`;
+        svg += `<circle cx="${w/2+7}" cy="${h-72}" r="3" fill="#2d3436"/>`;
+      }
+    }
+
+    svg += `</svg>`;
+    stage.innerHTML = svg;
+  }
+
+  // 🏰 SANDCASTLE — waves wash it away
+  function drawSandcastle(wrong, max) {
+    const stage = document.getElementById('stage');
+    const w = 160, h = 140;
+    const s = stroke();
+
+    const sandCol   = isDark() ? '#d4a056' : '#f0c060';
+    const darkSand  = isDark() ? '#b8843a' : '#d4963c';
+    const waterCol  = isDark() ? '#1a6b8a' : '#74b9ff';
+    const waveCol   = isDark() ? '#0984e3' : '#0984e3';
+    const flagCol   = '#ff6b6b';
+    const sky       = isDark() ? '#1a2a3a' : '#dfe6e9';
+
+    // Water level rises with wrong guesses
+    const waterY = h - 8 - wrong * 14;
+    const castleBot = h - 8;
+
+    let svg = `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg">`;
+
+    // Sky / beach background strip
+    svg += `<rect x="0" y="${castleBot-12}" width="${w}" height="16" rx="0" fill="${isDark()?'#2d4a3e':'#e8d8a0'}" opacity="0.3"/>`;
+
+    // Water
+    if (wrong > 0) {
+      svg += `<rect x="0" y="${waterY}" width="${w}" height="${h-waterY}" fill="${waterCol}" opacity="0.5"/>`;
+      // Wave crest
+      let wPath = `M0,${waterY}`;
+      for (let x = 0; x <= w; x += 20) {
+        wPath += ` Q${x+5},${waterY-6} ${x+10},${waterY} Q${x+15},${waterY+4} ${x+20},${waterY}`;
+      }
+      wPath += ` L${w},${h} L0,${h} Z`;
+      svg += `<path d="${wPath}" fill="${waveCol}" opacity="0.4"/>`;
+    }
+
+    // How much of the castle is submerged
+    const submerged = Math.max(0, wrong - 1);
+
+    // Base / mound
+    if (submerged < 5) {
+      svg += `<ellipse cx="${w/2}" cy="${castleBot}" rx="50" ry="10" fill="${sandCol}"/>`;
+    }
+
+    // Main tower
+    const towerBot = castleBot - 8;
+    const towerH = Math.max(0, 55 - submerged * 10);
+    if (towerH > 0) {
+      svg += `<rect x="${w/2-14}" y="${towerBot-towerH}" width="28" height="${towerH}" rx="3" fill="${sandCol}" stroke="${darkSand}" stroke-width="1"/>`;
+      // Battlements
+      if (towerH > 20) {
+        for (let i = 0; i < 3; i++) {
+          svg += `<rect x="${w/2-12+i*10}" y="${towerBot-towerH-7}" width="8" height="8" rx="1" fill="${sandCol}" stroke="${darkSand}" stroke-width="1"/>`;
+        }
+      }
+      // Door
+      if (towerH > 30) {
+        svg += `<path d="M${w/2-6},${towerBot} L${w/2-6},${towerBot-16} Q${w/2},${towerBot-22} ${w/2+6},${towerBot-16} L${w/2+6},${towerBot} Z" fill="${darkSand}" opacity="0.6"/>`;
+      }
+      // Flag
+      if (towerH > 40) {
+        svg += `<line x1="${w/2}" y1="${towerBot-towerH-7}" x2="${w/2}" y2="${towerBot-towerH-22}" stroke="${darkSand}" stroke-width="2"/>`;
+        svg += `<path d="M${w/2},${towerBot-towerH-22} L${w/2+14},${towerBot-towerH-17} L${w/2},${towerBot-towerH-12} Z" fill="${flagCol}"/>`;
+      }
+    }
+
+    // Side towers
+    const sideH = Math.max(0, 35 - submerged * 12);
+    if (sideH > 0) {
+      [-1,1].forEach(dir => {
+        const tx = w/2 + dir * 28;
+        svg += `<rect x="${tx-9}" y="${towerBot-sideH}" width="18" height="${sideH}" rx="2" fill="${sandCol}" stroke="${darkSand}" stroke-width="1"/>`;
+        if (sideH > 14) {
+          for (let i = 0; i < 2; i++) {
+            svg += `<rect x="${tx-7+i*9}" y="${towerBot-sideH-5}" width="7" height="5" rx="1" fill="${sandCol}" stroke="${darkSand}" stroke-width="1"/>`;
+          }
+        }
+      });
+    }
+
+    // Windows
+    if (towerH > 25) {
+      svg += `<circle cx="${w/2}" cy="${towerBot-towerH*0.55}" r="4" fill="${darkSand}" opacity="0.5"/>`;
+    }
+
+    svg += `</svg>`;
+    stage.innerHTML = svg;
+  }
+
+  // ── Init ──
+  startRound();
+});
+</script>
+</body>
+</html>
