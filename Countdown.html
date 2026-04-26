@@ -472,12 +472,14 @@
 
       // Delete countdown
       window.deleteCountdown = function(index) {
-        if (confirm('Are you sure you want to delete this countdown?')) {
-          countdowns.splice(index, 1);
-          saveCountdowns();
-          renderCountdowns();
-          showSuccess('Countdown deleted successfully!');
+        if (index < 0 || index >= countdowns.length) {
+          return;
         }
+
+        countdowns.splice(index, 1);
+        saveCountdowns();
+        renderCountdowns();
+        showSuccess('Countdown deleted successfully!');
       };
 
       // Toggle form visibility
