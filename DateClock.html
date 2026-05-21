@@ -356,15 +356,6 @@
       const tzError       = document.getElementById('tzError');
       const tzSaveBtn     = document.getElementById('tzSaveBtn');
 
-      // Resolve timezone: ?tz= param > localStorage > system default
-      function resolveTimezone() {
-        const paramTz = params.get('tz');
-        if (paramTz && isValidTimezone(paramTz)) return paramTz;
-        const storedTz = localStorage.getItem('homeglowDateClockTz');
-        if (storedTz && isValidTimezone(storedTz)) return storedTz;
-        return Intl.DateTimeFormat().resolvedOptions().timeZone;
-      }
-
       function isValidTimezone(tz) {
         try {
           Intl.DateTimeFormat(undefined, { timeZone: tz });
@@ -374,7 +365,26 @@
         }
       }
 
-      let timezone = resolveTimezone();
+      // Resolve timezone: API > ?tz= param > localStorage override > system default
+      async function resolveTimezone() {
+        try {
+          const res = await fetch('/api/timezone');
+          if (res.ok) {
+            const data = await res.json();
+            const tz = data.timezone || data.tz || data;
+            if (typeof tz === 'string' && isValidTimezone(tz)) return tz;
+          }
+        } catch {
+          // API unreachable — fall through to next source
+        }
+        const paramTz = params.get('tz');
+        if (paramTz && isValidTimezone(paramTz)) return paramTz;
+        const storedTz = localStorage.getItem('homeglowDateClockTz');
+        if (storedTz && isValidTimezone(storedTz)) return storedTz;
+        return Intl.DateTimeFormat().resolvedOptions().timeZone;
+      }
+
+      let timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
       function pad(n) {
         return String(n).padStart(2, '0');
@@ -463,9 +473,12 @@
         tzError.style.display = 'none';
       });
 
-      refreshLabel();
-      update();
-      setInterval(update, 500);
+      resolveTimezone().then((tz) => {
+        timezone = tz;
+        refreshLabel();
+        update();
+        setInterval(update, 500);
+      });
     });
   </script>
 </body>
