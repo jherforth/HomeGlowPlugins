@@ -199,6 +199,110 @@
     .tick {
       animation: tick 0.3s ease;
     }
+
+    /* Timezone config */
+    .tz-bar {
+      position: absolute;
+      bottom: 0.5rem;
+      right: 0.6rem;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+
+    .tz-label {
+      font-size: clamp(0.5rem, 1.8cqw, 0.75rem);
+      opacity: 0.45;
+      letter-spacing: 0.04em;
+      cursor: pointer;
+      user-select: none;
+      transition: opacity 0.2s;
+    }
+
+    .tz-label:hover {
+      opacity: 0.8;
+    }
+
+    .tz-popover {
+      position: absolute;
+      bottom: calc(100% + 0.5rem);
+      right: 0;
+      background: rgba(30, 30, 40, 0.95) !important;
+      border: 1px solid rgba(255,255,255,0.15) !important;
+      border-radius: 8px;
+      padding: 0.6rem;
+      display: none;
+      flex-direction: column;
+      gap: 0.4rem;
+      min-width: 220px;
+      z-index: 10;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.3) !important;
+    }
+
+    [data-theme="light"] .tz-popover {
+      background: rgba(255,255,255,0.97) !important;
+      border-color: rgba(0,0,0,0.12) !important;
+    }
+
+    .tz-popover.open {
+      display: flex;
+    }
+
+    .tz-popover label {
+      font-size: 0.7rem;
+      opacity: 0.7;
+      color: #a6a6d1;
+    }
+
+    [data-theme="light"] .tz-popover label {
+      color: #555;
+    }
+
+    .tz-input {
+      background: rgba(255,255,255,0.08) !important;
+      border: 1px solid rgba(255,255,255,0.2) !important;
+      border-radius: 4px;
+      padding: 0.35rem 0.5rem;
+      color: #fff !important;
+      font-size: 0.75rem;
+      font-family: inherit;
+      width: 100%;
+      box-sizing: border-box;
+    }
+
+    [data-theme="light"] .tz-input {
+      background: rgba(0,0,0,0.05) !important;
+      border-color: rgba(0,0,0,0.15) !important;
+      color: #333 !important;
+    }
+
+    .tz-input:focus {
+      outline: none;
+      border-color: #00ddeb !important;
+    }
+
+    .tz-save-btn {
+      background: linear-gradient(45deg, #00ddeb, #0099aa) !important;
+      color: #111 !important;
+      border: none;
+      border-radius: 4px;
+      padding: 0.35rem 0.6rem;
+      cursor: pointer;
+      font-size: 0.7rem;
+      font-weight: 600;
+      transition: filter 0.2s;
+      align-self: flex-end;
+    }
+
+    .tz-save-btn:hover {
+      filter: brightness(1.15);
+    }
+
+    .tz-error {
+      font-size: 0.65rem;
+      color: #ff6b6b;
+      display: none;
+    }
   </style>
 </head>
 <body>
@@ -219,6 +323,16 @@
           <div class="seconds-display" id="secondsDisplay"></div>
         </div>
       </div>
+
+      <div class="tz-bar">
+        <span class="tz-label" id="tzLabel" title="Click to change timezone"></span>
+        <div class="tz-popover" id="tzPopover">
+          <label for="tzInput">IANA Timezone (e.g. America/Chicago)</label>
+          <input type="text" id="tzInput" class="tz-input" placeholder="America/New_York" spellcheck="false">
+          <span class="tz-error" id="tzError">Invalid timezone</span>
+          <button class="tz-save-btn" id="tzSaveBtn">Save</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -236,38 +350,73 @@
       const timeDisplayEl = document.getElementById('timeDisplay');
       const ampmEl        = document.getElementById('ampm');
       const secondsEl     = document.getElementById('secondsDisplay');
+      const tzLabel       = document.getElementById('tzLabel');
+      const tzPopover     = document.getElementById('tzPopover');
+      const tzInput       = document.getElementById('tzInput');
+      const tzError       = document.getElementById('tzError');
+      const tzSaveBtn     = document.getElementById('tzSaveBtn');
 
-      const DAYS   = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-      const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+      // Resolve timezone: ?tz= param > localStorage > system default
+      function resolveTimezone() {
+        const paramTz = params.get('tz');
+        if (paramTz && isValidTimezone(paramTz)) return paramTz;
+        const storedTz = localStorage.getItem('homeglowDateClockTz');
+        if (storedTz && isValidTimezone(storedTz)) return storedTz;
+        return Intl.DateTimeFormat().resolvedOptions().timeZone;
+      }
 
-      let lastSecond = -1;
+      function isValidTimezone(tz) {
+        try {
+          Intl.DateTimeFormat(undefined, { timeZone: tz });
+          return true;
+        } catch {
+          return false;
+        }
+      }
+
+      let timezone = resolveTimezone();
 
       function pad(n) {
         return String(n).padStart(2, '0');
       }
 
+      let lastSecond = -1;
+
       function update() {
         const now = new Date();
 
-        const day   = now.getDay();
-        const date  = now.getDate();
-        const month = now.getMonth();
-        const year  = now.getFullYear();
-        let   hours = now.getHours();
-        const mins  = now.getMinutes();
-        const secs  = now.getSeconds();
-        const ampm  = hours >= 12 ? 'PM' : 'AM';
+        // Extract all date/time parts in the configured timezone
+        const parts = new Intl.DateTimeFormat('en-US', {
+          timeZone: timezone,
+          weekday: 'long',
+          month: 'long',
+          day: 'numeric',
+          year: 'numeric',
+          hour: 'numeric',
+          minute: '2-digit',
+          second: '2-digit',
+          hour12: true,
+        }).formatToParts(now);
 
-        hours = hours % 12 || 12;
+        const get = (type) => parts.find(p => p.type === type)?.value ?? '';
 
-        dayOfWeekEl.textContent = DAYS[day];
-        monthDayEl.textContent  = `${MONTHS[month]} ${date}`;
-        yearEl.textContent      = year;
+        const weekday = get('weekday');
+        const month   = get('month');
+        const day     = get('day');
+        const year    = get('year');
+        const hour    = get('hour');
+        const minute  = get('minute');
+        const second  = get('second');
+        const dayPeriod = get('dayPeriod').toUpperCase();
 
-        timeDisplayEl.textContent = `${hours}:${pad(mins)}`;
-        ampmEl.textContent        = ampm;
-        secondsEl.textContent     = `${pad(secs)}s`;
+        dayOfWeekEl.textContent   = weekday;
+        monthDayEl.textContent    = `${month} ${day}`;
+        yearEl.textContent        = year;
+        timeDisplayEl.textContent = `${hour}:${minute}`;
+        ampmEl.textContent        = dayPeriod;
+        secondsEl.textContent     = `${second}s`;
 
+        const secs = parseInt(second, 10);
         if (secs !== lastSecond) {
           lastSecond = secs;
           timeDisplayEl.classList.remove('tick');
@@ -276,6 +425,45 @@
         }
       }
 
+      // Timezone label + popover
+      function refreshLabel() {
+        tzLabel.textContent = timezone;
+        tzInput.value = timezone;
+      }
+
+      tzLabel.addEventListener('click', (e) => {
+        e.stopPropagation();
+        tzPopover.classList.toggle('open');
+        if (tzPopover.classList.contains('open')) tzInput.focus();
+      });
+
+      document.addEventListener('click', () => tzPopover.classList.remove('open'));
+      tzPopover.addEventListener('click', (e) => e.stopPropagation());
+
+      tzSaveBtn.addEventListener('click', () => {
+        const val = tzInput.value.trim();
+        if (!isValidTimezone(val)) {
+          tzError.style.display = 'block';
+          return;
+        }
+        tzError.style.display = 'none';
+        timezone = val;
+        localStorage.setItem('homeglowDateClockTz', val);
+        refreshLabel();
+        tzPopover.classList.remove('open');
+        update();
+      });
+
+      tzInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') tzSaveBtn.click();
+        if (e.key === 'Escape') tzPopover.classList.remove('open');
+      });
+
+      tzInput.addEventListener('input', () => {
+        tzError.style.display = 'none';
+      });
+
+      refreshLabel();
       update();
       setInterval(update, 500);
     });
