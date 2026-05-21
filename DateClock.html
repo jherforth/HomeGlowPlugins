@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Date & Clock</title>
+  <link rel="stylesheet" href="/index.css">
+  <style>
+    * {
+      background: transparent !important;
+      background-color: transparent !important;
+      background-image: none !important;
+    }
+
+    body {
+      background: transparent !important;
+      font-family: 'Inter', sans-serif;
+      margin: 0;
+      padding: 0.75rem;
+      box-sizing: border-box;
+      color: #333;
+    }
+
+    [data-theme="dark"] body {
+      color: #a6a6d1;
+    }
+
+    .widget-container {
+      background: transparent !important;
+      border: none !important;
+      box-shadow: none !important;
+      backdrop-filter: none !important;
+      width: 100%;
+      height: calc(100vh - 1.5rem);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+
+    /* The layout wrapper — flex direction switches via container queries */
+    .clock-layout {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      width: 100%;
+      height: 100%;
+      container-type: size;
+      container-name: clock;
+    }
+
+    /* Wide & short: row layout */
+    @container clock (min-aspect-ratio: 1.6/1) {
+      .clock-inner {
+        flex-direction: row !important;
+        align-items: center !important;
+        justify-content: center !important;
+        gap: clamp(1rem, 4cqw, 3rem) !important;
+      }
+
+      .date-block {
+        text-align: right !important;
+      }
+
+      .divider {
+        display: block !important;
+        width: 2px !important;
+        height: clamp(40px, 12cqh, 120px) !important;
+        background: linear-gradient(180deg, transparent, currentColor, transparent) !important;
+        opacity: 0.25 !important;
+        flex-shrink: 0;
+      }
+    }
+
+    /* Tall & narrow: column layout (default) */
+    .clock-inner {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: clamp(0.25rem, 2cqh, 1.5rem);
+      width: 100%;
+    }
+
+    .divider {
+      display: none;
+    }
+
+    /* Date block */
+    .date-block {
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      gap: 0.1em;
+    }
+
+    .day-of-week {
+      font-size: clamp(0.6rem, 3.5cqw, 1.4rem);
+      font-weight: 500;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      opacity: 0.65;
+      line-height: 1.2;
+    }
+
+    @container clock (min-aspect-ratio: 1.6/1) {
+      .day-of-week {
+        font-size: clamp(0.55rem, 2cqw, 1.1rem) !important;
+      }
+
+      .month-day {
+        font-size: clamp(1rem, 5.5cqw, 3.5rem) !important;
+      }
+
+      .year {
+        font-size: clamp(0.55rem, 2cqw, 1.1rem) !important;
+      }
+    }
+
+    .month-day {
+      font-size: clamp(1.2rem, 9cqw, 5rem);
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      line-height: 1;
+      color: inherit;
+    }
+
+    .year {
+      font-size: clamp(0.6rem, 3.5cqw, 1.4rem);
+      font-weight: 400;
+      opacity: 0.55;
+      letter-spacing: 0.08em;
+      line-height: 1.2;
+    }
+
+    /* Time block */
+    .time-block {
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.1em;
+    }
+
+    .time-display {
+      font-size: clamp(1.8rem, 14cqw, 8rem);
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      line-height: 1;
+      color: #00ddeb;
+      font-variant-numeric: tabular-nums;
+      transition: opacity 0.1s ease;
+    }
+
+    [data-theme="dark"] .time-display {
+      color: #00ddeb;
+    }
+
+    @container clock (min-aspect-ratio: 1.6/1) {
+      .time-display {
+        font-size: clamp(1.5rem, 8cqw, 6rem) !important;
+      }
+
+      .ampm {
+        font-size: clamp(0.55rem, 2cqw, 1.1rem) !important;
+      }
+
+      .seconds-display {
+        font-size: clamp(0.55rem, 2cqw, 1.1rem) !important;
+      }
+    }
+
+    .ampm {
+      font-size: clamp(0.6rem, 3.5cqw, 1.4rem);
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      opacity: 0.7;
+      line-height: 1.2;
+    }
+
+    .seconds-display {
+      font-size: clamp(0.55rem, 3cqw, 1.2rem);
+      font-weight: 400;
+      opacity: 0.5;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0.05em;
+      line-height: 1.2;
+    }
+
+    /* Tick animation on seconds change */
+    @keyframes tick {
+      0%   { opacity: 1; }
+      10%  { opacity: 0.6; }
+      20%  { opacity: 1; }
+    }
+
+    .tick {
+      animation: tick 0.3s ease;
+    }
+  </style>
+</head>
+<body>
+  <div class="widget-container">
+    <div class="clock-layout">
+      <div class="clock-inner">
+        <div class="date-block">
+          <div class="day-of-week" id="dayOfWeek"></div>
+          <div class="month-day" id="monthDay"></div>
+          <div class="year" id="year"></div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="time-block">
+          <div class="time-display" id="timeDisplay"></div>
+          <div class="ampm" id="ampm"></div>
+          <div class="seconds-display" id="secondsDisplay"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const params = new URLSearchParams(window.location.search);
+      const theme = params.get('theme');
+      if (theme === 'dark' || theme === 'light') {
+        document.documentElement.setAttribute('data-theme', theme);
+      }
+
+      const dayOfWeekEl   = document.getElementById('dayOfWeek');
+      const monthDayEl    = document.getElementById('monthDay');
+      const yearEl        = document.getElementById('year');
+      const timeDisplayEl = document.getElementById('timeDisplay');
+      const ampmEl        = document.getElementById('ampm');
+      const secondsEl     = document.getElementById('secondsDisplay');
+
+      const DAYS   = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+      const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+      let lastSecond = -1;
+
+      function pad(n) {
+        return String(n).padStart(2, '0');
+      }
+
+      function update() {
+        const now = new Date();
+
+        const day   = now.getDay();
+        const date  = now.getDate();
+        const month = now.getMonth();
+        const year  = now.getFullYear();
+        let   hours = now.getHours();
+        const mins  = now.getMinutes();
+        const secs  = now.getSeconds();
+        const ampm  = hours >= 12 ? 'PM' : 'AM';
+
+        hours = hours % 12 || 12;
+
+        dayOfWeekEl.textContent = DAYS[day];
+        monthDayEl.textContent  = `${MONTHS[month]} ${date}`;
+        yearEl.textContent      = year;
+
+        timeDisplayEl.textContent = `${hours}:${pad(mins)}`;
+        ampmEl.textContent        = ampm;
+        secondsEl.textContent     = `${pad(secs)}s`;
+
+        if (secs !== lastSecond) {
+          lastSecond = secs;
+          timeDisplayEl.classList.remove('tick');
+          void timeDisplayEl.offsetWidth;
+          timeDisplayEl.classList.add('tick');
+        }
+      }
+
+      update();
+      setInterval(update, 500);
+    });
+  </script>
+</body>
+</html>
