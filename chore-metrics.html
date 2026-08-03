@@ -75,6 +75,11 @@
       background: rgba(var(--accent-rgb, 110,68,255), .12);
       border-radius: 999px; padding: 4px 12px; font-size: .78rem; font-weight: 600;
     }
+    .vacation-note {
+      display: inline-flex; align-items: center; gap: 6px; margin-top: 12px; margin-left: 8px;
+      border: 1px solid var(--card-border, rgba(127,127,127,.3));
+      border-radius: 999px; padding: 4px 12px; font-size: .78rem; opacity: .75;
+    }
 
     /* Heatmap: sequential single hue, 2px cell gaps, rounded cells */
     .heatmap { display: flex; gap: 8px; align-items: flex-start; overflow-x: auto; padding-bottom: 4px; }
@@ -133,7 +138,7 @@
   (function () {
     'use strict';
 
-    var state = { users: [], history: [], rangeDays: 30, settings: null, hasKind: false };
+    var state = { users: [], history: [], rangeDays: 30, settings: null, hasKind: false, vacation: null };
     var refetchTimer = null;
 
     // ---------- utilities ----------
@@ -162,6 +167,19 @@
       if (row.title === 'Transfer bonus') return 'transfer_bonus';
       if (row.title === 'Adjustment') return 'adjustment';
       return 'completion';
+    }
+
+    // Vacation days (issues #121/#72): the household `vacation_mode` setting.
+    // While active, the server skips missed logging and this plugin treats the
+    // days as NEUTRAL for streaks — they neither extend nor break a run.
+    // Note: only date-bounded vacations bridge PAST gaps; a bare toggle
+    // bridges while it stays enabled.
+    function isVacationDay(d) {
+      var v = state.vacation;
+      if (!v || v.enabled !== true) return false;
+      if (v.startDate && d < v.startDate) return false;
+      if (v.endDate && d > v.endDate) return false;
+      return true;
     }
 
     // ---------- metrics ----------
@@ -207,22 +225,33 @@
       return { perKid: perKid, byDayHousehold: byDayHousehold };
     }
 
-    // Streaks from all-chores-done days (daily_bonus rows). "Current" = a run
-    // reaching yesterday or today.
+    // Streaks from all-chores-done days (daily_bonus rows). Vacation days are
+    // neutral: skipped, never a break. "Current" = a run reaching today,
+    // yesterday, or bridged to them by vacation days.
     function computeStreaks(dates) {
       var set = {};
       dates.forEach(function (d) { set[d] = true; });
-      var longest = 0, current = 0;
-      var run = 0;
+
+      var longest = 0, run = 0;
       for (var i = state.rangeDays; i >= 0; i--) {
         var d = dateStr(daysAgo(i));
         if (set[d]) { run++; if (run > longest) longest = run; }
+        else if (isVacationDay(d)) { /* neutral: keep the run alive */ }
         else run = 0;
       }
-      if (set[dateStr(daysAgo(0))] || set[dateStr(daysAgo(1))]) {
-        current = 0;
-        var offset = set[dateStr(daysAgo(0))] ? 0 : 1;
-        while (set[dateStr(daysAgo(offset + current))]) current++;
+
+      // Today isn't over — start counting from yesterday unless today already
+      // has a bonus or is a vacation day.
+      var offset = 0;
+      var today = dateStr(daysAgo(0));
+      if (!set[today] && !isVacationDay(today)) offset = 1;
+
+      var current = 0;
+      while (offset <= state.rangeDays) {
+        var day = dateStr(daysAgo(offset));
+        if (set[day]) { current++; offset++; }
+        else if (isVacationDay(day)) { offset++; }
+        else break;
       }
       return { current: current, longest: longest };
     }
@@ -268,9 +297,10 @@
           var fill = stepIdx === 0
             ? 'rgba(127,127,127,0.12)'
             : 'rgba(var(--accent-rgb, 110,68,255),' + steps[stepIdx] + ')';
+          var vacationMark = isVacationDay(d) && count === 0 ? ' 🌴 vacation' : '';
           svg += '<rect x="' + (w * (cell + gap)) + '" y="' + (dow * (cell + gap)) + '"' +
             ' width="' + cell + '" height="' + cell + '" rx="2" fill="' + fill + '">' +
-            '<title>' + d + ': ' + count + ' chore' + (count === 1 ? '' : 's') + ' completed</title></rect>';
+            '<title>' + d + ': ' + count + ' chore' + (count === 1 ? '' : 's') + ' completed' + vacationMark + '</title></rect>';
         }
       }
       var width = weeks * (cell + gap);
@@ -340,6 +370,12 @@
         ' (+' + best.delta + ' vs earlier)</div>';
     }
 
+    function renderVacationNote() {
+      var today = dateStr(daysAgo(0));
+      if (!isVacationDay(today)) return '';
+      return '<div class="vacation-note">🌴 Vacation mode — missed chores paused, streaks safe</div>';
+    }
+
     function renderTable(perKid) {
       var kids = Object.values(perKid);
       if (!kids.length) return '';
@@ -364,6 +400,7 @@
 
       var html = renderTiles(metrics.perKid);
       html += renderImprover(metrics.perKid);
+      html += renderVacationNote();
       if (showHeatmap) {
         html += '<div class="section-title">Activity — last ' + state.rangeDays + ' days</div>';
         html += renderHeatmap(metrics.byDayHousehold);
@@ -382,11 +419,19 @@
       var to = dateStr(daysAgo(0));
       return Promise.all([
         fetchJson('/api/users'),
-        fetchJson('/api/chore-history?date_from=' + from + '&date_to=' + to)
+        fetchJson('/api/chore-history?date_from=' + from + '&date_to=' + to),
+        fetchJson('/api/settings').catch(function () { return {}; })
       ]).then(function (results) {
         state.users = results[0] || [];
         state.history = results[1] || [];
         state.hasKind = state.history.length === 0 || state.history.some(function (r) { return r.kind !== undefined; });
+        state.vacation = null;
+        try {
+          // /api/settings may return the value pre-parsed (object) or raw (string).
+          var vm = results[2] && results[2].vacation_mode;
+          if (typeof vm === 'string') vm = JSON.parse(vm);
+          if (vm && typeof vm === 'object') state.vacation = vm;
+        } catch (e) { state.vacation = null; }
         render();
       }).catch(function (error) {
         document.getElementById('content').innerHTML =
