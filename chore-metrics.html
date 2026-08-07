@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Chore Metrics</title>
+  <link rel="stylesheet" href="/index.css">
+
+  <script type="application/json" id="homeglow-manifest">
+  {
+    "manifestVersion": 1,
+    "id": "chore-metrics",
+    "name": "Chore Metrics",
+    "apiVersion": "v1",
+    "settings": [
+      { "key": "defaultRange", "label": "Time range (days)", "type": "select",
+        "options": ["7", "30", "90"], "default": "30", "scope": "device" },
+      { "key": "showHeatmap", "label": "Show activity heatmap", "type": "boolean",
+        "default": true, "scope": "device" },
+      { "key": "showSpending", "label": "Show clams earned vs spent", "type": "boolean",
+        "default": true, "scope": "household" }
+    ],
+    "events": ["chore.completed", "chore.uncompleted", "clam.deposited", "clam.withdrawn"]
+  }
+  </script>
+
+  <style>
+    /* Color strategy: the host accent is user-configurable, so nothing here
+       depends on distinguishing two saturated hues. Magnitude = one hue
+       (accent) stepped by alpha; the second series (spent) is a texture-striped
+       neutral — identity is carried by pattern + legend, never color alone. */
+    :root { color-scheme: light dark; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 14px;
+      background: var(--card-bg, #fff);
+      color: var(--text-color, #333);
+      font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+      font-size: 14px;
+    }
+    h2 { margin: 0; font-size: 1.05rem; }
+    .header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
+    .header select {
+      background: transparent; color: inherit;
+      border: 1px solid var(--card-border, rgba(127,127,127,.35));
+      border-radius: 6px; padding: 3px 6px; font: inherit; font-size: .8rem;
+    }
+    .section-title {
+      font-size: .72rem; font-weight: 600; letter-spacing: .06em;
+      text-transform: uppercase; opacity: .6; margin: 16px 0 8px;
+    }
+    .muted { opacity: .6; }
+    .empty { opacity: .6; font-size: .85rem; padding: 12px 0; }
+
+    /* Stat tiles */
+    .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+    .tile {
+      border: 1px solid var(--card-border, rgba(127,127,127,.25));
+      border-radius: 10px; padding: 10px 12px;
+    }
+    .tile .kid { font-weight: 700; font-size: .85rem; margin-bottom: 6px; display: flex; align-items: center; gap: 6px; }
+    .tile .kid::before {
+      content: ''; width: 8px; height: 8px; border-radius: 50%;
+      background: rgba(var(--accent-rgb, 110,68,255), .9); flex-shrink: 0;
+    }
+    .tile .big { font-size: 1.45rem; font-weight: 700; line-height: 1.1; }
+    .tile .row { display: flex; justify-content: space-between; font-size: .74rem; margin-top: 4px; }
+    .tile .row .v { font-weight: 600; }
+    .streak-fire { font-size: .74rem; }
+
+    /* Highlight chip */
+    .highlight {
+      display: inline-flex; align-items: center; gap: 6px; margin-top: 12px;
+      border: 1px solid rgba(var(--accent-rgb, 110,68,255), .5);
+      background: rgba(var(--accent-rgb, 110,68,255), .12);
+      border-radius: 999px; padding: 4px 12px; font-size: .78rem; font-weight: 600;
+    }
+    .vacation-note {
+      display: inline-flex; align-items: center; gap: 6px; margin-top: 12px; margin-left: 8px;
+      border: 1px solid var(--card-border, rgba(127,127,127,.3));
+      border-radius: 999px; padding: 4px 12px; font-size: .78rem; opacity: .75;
+    }
+
+    /* Heatmap: sequential single hue, 2px cell gaps, rounded cells */
+    .heatmap { display: flex; gap: 8px; align-items: flex-start; overflow-x: auto; padding-bottom: 4px; }
+    .heatmap svg { display: block; }
+    .heatmap-legend { display: flex; align-items: center; gap: 3px; font-size: .68rem; opacity: .7; margin-top: 4px; }
+    .heatmap-legend .cell { width: 10px; height: 10px; border-radius: 2px; }
+
+    /* Bar lists: thin marks, rounded data end, 2px gaps, value labels in ink */
+    .bar-row { display: grid; grid-template-columns: minmax(70px, 30%) 1fr auto; gap: 8px; align-items: center; margin-bottom: 6px; font-size: .8rem; }
+    .bar-row .label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .bar-track { height: 12px; display: flex; align-items: center; }
+    .bar-fill {
+      height: 10px; border-radius: 0 4px 4px 0; min-width: 2px;
+      background: rgba(var(--accent-rgb, 110,68,255), .9);
+    }
+    .bar-fill.spent {
+      background: repeating-linear-gradient(45deg,
+        currentColor 0 3px, transparent 3px 6px);
+      opacity: .55;
+    }
+    .bar-row .value { font-variant-numeric: tabular-nums; font-weight: 600; font-size: .76rem; }
+
+    .legend { display: flex; gap: 14px; font-size: .72rem; opacity: .8; margin-bottom: 8px; }
+    .legend .swatch { display: inline-block; width: 12px; height: 10px; border-radius: 2px; vertical-align: -1px; margin-right: 4px; }
+    .legend .swatch.earned { background: rgba(var(--accent-rgb, 110,68,255), .9); }
+    .legend .swatch.spent {
+      background: repeating-linear-gradient(45deg, currentColor 0 3px, transparent 3px 6px);
+      opacity: .55;
+    }
+
+    /* Accessible table view */
+    details.table-view { margin-top: 14px; font-size: .78rem; }
+    details.table-view summary { cursor: pointer; opacity: .7; }
+    details.table-view table { border-collapse: collapse; margin-top: 8px; width: 100%; }
+    details.table-view th, details.table-view td {
+      text-align: left; padding: 3px 8px; border-bottom: 1px solid var(--card-border, rgba(127,127,127,.2));
+      font-variant-numeric: tabular-nums;
+    }
+    details.table-view th { font-weight: 600; opacity: .7; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h2>📊 Chore Metrics</h2>
+    <select id="range" aria-label="Time range">
+      <option value="7">7 days</option>
+      <option value="30">30 days</option>
+      <option value="90">90 days</option>
+    </select>
+  </div>
+
+  <div id="content"><div class="empty">Loading…</div></div>
+
+  <script src="/plugin-sdk/v1.js"></script>
+  <script>
+  (function () {
+    'use strict';
+
+    var state = { users: [], history: [], rangeDays: 30, settings: null, hasKind: false, vacation: null };
+    var refetchTimer = null;
+
+    // ---------- utilities ----------
+    function dateStr(d) {
+      return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    }
+    function daysAgo(n) { var d = new Date(); d.setDate(d.getDate() - n); return d; }
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+      });
+    }
+    function fetchJson(url) {
+      return fetch(url).then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status + ' for ' + url);
+        return r.json();
+      });
+    }
+
+    // Graceful degradation: pre-migration-20 servers return rows without
+    // `kind`. Classify with the legacy heuristics so counts/streaks/heatmap
+    // still work; rate and spending tiles are hidden (hasKind = false).
+    function kindOf(row) {
+      if (row.kind) return row.kind;
+      if (row.title === 'Regular chores' && row.chore_schedule_id == null) return 'daily_bonus';
+      if (row.title === 'Transfer bonus') return 'transfer_bonus';
+      if (row.title === 'Adjustment') return 'adjustment';
+      return 'completion';
+    }
+
+    // Vacation days (issues #121/#72): the household `vacation_mode` setting.
+    // While active, the server skips missed logging and this plugin treats the
+    // days as NEUTRAL for streaks — they neither extend nor break a run.
+    // Note: only date-bounded vacations bridge PAST gaps; a bare toggle
+    // bridges while it stays enabled.
+    function isVacationDay(d) {
+      var v = state.vacation;
+      if (!v || v.enabled !== true) return false;
+      if (v.startDate && d < v.startDate) return false;
+      if (v.endDate && d > v.endDate) return false;
+      return true;
+    }
+
+    // ---------- metrics ----------
+    function computeMetrics() {
+      var perKid = {};
+      state.users.forEach(function (u) {
+        if (u.id === 0) return; // bonus pseudo-user
+        perKid[u.id] = {
+          name: u.username, completions: 0, missed: 0,
+          bonusDates: [], earned: 0, spent: 0,
+          firstHalf: 0, secondHalf: 0, byDay: {}
+        };
+      });
+
+      var mid = dateStr(daysAgo(Math.floor(state.rangeDays / 2)));
+      var byDayHousehold = {};
+
+      state.history.forEach(function (row) {
+        var kid = perKid[row.user_id];
+        if (!kid) return;
+        var kind = kindOf(row);
+        if (kind === 'completion') {
+          kid.completions++;
+          kid.byDay[row.date] = (kid.byDay[row.date] || 0) + 1;
+          byDayHousehold[row.date] = (byDayHousehold[row.date] || 0) + 1;
+          if (row.date < mid) kid.firstHalf++; else kid.secondHalf++;
+        } else if (kind === 'missed') {
+          kid.missed++;
+        } else if (kind === 'daily_bonus') {
+          kid.bonusDates.push(row.date);
+        }
+        if (kind === 'spent') kid.spent += -row.clam_value;
+        else if (row.clam_value > 0) kid.earned += row.clam_value;
+      });
+
+      Object.keys(perKid).forEach(function (id) {
+        var kid = perKid[id];
+        var streaks = computeStreaks(kid.bonusDates);
+        kid.currentStreak = streaks.current;
+        kid.longestStreak = streaks.longest;
+      });
+
+      return { perKid: perKid, byDayHousehold: byDayHousehold };
+    }
+
+    // Streaks from all-chores-done days (daily_bonus rows). Vacation days are
+    // neutral: skipped, never a break. "Current" = a run reaching today,
+    // yesterday, or bridged to them by vacation days.
+    function computeStreaks(dates) {
+      var set = {};
+      dates.forEach(function (d) { set[d] = true; });
+
+      var longest = 0, run = 0;
+      for (var i = state.rangeDays; i >= 0; i--) {
+        var d = dateStr(daysAgo(i));
+        if (set[d]) { run++; if (run > longest) longest = run; }
+        else if (isVacationDay(d)) { /* neutral: keep the run alive */ }
+        else run = 0;
+      }
+
+      // Today isn't over — start counting from yesterday unless today already
+      // has a bonus or is a vacation day.
+      var offset = 0;
+      var today = dateStr(daysAgo(0));
+      if (!set[today] && !isVacationDay(today)) offset = 1;
+
+      var current = 0;
+      while (offset <= state.rangeDays) {
+        var day = dateStr(daysAgo(offset));
+        if (set[day]) { current++; offset++; }
+        else if (isVacationDay(day)) { offset++; }
+        else break;
+      }
+      return { current: current, longest: longest };
+    }
+
+    // ---------- renderers ----------
+    function renderTiles(perKid) {
+      var kids = Object.values(perKid);
+      if (!kids.length) return '<div class="empty">No family members yet.</div>';
+      return '<div class="tiles">' + kids.map(function (kid) {
+        var rate = '';
+        if (state.hasKind && (kid.completions + kid.missed) > 0 && kid.missed + kid.completions > 0) {
+          // Honest rate: only when missed data exists in-range (or genuinely 0 missed with kind support).
+          var pct = Math.round(100 * kid.completions / (kid.completions + kid.missed));
+          rate = '<div class="row"><span>Completion rate</span><span class="v">' + pct + '%</span></div>';
+        }
+        return '<div class="tile">' +
+          '<div class="kid">' + esc(kid.name) + '</div>' +
+          '<div class="big">' + kid.completions + '</div>' +
+          '<div class="row muted"><span>chores done</span><span></span></div>' +
+          rate +
+          '<div class="row"><span>Streak <span class="streak-fire">🔥</span></span><span class="v">' + kid.currentStreak + ' now · ' + kid.longestStreak + ' best</span></div>' +
+          '</div>';
+      }).join('') + '</div>';
+    }
+
+    // GitHub-style heatmap: sequential single hue (accent) stepped by alpha.
+    function renderHeatmap(byDay) {
+      var weeks = Math.min(Math.ceil(state.rangeDays / 7), 13);
+      var cell = 13, gap = 2;
+      var todayDow = new Date().getDay();
+      var svg = '';
+      var max = 1;
+      Object.values(byDay).forEach(function (v) { if (v > max) max = v; });
+      var steps = [0.0, 0.25, 0.45, 0.7, 0.95];
+
+      for (var w = 0; w < weeks; w++) {
+        for (var dow = 0; dow < 7; dow++) {
+          var offset = (weeks - 1 - w) * 7 + (todayDow - dow >= 0 ? todayDow - dow : todayDow - dow + 7);
+          if (offset < 0 || offset > state.rangeDays) continue;
+          var d = dateStr(daysAgo(offset));
+          var count = byDay[d] || 0;
+          var stepIdx = count === 0 ? 0 : Math.min(4, 1 + Math.floor(3 * (count - 1) / max));
+          var fill = stepIdx === 0
+            ? 'rgba(127,127,127,0.12)'
+            : 'rgba(var(--accent-rgb, 110,68,255),' + steps[stepIdx] + ')';
+          var vacationMark = isVacationDay(d) && count === 0 ? ' 🌴 vacation' : '';
+          svg += '<rect x="' + (w * (cell + gap)) + '" y="' + (dow * (cell + gap)) + '"' +
+            ' width="' + cell + '" height="' + cell + '" rx="2" fill="' + fill + '">' +
+            '<title>' + d + ': ' + count + ' chore' + (count === 1 ? '' : 's') + ' completed' + vacationMark + '</title></rect>';
+        }
+      }
+      var width = weeks * (cell + gap);
+      var height = 7 * (cell + gap);
+      return '<div class="heatmap"><div>' +
+        '<svg width="' + width + '" height="' + height + '" role="img" aria-label="Daily chore completions heatmap">' + svg + '</svg>' +
+        '<div class="heatmap-legend">Less ' +
+        steps.map(function (s, i) {
+          var c = i === 0 ? 'rgba(127,127,127,0.12)' : 'rgba(var(--accent-rgb, 110,68,255),' + s + ')';
+          return '<span class="cell" style="background:' + c + '"></span>';
+        }).join('') +
+        ' More</div></div></div>';
+    }
+
+    function renderTopChores() {
+      var counts = {};
+      state.history.forEach(function (row) {
+        if (kindOf(row) !== 'completion' || !row.title) return;
+        counts[row.title] = (counts[row.title] || 0) + 1;
+      });
+      var top = Object.entries(counts).sort(function (a, b) { return b[1] - a[1]; }).slice(0, 5);
+      if (!top.length) return '<div class="empty">No completions in this period yet.</div>';
+      var max = top[0][1];
+      return top.map(function (entry) {
+        var pct = Math.max(4, Math.round(100 * entry[1] / max));
+        return '<div class="bar-row" title="' + esc(entry[0]) + ': ' + entry[1] + ' completions">' +
+          '<span class="label">' + esc(entry[0]) + '</span>' +
+          '<span class="bar-track"><span class="bar-fill" style="width:' + pct + '%"></span></span>' +
+          '<span class="value">' + entry[1] + '</span></div>';
+      }).join('');
+    }
+
+    // Earned vs spent: accent fill vs texture-striped neutral — identity is
+    // pattern + legend, never hue alone (the accent is user-configurable).
+    function renderSpending(perKid) {
+      var kids = Object.values(perKid).filter(function (k) { return k.earned > 0 || k.spent > 0; });
+      if (!kids.length) return '<div class="empty">No clam activity in this period.</div>';
+      var max = 1;
+      kids.forEach(function (k) { max = Math.max(max, k.earned, k.spent); });
+      var html = '<div class="legend">' +
+        '<span><span class="swatch earned"></span>Earned</span>' +
+        '<span><span class="swatch spent"></span>Spent</span></div>';
+      kids.forEach(function (kid) {
+        var earnedPct = Math.max(2, Math.round(100 * kid.earned / max));
+        var spentPct = Math.max(2, Math.round(100 * kid.spent / max));
+        html += '<div class="bar-row" title="' + esc(kid.name) + ' earned ' + kid.earned + ', spent ' + kid.spent + '">' +
+          '<span class="label">' + esc(kid.name) + '</span>' +
+          '<span class="bar-track"><span class="bar-fill" style="width:' + earnedPct + '%"></span></span>' +
+          '<span class="value">+' + kid.earned + '</span></div>';
+        html += '<div class="bar-row">' +
+          '<span class="label muted"></span>' +
+          '<span class="bar-track"><span class="bar-fill spent" style="width:' + spentPct + '%"></span></span>' +
+          '<span class="value muted">−' + kid.spent + '</span></div>';
+      });
+      return html;
+    }
+
+    function renderImprover(perKid) {
+      if (state.rangeDays < 7) return '';
+      var best = null;
+      Object.values(perKid).forEach(function (kid) {
+        var delta = kid.secondHalf - kid.firstHalf;
+        if (delta > 0 && (!best || delta > best.delta)) best = { name: kid.name, delta: delta };
+      });
+      if (!best) return '';
+      return '<div class="highlight">⭐ Biggest improver: ' + esc(best.name) +
+        ' (+' + best.delta + ' vs earlier)</div>';
+    }
+
+    function renderVacationNote() {
+      var today = dateStr(daysAgo(0));
+      if (!isVacationDay(today)) return '';
+      return '<div class="vacation-note">🌴 Vacation mode — missed chores paused, streaks safe</div>';
+    }
+
+    function renderTable(perKid) {
+      var kids = Object.values(perKid);
+      if (!kids.length) return '';
+      var rateHeader = state.hasKind ? '<th>Missed</th><th>Rate</th>' : '';
+      var rows = kids.map(function (kid) {
+        var rateCells = state.hasKind
+          ? '<td>' + kid.missed + '</td><td>' + ((kid.completions + kid.missed) ? Math.round(100 * kid.completions / (kid.completions + kid.missed)) + '%' : '—') + '</td>'
+          : '';
+        return '<tr><td>' + esc(kid.name) + '</td><td>' + kid.completions + '</td>' + rateCells +
+          '<td>' + kid.currentStreak + '</td><td>' + kid.longestStreak + '</td>' +
+          '<td>+' + kid.earned + '</td><td>−' + kid.spent + '</td></tr>';
+      }).join('');
+      return '<details class="table-view"><summary>View as table</summary><table>' +
+        '<tr><th>Kid</th><th>Done</th>' + rateHeader + '<th>Streak</th><th>Best</th><th>Earned</th><th>Spent</th></tr>' +
+        rows + '</table></details>';
+    }
+
+    function render() {
+      var metrics = computeMetrics();
+      var showHeatmap = !state.settings || state.settings.showHeatmap !== false;
+      var showSpending = !state.settings || state.settings.showSpending !== false;
+
+      var html = renderTiles(metrics.perKid);
+      html += renderImprover(metrics.perKid);
+      html += renderVacationNote();
+      if (showHeatmap) {
+        html += '<div class="section-title">Activity — last ' + state.rangeDays + ' days</div>';
+        html += renderHeatmap(metrics.byDayHousehold);
+      }
+      html += '<div class="section-title">Top chores</div>' + renderTopChores();
+      if (showSpending && state.hasKind) {
+        html += '<div class="section-title">Clams earned vs spent</div>' + renderSpending(metrics.perKid);
+      }
+      html += renderTable(metrics.perKid);
+      document.getElementById('content').innerHTML = html;
+    }
+
+    // ---------- data ----------
+    function loadData() {
+      var from = dateStr(daysAgo(state.rangeDays));
+      var to = dateStr(daysAgo(0));
+      return Promise.all([
+        fetchJson('/api/users'),
+        fetchJson('/api/chore-history?date_from=' + from + '&date_to=' + to),
+        fetchJson('/api/settings').catch(function () { return {}; })
+      ]).then(function (results) {
+        state.users = results[0] || [];
+        state.history = results[1] || [];
+        state.hasKind = state.history.length === 0 || state.history.some(function (r) { return r.kind !== undefined; });
+        state.vacation = null;
+        try {
+          // /api/settings may return the value pre-parsed (object) or raw (string).
+          var vm = results[2] && results[2].vacation_mode;
+          if (typeof vm === 'string') vm = JSON.parse(vm);
+          if (vm && typeof vm === 'object') state.vacation = vm;
+        } catch (e) { state.vacation = null; }
+        render();
+      }).catch(function (error) {
+        document.getElementById('content').innerHTML =
+          '<div class="empty">Could not load chore data (' + esc(error.message) + ')</div>';
+      });
+    }
+
+    function scheduleRefetch() {
+      clearTimeout(refetchTimer);
+      refetchTimer = setTimeout(loadData, 750);
+    }
+
+    // ---------- boot ----------
+    document.addEventListener('DOMContentLoaded', function () {
+      var params = new URLSearchParams(window.location.search);
+      var theme = params.get('theme');
+      if (theme === 'dark' || theme === 'light') {
+        document.documentElement.setAttribute('data-theme', theme);
+      }
+      if (params.get('transparent') === 'true') {
+        document.body.style.background = 'transparent';
+      }
+
+      var rangeSelect = document.getElementById('range');
+      rangeSelect.addEventListener('change', function () {
+        state.rangeDays = parseInt(rangeSelect.value, 10) || 30;
+        loadData();
+        // Persist as this display's default when the platform is available.
+        if (window.HomeGlow && window.HomeGlow.pluginId) {
+          window.HomeGlow.settings.set({ defaultRange: rangeSelect.value }).catch(function () {});
+        }
+      });
+
+      var start = Promise.resolve();
+      if (window.HomeGlow && window.HomeGlow.pluginId) {
+        start = window.HomeGlow.settings.get().then(function (settings) {
+          state.settings = settings;
+          var range = parseInt(settings.defaultRange, 10);
+          if (range === 7 || range === 30 || range === 90) {
+            state.rangeDays = range;
+            rangeSelect.value = String(range);
+          }
+        }).catch(function () {});
+
+        ['chore.completed', 'chore.uncompleted', 'clam.deposited', 'clam.withdrawn'].forEach(function (event) {
+          window.HomeGlow.on(event, scheduleRefetch);
+        });
+      }
+
+      start.then(loadData);
+      // Date rollover on always-on displays.
+      setInterval(loadData, 15 * 60 * 1000);
+    });
+  })();
+  </script>
+</body>
+</html>
