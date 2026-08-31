@@ -573,6 +573,7 @@
         })
         .then(refreshHistory)
         .then(function () { return awardIfMilestone(r); })
+        .then(announceChoreChange)
         .catch(function () {});
     }
 
@@ -581,7 +582,8 @@
         chore_schedule_id: r.scheduleId, user_id: r.userId, date: state.today
       })
         .catch(function (e) { note('Could not undo: ' + e.message); })
-        .then(refreshHistory);
+        .then(refreshHistory)
+        .then(announceChoreChange);
     }
 
     // Clams are paid ONLY here - never per step, never per day.
@@ -598,6 +600,18 @@
         })
         .then(function () { toast(r.name + ' - ' + streak + ' in a row!  +' + r.milestoneClams + ' \u{1F95F}'); })
         .catch(function (e) { note('Could not award milestone clams: ' + e.message); });
+    }
+
+    // Tell the host we wrote chore data, so the chore widget on this display
+    // repaints instead of showing the routine as undone until its own refresh
+    // timer fires. Ignored by hosts that predate the listener, so it is safe
+    // to send unconditionally.
+    function announceChoreChange() {
+      try {
+        if (window.parent && window.parent !== window) {
+          window.parent.postMessage({ type: 'homeglow:data-changed', scope: 'chores' }, '*');
+        }
+      } catch (e) { /* best effort */ }
     }
 
     var toastTimer = null;
@@ -639,7 +653,8 @@
           });
           return store.write('routines', state.routines);
         })
-        .then(refreshHistory);
+        .then(refreshHistory)
+        .then(announceChoreChange);
     }
 
     // Retire, not delete: the schedule is hidden so the chore leaves the
@@ -649,7 +664,8 @@
       return send('PATCH', API + '/api/chore-schedules/' + r.scheduleId, { visible: 0 })
         .catch(function (e) { note('Removed here, but its chore is still visible: ' + e.message); })
         .then(function () { return store.write('routines', state.routines); })
-        .then(function () { return store.drop('progress:' + r.id); });
+        .then(function () { return store.drop('progress:' + r.id); })
+        .then(announceChoreChange);
     }
 
     // ---------- render ----------
