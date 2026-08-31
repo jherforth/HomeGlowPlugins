@@ -21,3 +21,29 @@ Reference the widgets readme on the main HomeGlow git repository
 ---
 
 **Do not delete this README.**
+
+## Plugin manifests
+
+Every widget here carries an embedded manifest so HomeGlow can identify and
+describe it:
+
+```html
+<script type="application/json" id="homeglow-manifest">
+{
+  "manifestVersion": 1,
+  "id": "guest-wifi",
+  "name": "Guest Wi-Fi",
+  "description": "One or two sentences on what the widget does and what it needs."
+}
+</script>
+```
+
+- `id` is a lowercase slug (`a-z`, `0-9`, hyphens) and must be unique across
+  every plugin in this repo. HomeGlow stores it as the plugin's identity, so a
+  collision is rejected at install time.
+- `description` is optional and capped at 300 characters. It renders as the
+  subtitle on the plugin card in the Admin Panel.
+- `name` replaces the filename-derived label in the plugin list.
+
+The block is plain JSON in a non-executing `<script>` tag, so it is inert in the
+browser and ignored by HomeGlow versions that predate manifest support.
