@@ -1,0 +1,1005 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Routines</title>
+  <link rel="stylesheet" href="/index.css">
+
+  <script type="application/json" id="homeglow-manifest">
+  {
+    "manifestVersion": 1,
+    "id": "routines",
+    "name": "Routines",
+    "description": "Groups everyday steps into a routine - brush teeth, make bed, get dressed - that a child ticks off as a checklist. Each routine is one ordinary chore, so it counts toward the day exactly once. Streaks run over scheduled days, and clams are paid only at milestones you choose.",
+    "apiVersion": "v1",
+    "storage": true,
+    "settings": [
+      { "key": "person", "label": "Show routines for (username, blank = everyone)", "type": "string",
+        "default": "", "scope": "device" },
+      { "key": "showDone", "label": "Show finished routines", "type": "boolean",
+        "default": true, "scope": "device" }
+    ]
+  }
+  </script>
+
+  <style>
+    /* Styling deliberately mirrors ChoreWidget: 1px --card-border cards at
+       8px radius, a 32px round --accent button carrying the icon, the same
+       green tint on completion, and the same clam/time chips. A routine
+       should not look like a different application. */
+    :root { color-scheme: light dark; }
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      padding: 12px;
+      background: var(--card-bg, #fff);
+      /* The host defines --text, not --text-color. */
+      color: var(--text, #333);
+      font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+      font-size: 14px;
+    }
+
+    .head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+    .head h1 { font-size: 0.9rem; margin: 0; font-weight: 700; }
+    .head .today { font-size: 0.75rem; opacity: 0.6; margin-left: auto; }
+
+    .btn {
+      background: transparent;
+      border: 1px solid var(--card-border, rgba(128,128,128,0.35));
+      color: inherit;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.78rem;
+      padding: 4px 9px;
+      font-family: inherit;
+    }
+    .btn:hover { border-color: var(--accent, #757575); }
+    .btn.primary { background: var(--accent, #757575); color: #fff; border-color: var(--accent, #757575); }
+    .btn:disabled { opacity: 0.5; cursor: default; }
+
+    .note {
+      font-size: 0.72rem;
+      opacity: 0.65;
+      border: 1px dashed var(--card-border, rgba(128,128,128,0.35));
+      border-radius: 8px;
+      padding: 6px 8px;
+      margin-bottom: 8px;
+    }
+    .err {
+      border: 1px solid rgba(244, 67, 54, 0.55);
+      background: rgba(244, 67, 54, 0.10);
+      border-radius: 8px;
+      padding: 7px 9px;
+      font-size: 0.78rem;
+      margin-bottom: 8px;
+    }
+
+    .group-label {
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      opacity: 0.5;
+      margin: 10px 0 5px;
+      font-weight: 700;
+    }
+    .group-label:first-child { margin-top: 0; }
+
+    /* --- cards: same geometry as .chore-card --- */
+    .card {
+      border: 1px solid var(--card-border, rgba(128,128,128,0.3));
+      border-radius: 8px;
+      margin-bottom: 8px;
+      overflow: hidden;
+    }
+    .card.done { background: rgba(0, 255, 0, 0.10); }
+
+    .crow {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .crow .title { font-size: 0.85rem; font-weight: 700; }
+    .card.done .crow .title { font-weight: 400; }
+    .spacer { margin-left: auto; }
+
+    .chip {
+      display: inline-block;
+      font-size: 0.7rem;
+      padding: 1px 7px;
+      border-radius: 999px;
+      border: 1px solid var(--card-border, rgba(128,128,128,0.35));
+      white-space: nowrap;
+      vertical-align: middle;
+    }
+    .chip.solid { background: var(--accent, #757575); color: #fff; border-color: var(--accent, #757575); }
+
+    /* The 32px round action button, exactly as the chore card uses it. */
+    .go {
+      width: 32px;
+      height: 32px;
+      min-width: 32px;
+      border-radius: 50%;
+      border: none;
+      background: var(--accent, #757575);
+      color: #fff;
+      font-size: 1.15rem;
+      line-height: 1;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      padding: 0;
+    }
+    .go.off {
+      background: transparent;
+      border: 1px solid var(--card-border, rgba(128,128,128,0.4));
+      color: inherit;
+    }
+
+    .steps { border-top: 1px solid var(--card-border, rgba(128,128,128,0.25)); }
+    .step {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 12px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .step + .step { border-top: 1px solid var(--card-border, rgba(128,128,128,0.15)); }
+    .step.on .slabel { text-decoration: line-through; opacity: 0.55; }
+    .slabel { font-size: 0.82rem; }
+
+    .bar { height: 3px; background: rgba(var(--accent-rgb, 158,127,255), 0.15); }
+    .bar > i {
+      display: block;
+      height: 100%;
+      background: var(--accent, #757575);
+      transition: width 0.18s ease;
+    }
+
+    .empty { opacity: 0.6; font-size: 0.82rem; padding: 12px 2px; }
+
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: 14px;
+      transform: translateX(-50%);
+      background: var(--accent, #757575);
+      color: #fff;
+      padding: 7px 14px;
+      border-radius: 999px;
+      font-size: 0.8rem;
+      font-weight: 700;
+      white-space: nowrap;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.25);
+      z-index: 40;
+    }
+
+    /* --- setup --- */
+    h2 {
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      opacity: 0.5;
+      margin: 14px 0 6px;
+      font-weight: 700;
+    }
+    .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 7px; }
+    input[type="text"], input[type="time"], input[type="number"], select {
+      background: transparent;
+      color: inherit;
+      border: 1px solid var(--card-border, rgba(128,128,128,0.35));
+      border-radius: 8px;
+      padding: 6px 8px;
+      font-size: 0.82rem;
+      font-family: inherit;
+    }
+    input[type="text"] { min-width: 130px; }
+    select option { color: initial; }
+
+    /* Emoji picker: tap a picture, never type one. */
+    .picker {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      border: 1px solid var(--card-border, rgba(128,128,128,0.3));
+      border-radius: 8px;
+      padding: 6px;
+      margin-bottom: 7px;
+      /* Exactly three 32px rows (+4px gaps, +6px padding), so the grid never
+         cuts a row in half. */
+      max-height: 116px;
+      overflow-y: auto;
+    }
+    .ic {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      border: 1px solid transparent;
+      background: transparent;
+      font-size: 1.15rem;
+      line-height: 1;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+    }
+    .ic:hover { border-color: var(--card-border, rgba(128,128,128,0.5)); }
+    .ic.on { border-color: var(--accent, #757575); background: rgba(var(--accent-rgb, 158,127,255), 0.18); }
+
+    .pill {
+      border: 1px solid var(--card-border, rgba(128,128,128,0.35));
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 0.78rem;
+      cursor: pointer;
+      user-select: none;
+    }
+    .pill.on { border-color: var(--accent, #757575); background: rgba(var(--accent-rgb, 158,127,255), 0.18); }
+
+    .line {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 0;
+      border-bottom: 1px solid var(--card-border, rgba(128,128,128,0.18));
+      font-size: 0.82rem;
+    }
+    .hint { font-size: 0.72rem; opacity: 0.55; margin: 2px 0 8px; line-height: 1.45; }
+  </style>
+</head>
+<body>
+  <div class="head">
+    <h1>Routines</h1>
+    <span class="today" id="today"></span>
+    <button class="btn" id="gear">Set up</button>
+  </div>
+
+  <div id="notes"></div>
+  <div id="view"></div>
+
+  <script src="/plugin-sdk/v1.js"></script>
+  <script>
+  (function () {
+    'use strict';
+
+    // ---------------------------------------------------------------------
+    // A routine is ONE ordinary chore with clam_value 0, plus a schedule.
+    // The individual steps live in plugin storage and never become chores.
+    //
+    // That split is forced by the core: a "regular chore" is defined as
+    // clam_value === 0, and only regular chores gate the daily-completion
+    // bonus and its celebration. If steps were chores, either every step
+    // would gate the daily bonus (clam_value 0) or every step would pay out
+    // on completion (clam_value > 0) - and the second contradicts paying
+    // only at streak milestones. Hiding step-chores is no escape either:
+    // /api/chores/complete refuses a schedule with visible = 0.
+    // ---------------------------------------------------------------------
+
+    var API = '';
+
+    // Storage has two backends. The plugin API is preferred, because it is
+    // shared across every display in the house. But it is only reachable when
+    // HomeGlow injected this plugin's identity, which requires the file to have
+    // been installed through the Admin Panel (a file dropped straight into the
+    // widgets directory is served without an id). Rather than dead-end there,
+    // fall back to this browser's localStorage so the plugin always works -
+    // and say which one is in use, instead of silently discarding writes.
+    var SDK = window.HomeGlow && window.HomeGlow.pluginId ? window.HomeGlow : null;
+    var LOCAL_PREFIX = 'homeglow.routines.';
+
+    var store = {
+      shared: !!SDK,
+
+      readAll: function () {
+        if (SDK) return SDK.storage.list().then(function (all) { return all || {}; });
+        var out = {};
+        try {
+          for (var i = 0; i < localStorage.length; i++) {
+            var k = localStorage.key(i);
+            if (k.indexOf(LOCAL_PREFIX) !== 0) continue;
+            try { out[k.slice(LOCAL_PREFIX.length)] = JSON.parse(localStorage.getItem(k)); } catch (e) {}
+          }
+        } catch (e) {}
+        return Promise.resolve(out);
+      },
+
+      write: function (key, value) {
+        if (SDK) {
+          return SDK.storage.set(key, value).catch(function (e) {
+            note('Could not save "' + key + '": ' + e.message);
+          });
+        }
+        try { localStorage.setItem(LOCAL_PREFIX + key, JSON.stringify(value)); }
+        catch (e) { note('Could not save "' + key + '": ' + e.message); }
+        return Promise.resolve();
+      },
+
+      drop: function (key) {
+        if (SDK) return SDK.storage.remove(key).catch(function () {});
+        try { localStorage.removeItem(LOCAL_PREFIX + key); } catch (e) {}
+        return Promise.resolve();
+      }
+    };
+
+    // The chore icon bank (issue #141), so a routine speaks the same visual
+    // language as the chores beside it.
+    var ICONS = [
+      '\u{1F6CF}\u{FE0F}', '\u{1F455}', '\u{1F9FA}', '\u{1F45F}', '\u{1F9F8}', '\u{1F392}',
+      '\u{1FAA5}', '\u{1F6BF}', '\u{1F6C1}', '\u{1F6BD}', '\u{1F9FC}', '\u{1F487}',
+      '\u{1F9F9}', '\u{1F9FD}', '\u{1F300}', '\u{1FAA3}', '\u{1F5D1}\u{FE0F}', '\u{267B}\u{FE0F}',
+      '\u{1F37D}\u{FE0F}', '\u{1F374}', '\u{1F964}', '\u{1F9CA}', '\u{1F6B0}', '\u{1F35D}',
+      '\u{1F966}', '\u{1F34E}', '\u{1F6CB}\u{FE0F}', '\u{1FA91}', '\u{1FAB4}', '\u{1F4A1}',
+      '\u{1F4DA}', '\u{1F4EC}', '\u{1F431}', '\u{1F436}', '\u{1F41F}', '\u{1F426}',
+      '\u{1F43E}', '\u{1F9B4}', '\u{1F342}', '\u{2744}\u{FE0F}', '\u{1F331}', '\u{1F3CA}',
+      '\u{1F697}', '\u{1F4A7}', '\u{1F4DD}', '\u{1F4D6}', '\u{1F3B5}', '\u{1F4BB}',
+      '\u{23F0}', '\u{2B50}'
+    ];
+
+    var DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    var PROGRESS_KEEP_DAYS = 45;
+
+    var state = {
+      tz: null, today: null, weekday: 0,
+      users: [], routines: [], library: [], progress: {}, awards: {},
+      history: [], expanded: {}, notes: [],
+      settings: { person: '', showDone: true },
+      setup: false
+    };
+
+    // ---------- helpers ----------
+
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+      });
+    }
+    function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+    function note(m) { if (state.notes.indexOf(m) === -1) state.notes.push(m); }
+
+    function fetchJson(url, options) {
+      return fetch(url, options).then(function (r) {
+        if (!r.ok) {
+          return r.text().then(function (b) {
+            var e = new Error('HTTP ' + r.status + ' ' + b.slice(0, 140));
+            e.status = r.status;
+            throw e;
+          });
+        }
+        return r.status === 204 ? null : r.json();
+      });
+    }
+    function send(method, url, body) {
+      return fetchJson(url, {
+        method: method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+    }
+
+    function dateStringIn(tz, date) {
+      var d = date || new Date();
+      if (!tz) {
+        return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') +
+               '-' + String(d.getDate()).padStart(2, '0');
+      }
+      return new Intl.DateTimeFormat('en-CA', {
+        timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit'
+      }).format(d);
+    }
+    function weekdayIn(tz) {
+      return Math.max(0, DAY_NAMES.indexOf(
+        new Intl.DateTimeFormat('en-US', { timeZone: tz || undefined, weekday: 'short' }).format(new Date())
+      ));
+    }
+    function shiftDate(dateStr, delta) {
+      var p = dateStr.split('-');
+      var d = new Date(Date.UTC(+p[0], +p[1] - 1, +p[2]));
+      d.setUTCDate(d.getUTCDate() + delta);
+      return d.toISOString().slice(0, 10);
+    }
+    function weekdayOf(dateStr) {
+      var p = dateStr.split('-');
+      return new Date(Date.UTC(+p[0], +p[1] - 1, +p[2])).getUTCDay();
+    }
+    function nowHHMM() {
+      return new Intl.DateTimeFormat('en-GB', {
+        timeZone: state.tz || undefined, hour: '2-digit', minute: '2-digit', hour12: false
+      }).format(new Date());
+    }
+    function crontabForDays(days) {
+      if (!days || !days.length || days.length === 7) return '0 0 * * *';
+      return '0 0 * * ' + days.slice().sort().join(',');
+    }
+
+    // ---------- load ----------
+
+    function loadStored() {
+      return store.readAll().then(function (values) {
+        state.library = values.library || [];
+        state.routines = values.routines || [];
+        state.awards = values.awards || {};
+        state.progress = {};
+        Object.keys(values).forEach(function (k) {
+          if (k.indexOf('progress:') === 0) state.progress[k.slice(9)] = values[k] || {};
+        });
+      });
+    }
+
+    function saveProgress(routineId) {
+      var map = state.progress[routineId] || {};
+      var cutoff = shiftDate(state.today, -PROGRESS_KEEP_DAYS);
+      Object.keys(map).forEach(function (d) { if (d < cutoff) delete map[d]; });
+      return store.write('progress:' + routineId, map);
+    }
+
+    function loadAll() {
+      state.notes = [];
+      if (!store.shared) {
+        note('Saved on this device only. Install the plugin from the Admin Panel to share routines across displays.');
+      }
+      return fetchJson(API + '/api/timezone').catch(function () { return {}; })
+        .then(function (tz) {
+          state.tz = tz && tz.timezone;
+          state.today = dateStringIn(state.tz);
+          state.weekday = weekdayIn(state.tz);
+          return Promise.all([
+            fetchJson(API + '/api/users'),
+            loadStored(),
+            fetchJson(API + '/api/chore-history?date_from=' + shiftDate(state.today, -120))
+              .catch(function () { return []; })
+          ]);
+        })
+        .then(function (res) {
+          // id 0 is the synthetic "bonus" pool the core uses for unassigned
+          // bonus chores, not a person - a routine must never land on it.
+          state.users = (res[0] || []).filter(function (u) { return u.id !== 0; });
+          state.history = res[2] || [];
+        });
+    }
+
+    function refreshHistory() {
+      return fetchJson(API + '/api/chore-history?date_from=' + shiftDate(state.today, -120))
+        .then(function (rows) { state.history = rows || []; })
+        .catch(function () {});
+    }
+
+    function userById(id) {
+      for (var i = 0; i < state.users.length; i++) if (state.users[i].id === id) return state.users[i];
+      return null;
+    }
+    function stepById(id) {
+      for (var i = 0; i < state.library.length; i++) if (state.library[i].id === id) return state.library[i];
+      return null;
+    }
+    function findRoutine(id) {
+      for (var i = 0; i < state.routines.length; i++) if (state.routines[i].id === id) return state.routines[i];
+      return null;
+    }
+
+    // ---------- status ----------
+
+    function scheduledToday(r) {
+      return !r.days || !r.days.length || r.days.indexOf(state.weekday) !== -1;
+    }
+    function dayProgress(r, date) {
+      return (state.progress[r.id] || {})[date] || { done: [], at: null };
+    }
+    function stepsDone(r, date) {
+      var done = dayProgress(r, date).done || [];
+      return r.steps.filter(function (s) { return done.indexOf(s) !== -1; }).length;
+    }
+    function allStepsDone(r, date) {
+      return r.steps.length > 0 && stepsDone(r, date) === r.steps.length;
+    }
+    // Completion of record is the chore ledger: a parent may tick the routine
+    // straight off the main chore widget.
+    function completedInLedger(r, date) {
+      for (var i = 0; i < state.history.length; i++) {
+        var row = state.history[i];
+        if (row.chore_schedule_id === r.scheduleId && row.date === date &&
+            (row.kind === 'completion' || !row.kind)) return true;
+      }
+      return false;
+    }
+    function isDone(r) {
+      return allStepsDone(r, state.today) || completedInLedger(r, state.today);
+    }
+
+    // Streak = consecutive SCHEDULED days, back from today, carrying a
+    // completion. Read from the ledger, so it survives a storage reset.
+    function streakFor(r) {
+      var done = {};
+      state.history.forEach(function (row) {
+        if (row.chore_schedule_id === r.scheduleId && (row.kind === 'completion' || !row.kind)) {
+          done[row.date] = true;
+        }
+      });
+      var days = r.days && r.days.length ? r.days : [0, 1, 2, 3, 4, 5, 6];
+      var cursor = state.today;
+      if (!done[cursor]) cursor = shiftDate(cursor, -1);
+      var streak = 0, guard = 0;
+      while (guard++ < 400) {
+        if (days.indexOf(weekdayOf(cursor)) !== -1) {
+          if (!done[cursor]) break;
+          streak++;
+        }
+        cursor = shiftDate(cursor, -1);
+      }
+      return streak;
+    }
+
+    function onTime(r) {
+      if (!r.endTime) return null;
+      var at = dayProgress(r, state.today).at;
+      if (!at) return null;
+      return new Intl.DateTimeFormat('en-GB', {
+        timeZone: state.tz || undefined, hour: '2-digit', minute: '2-digit', hour12: false
+      }).format(new Date(at)) <= r.endTime;
+    }
+
+    // ---------- actions ----------
+
+    function toggleStep(r, stepId) {
+      var map = state.progress[r.id] || (state.progress[r.id] = {});
+      var day = map[state.today] || (map[state.today] = { done: [], at: null });
+      var was = allStepsDone(r, state.today);
+      var i = day.done.indexOf(stepId);
+      if (i === -1) day.done.push(stepId); else day.done.splice(i, 1);
+
+      var now = allStepsDone(r, state.today);
+      day.at = now ? (day.at || new Date().toISOString()) : null;
+      saveProgress(r.id);
+
+      var work = Promise.resolve();
+      if (now && !was) work = complete(r);
+      else if (!now && was) work = uncomplete(r);
+      render();
+      work.then(render);
+    }
+
+    function complete(r) {
+      return send('POST', API + '/api/chores/complete', {
+        chore_schedule_id: r.scheduleId, user_id: r.userId, date: state.today
+      })
+        .catch(function (e) {
+          // 409 = already recorded today, which is success for our purposes.
+          if (e.status !== 409) { note('Could not record completion: ' + e.message); throw e; }
+        })
+        .then(refreshHistory)
+        .then(function () { return awardIfMilestone(r); })
+        .then(announceChoreChange)
+        .catch(function () {});
+    }
+
+    function uncomplete(r) {
+      return send('POST', API + '/api/chores/uncomplete', {
+        chore_schedule_id: r.scheduleId, user_id: r.userId, date: state.today
+      })
+        .catch(function (e) { note('Could not undo: ' + e.message); })
+        .then(refreshHistory)
+        .then(announceChoreChange);
+    }
+
+    // Clams are paid ONLY here - never per step, never per day.
+    function awardIfMilestone(r) {
+      if (!r.threshold || !r.milestoneClams) return Promise.resolve();
+      var streak = streakFor(r);
+      if (!streak || streak % r.threshold !== 0) return Promise.resolve();
+      if (state.awards[r.id] === streak) return Promise.resolve();
+
+      return send('POST', API + '/api/users/' + r.userId + '/clams/add', { amount: r.milestoneClams })
+        .then(function () {
+          state.awards[r.id] = streak;
+          return store.write('awards', state.awards);
+        })
+        .then(function () { toast(r.name + ' - ' + streak + ' in a row!  +' + r.milestoneClams + ' \u{1F95F}'); })
+        .catch(function (e) { note('Could not award milestone clams: ' + e.message); });
+    }
+
+    // Tell the host we wrote chore data, so the chore widget on this display
+    // repaints instead of showing the routine as undone until its own refresh
+    // timer fires. Ignored by hosts that predate the listener, so it is safe
+    // to send unconditionally.
+    function announceChoreChange() {
+      try {
+        if (window.parent && window.parent !== window) {
+          window.parent.postMessage({ type: 'homeglow:data-changed', scope: 'chores' }, '*');
+        }
+      } catch (e) { /* best effort */ }
+    }
+
+    var toastTimer = null;
+    function toast(text) {
+      var el = document.getElementById('toast');
+      if (!el) {
+        el = document.createElement('div');
+        el.id = 'toast';
+        el.className = 'toast';
+        document.body.appendChild(el);
+      }
+      el.textContent = text;
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 4200);
+    }
+
+    function createRoutine(f) {
+      return send('POST', API + '/api/chores', {
+        title: f.name, description: 'Routine', clam_value: 0, icon: f.icon || null
+      })
+        .then(function (chore) {
+          return send('POST', API + '/api/chore-schedules', {
+            chore_id: chore.id,
+            user_id: f.userId,
+            crontab: crontabForDays(f.days),
+            duration: 'day-of',
+            // 1/0, not true/false: these columns bind straight to SQLite,
+            // which rejects a JavaScript boolean.
+            visible: 1,
+            due_time: f.startTime || null
+          }).then(function (s) { return { choreId: chore.id, scheduleId: s.id }; });
+        })
+        .then(function (ids) {
+          state.routines.push({
+            id: uid(), name: f.name, icon: f.icon || '', userId: f.userId,
+            choreId: ids.choreId, scheduleId: ids.scheduleId, days: f.days,
+            startTime: f.startTime || '', endTime: f.endTime || '', steps: f.steps,
+            threshold: f.threshold, milestoneClams: f.milestoneClams
+          });
+          return store.write('routines', state.routines);
+        })
+        .then(refreshHistory)
+        .then(announceChoreChange);
+    }
+
+    // Retire, not delete: the schedule is hidden so the chore leaves the
+    // widget, but chore_history keeps every completion it earned.
+    function retire(r) {
+      state.routines = state.routines.filter(function (x) { return x.id !== r.id; });
+      return send('PATCH', API + '/api/chore-schedules/' + r.scheduleId, { visible: 0 })
+        .catch(function (e) { note('Removed here, but its chore is still visible: ' + e.message); })
+        .then(function () { return store.write('routines', state.routines); })
+        .then(function () { return store.drop('progress:' + r.id); })
+        .then(announceChoreChange);
+    }
+
+    // ---------- render ----------
+
+    function iconButton(icon, on, extraClass) {
+      return '<button class="go ' + (on ? '' : 'off') + ' ' + (extraClass || '') + '">' +
+             (icon ? icon : (on ? '✓' : '')) + '</button>';
+    }
+
+    function routineCard(r) {
+      var done = isDone(r);
+      var total = r.steps.length;
+      var count = stepsDone(r, state.today);
+      var streak = streakFor(r);
+      var user = userById(r.userId);
+      var open = state.expanded[r.id];
+      var punctual = onTime(r);
+
+      var html = '<div class="card ' + (done ? 'done' : '') + '">';
+      html += '<div class="crow" data-toggle="' + esc(r.id) + '">';
+      html += iconButton(done ? '✓' : (r.icon || ''), !done);
+      html += '<div><span class="title">' + esc(r.name) + '</span>';
+      if (user) html += ' <span class="chip">' + esc(user.username) + '</span>';
+      if (r.startTime) {
+        html += ' <span class="chip">\u{1F551} ' + esc(r.startTime) +
+                (r.endTime ? '–' + esc(r.endTime) : '') + '</span>';
+      }
+      html += '</div><span class="spacer"></span>';
+      if (done && punctual === true) html += '<span class="chip">on time</span> ';
+      if (done && punctual === false) html += '<span class="chip">late</span> ';
+      if (!done && total) html += '<span class="chip">' + count + '/' + total + '</span> ';
+      if (streak > 0) html += '<span class="chip solid">' + streak + ' \u{1F525}</span>';
+      html += '</div>';
+
+      if (!done && total) {
+        html += '<div class="bar"><i style="width:' + Math.round((count / total) * 100) + '%"></i></div>';
+      }
+
+      if ((open || !done) && total) {
+        var doneIds = dayProgress(r, state.today).done || [];
+        html += '<div class="steps">';
+        r.steps.forEach(function (sid) {
+          var st = stepById(sid);
+          if (!st) return;
+          var on = doneIds.indexOf(sid) !== -1;
+          html += '<div class="step ' + (on ? 'on' : '') + '" data-step="' + esc(sid) +
+                  '" data-for="' + esc(r.id) + '">';
+          html += iconButton(on ? '✓' : (st.icon || ''), on);
+          html += '<span class="slabel">' + esc(st.label) + '</span></div>';
+        });
+        html += '</div>';
+      }
+
+      return html + '</div>';
+    }
+
+    function render() {
+      document.getElementById('today').textContent = state.today
+        ? new Intl.DateTimeFormat(undefined, {
+            timeZone: state.tz || undefined, weekday: 'long', month: 'short', day: 'numeric'
+          }).format(new Date())
+        : '';
+
+      var noteBox = document.getElementById('notes');
+      var html = '';
+      state.notes.forEach(function (n) {
+        var bad = /could not|failed/i.test(n);
+        html += '<div class="' + (bad ? 'err' : 'note') + '">' + esc(n) + '</div>';
+      });
+      noteBox.innerHTML = html;
+
+      if (state.setup) return renderSetup();
+
+      var view = document.getElementById('view');
+      if (!state.routines.length) {
+        view.innerHTML = '<div class="empty">No routines yet. Choose <strong>Set up</strong> to build one.</div>';
+        return;
+      }
+
+      var want = (state.settings.person || '').trim().toLowerCase();
+      var list = state.routines.filter(function (r) {
+        if (!scheduledToday(r)) return false;
+        if (!want) return true;
+        var u = userById(r.userId);
+        return u && String(u.username).toLowerCase() === want;
+      });
+
+      if (!list.length) { view.innerHTML = '<div class="empty">Nothing scheduled today.</div>'; return; }
+
+      var now = nowHHMM();
+      var todo = [], later = [], done = [];
+      list.forEach(function (r) {
+        if (isDone(r)) done.push(r);
+        else if (r.startTime && r.startTime > now) later.push(r);
+        else todo.push(r);
+      });
+
+      var out = '';
+      function section(label, arr) {
+        if (!arr.length) return;
+        arr.sort(function (a, b) { return (a.startTime || '99:99').localeCompare(b.startTime || '99:99'); });
+        out += '<div class="group-label">' + label + '</div>';
+        arr.forEach(function (r) { out += routineCard(r); });
+      }
+      section('Now', todo);
+      section('Later today', later);
+      if (state.settings.showDone) section('Done', done);
+
+      view.innerHTML = out || '<div class="empty">All finished for today.</div>';
+    }
+
+    // ---------- setup ----------
+
+    var draft = { days: [0, 1, 2, 3, 4, 5, 6], steps: [], stepIcon: '', routineIcon: '' };
+
+    function pickerHtml(attr, selected) {
+      var h = '<div class="picker">';
+      ICONS.forEach(function (e) {
+        h += '<button class="ic ' + (selected === e ? 'on' : '') + '" ' + attr + '="' + esc(e) + '">' + e + '</button>';
+      });
+      return h + '</div>';
+    }
+
+    function renderSetup() {
+      var view = document.getElementById('view');
+      var h = '';
+
+      h += '<h2>Steps</h2>';
+      h += '<div class="hint">Build a step once and reuse it in any routine.</div>';
+      state.library.forEach(function (s) {
+        h += '<div class="line"><span style="font-size:1.15rem">' + (s.icon || '') + '</span>' +
+             '<span>' + esc(s.label) + '</span><span class="spacer"></span>' +
+             '<button class="btn" data-delstep="' + esc(s.id) + '">Remove</button></div>';
+      });
+      h += '<div class="row" style="margin-top:8px"><input type="text" id="stepLabel" placeholder="Brush teeth">' +
+           '<button class="btn primary" id="addStep">Add step</button></div>';
+      h += pickerHtml('data-stepicon', draft.stepIcon);
+
+      h += '<h2>Routines</h2>';
+      if (!state.routines.length) h += '<div class="hint">None yet.</div>';
+      state.routines.forEach(function (r) {
+        var u = userById(r.userId);
+        h += '<div class="line"><span style="font-size:1.15rem">' + (r.icon || '') + '</span>' +
+             '<span>' + esc(r.name) + '</span>' +
+             '<span class="chip">' + (u ? esc(u.username) : '?') + '</span>' +
+             '<span class="chip">' + r.steps.length + ' steps</span>' +
+             '<span class="spacer"></span>' +
+             '<button class="btn" data-retire="' + esc(r.id) + '">Retire</button></div>';
+      });
+
+      h += '<h2>New routine</h2>';
+      h += '<div class="row"><input type="text" id="rName" placeholder="Morning routine">';
+      h += '<select id="rUser">';
+      state.users.forEach(function (u) { h += '<option value="' + u.id + '">' + esc(u.username) + '</option>'; });
+      h += '</select></div>';
+      h += pickerHtml('data-routineicon', draft.routineIcon);
+
+      h += '<div class="row">';
+      DAY_NAMES.forEach(function (d, i) {
+        h += '<span class="pill ' + (draft.days.indexOf(i) !== -1 ? 'on' : '') + '" data-day="' + i + '">' + d + '</span>';
+      });
+      h += '</div>';
+
+      h += '<div class="row"><span class="hint" style="margin:0">Steps:</span>';
+      if (!state.library.length) h += '<span class="hint" style="margin:0">add some above first</span>';
+      state.library.forEach(function (s) {
+        h += '<span class="pill ' + (draft.steps.indexOf(s.id) !== -1 ? 'on' : '') +
+             '" data-pick="' + esc(s.id) + '">' + (s.icon || '') + ' ' + esc(s.label) + '</span>';
+      });
+      h += '</div>';
+
+      h += '<div class="row"><span class="hint" style="margin:0">Optional time</span>' +
+           '<input type="time" id="rStart"><span class="hint" style="margin:0">to</span>' +
+           '<input type="time" id="rEnd"></div>';
+      h += '<div class="hint">Chores are day-granular, so nothing fires at the start time - it orders ' +
+           'the list. The end time only decides whether a finish reads as on time.</div>';
+
+      h += '<div class="row"><span class="hint" style="margin:0">Reward every</span>' +
+           '<input type="number" id="rThreshold" min="0" max="365" value="5" style="width:64px">' +
+           '<span class="hint" style="margin:0">days in a row, worth</span>' +
+           '<input type="number" id="rClams" min="0" max="999" value="10" style="width:64px">' +
+           '<span class="hint" style="margin:0">clams</span></div>';
+      h += '<div class="hint">Steps never pay out on their own.</div>';
+
+      h += '<div class="row"><button class="btn primary" id="createRoutine">Create routine</button>' +
+           '<button class="btn" id="closeSetup">Done</button></div>';
+
+      view.innerHTML = h;
+    }
+
+    // ---------- events ----------
+
+    document.addEventListener('click', function (ev) {
+      var el;
+
+      if ((el = ev.target.closest('[data-step]'))) {
+        var r = findRoutine(el.getAttribute('data-for'));
+        if (r) toggleStep(r, el.getAttribute('data-step'));
+        return;
+      }
+      if ((el = ev.target.closest('[data-toggle]'))) {
+        var id = el.getAttribute('data-toggle');
+        state.expanded[id] = !state.expanded[id];
+        render();
+        return;
+      }
+      // Toggle in place rather than re-rendering: a re-render would wipe
+      // whatever has been typed into the label field beside the picker.
+      if ((el = ev.target.closest('[data-stepicon], [data-routineicon]'))) {
+        var isStep = el.hasAttribute('data-stepicon');
+        var value = el.getAttribute(isStep ? 'data-stepicon' : 'data-routineicon');
+        var already = el.classList.contains('on');
+        var picker = el.closest('.picker');
+        if (picker) {
+          picker.querySelectorAll('.ic.on').forEach(function (n) { n.classList.remove('on'); });
+        }
+        if (!already) el.classList.add('on');
+        if (isStep) draft.stepIcon = already ? '' : value;
+        else draft.routineIcon = already ? '' : value;
+        return;
+      }
+      if ((el = ev.target.closest('[data-day]'))) {
+        var d = +el.getAttribute('data-day');
+        var at = draft.days.indexOf(d);
+        if (at === -1) draft.days.push(d); else draft.days.splice(at, 1);
+        el.classList.toggle('on');
+        return;
+      }
+      if ((el = ev.target.closest('[data-pick]'))) {
+        var p = el.getAttribute('data-pick');
+        var pi = draft.steps.indexOf(p);
+        if (pi === -1) draft.steps.push(p); else draft.steps.splice(pi, 1);
+        el.classList.toggle('on');
+        return;
+      }
+      if ((el = ev.target.closest('[data-delstep]'))) {
+        var sid = el.getAttribute('data-delstep');
+        state.library = state.library.filter(function (s) { return s.id !== sid; });
+        store.write('library', state.library).then(renderSetup);
+        return;
+      }
+      if ((el = ev.target.closest('[data-retire]'))) {
+        var target = findRoutine(el.getAttribute('data-retire'));
+        if (target) retire(target).then(renderSetup);
+        return;
+      }
+
+      switch (ev.target.id) {
+        case 'gear':
+        case 'closeSetup':
+          state.setup = ev.target.id === 'gear' ? !state.setup : false;
+          document.getElementById('gear').textContent = state.setup ? 'Close' : 'Set up';
+          render();
+          break;
+
+        case 'addStep': {
+          var label = document.getElementById('stepLabel').value.trim();
+          if (!label) { note('Give the step a name.'); render(); return; }
+          state.library.push({ id: uid(), label: label.slice(0, 60), icon: draft.stepIcon });
+          draft.stepIcon = '';
+          store.write('library', state.library).then(function () { state.notes = []; renderSetup(); });
+          break;
+        }
+
+        case 'createRoutine': {
+          var name = document.getElementById('rName').value.trim();
+          var sel = document.getElementById('rUser');
+          if (!name) { note('Give the routine a name.'); render(); return; }
+          if (!draft.steps.length) { note('Pick at least one step.'); render(); return; }
+          if (!sel || !sel.value) { note('No family members to assign this to.'); render(); return; }
+
+          var btn = document.getElementById('createRoutine');
+          btn.disabled = true;
+          createRoutine({
+            name: name.slice(0, 80),
+            icon: draft.routineIcon,
+            userId: parseInt(sel.value, 10),
+            days: draft.days.slice(),
+            startTime: document.getElementById('rStart').value,
+            endTime: document.getElementById('rEnd').value,
+            steps: draft.steps.slice(),
+            threshold: parseInt(document.getElementById('rThreshold').value, 10) || 0,
+            milestoneClams: parseInt(document.getElementById('rClams').value, 10) || 0
+          })
+            .then(function () {
+              draft = { days: [0, 1, 2, 3, 4, 5, 6], steps: [], stepIcon: '', routineIcon: '' };
+              state.notes = [];
+              renderSetup();
+            })
+            .catch(function (e) {
+              note('Could not create the routine: ' + e.message);
+              btn.disabled = false;
+              render();
+            });
+          break;
+        }
+      }
+    });
+
+    // ---------- boot ----------
+
+    document.addEventListener('DOMContentLoaded', function () {
+      var params = new URLSearchParams(window.location.search);
+      var theme = params.get('theme');
+      if (theme === 'dark' || theme === 'light') document.documentElement.setAttribute('data-theme', theme);
+      if (params.get('transparent') === 'true') document.body.style.background = 'transparent';
+
+      var start = SDK
+        ? SDK.settings.get().then(function (v) { state.settings = Object.assign(state.settings, v || {}); })
+            .catch(function () {})
+        : Promise.resolve();
+
+      start.then(loadAll).then(render).catch(function (e) {
+        note('Could not load: ' + e.message);
+        render();
+      });
+
+      // Polled, not event-driven: the plugin event stream does not reach the
+      // browser on every deployment, and a routine that silently stops
+      // updating is worse than one that updates a beat late.
+      setInterval(function () {
+        if (state.setup || document.hidden) return;
+        var was = state.today;
+        loadAll().then(function () {
+          if (was !== state.today) state.expanded = {};
+          render();
+        }).catch(function () {});
+      }, 60 * 1000);
+
+      document.addEventListener('visibilitychange', function () {
+        if (!document.hidden && !state.setup) loadAll().then(render).catch(function () {});
+      });
+    });
+  })();
+  </script>
+</body>
+</html>
