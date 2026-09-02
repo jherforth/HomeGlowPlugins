@@ -1,794 +1,666 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8">
-  <title>News Ticker</title>
+  <meta charset="utf-8">
+  <title>RSS Reader</title>
+  <link rel="stylesheet" href="/index.css">
+
   <script type="application/json" id="homeglow-manifest">
   {
     "manifestVersion": 1,
-    "id": "news-ticker",
-    "name": "News Ticker",
-    "description": "Scrolls headlines from any RSS feeds you add, with a few defaults to start from. Feeds are retrieved through a public CORS proxy, so that proxy host has to be allowed in HomeGlow's proxy whitelist for headlines to load."
+    "id": "rss-reader",
+    "name": "RSS Reader",
+    "description": "Headlines from the feeds you choose, merged newest first. Comes with a list of working feeds - news, technology, science, sport - and takes any RSS or Atom URL you add. Feeds are fetched through HomeGlow's own proxy rather than a third-party service.",
+    "apiVersion": "v1",
+    "storage": true,
+    "settings": [
+      { "key": "maxItems", "label": "Headlines to show", "type": "select",
+        "options": ["10", "20", "30", "50"], "default": "20", "scope": "device" },
+      { "key": "showSource", "label": "Show which feed each headline came from", "type": "boolean",
+        "default": true, "scope": "device" },
+      { "key": "showSummary", "label": "Show a one-line summary", "type": "boolean",
+        "default": false, "scope": "device" }
+    ]
   }
   </script>
-  <link rel="stylesheet" href="/index.css">
+
   <style>
-    * {
-      background: transparent !important;
-      background-color: transparent !important;
-      background-image: none !important;
-    }
+    :root { color-scheme: light dark; }
+    * { box-sizing: border-box; }
 
     body {
-      background: transparent !important;
-      font-family: 'Inter', sans-serif;
       margin: 0;
-      padding: 0.75rem;
-      box-sizing: border-box;
-      font-size: 0.85rem;
-      color: #333;
+      padding: 12px;
+      background: var(--card-bg, #fff);
+      /* The host defines --text, not --text-color. */
+      color: var(--text, #333);
+      font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+      font-size: 14px;
     }
 
-    [data-theme="dark"] body {
-      color: #a6a6d1;
-      background: transparent !important;
-    }
+    .head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+    .head h1 { font-size: 0.9rem; margin: 0; font-weight: 700; }
+    .head .when { font-size: 0.75rem; opacity: 0.6; margin-left: auto; }
 
-    .widget-container {
-      background: transparent !important;
-      border: none !important;
-      box-shadow: none !important;
-      backdrop-filter: none !important;
-      border-radius: 12px;
-      padding: 0.5rem;
-      text-align: center;
-      width: 100%;
-      max-height: calc(100vh - 1.5rem);
-      overflow-y: auto;
-    }
-
-    .widget-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 1rem;
-      padding-bottom: 0.5rem;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-    }
-
-    [data-theme="dark"] .widget-header {
-      border-bottom-color: rgba(100, 100, 150, 0.3);
-    }
-
-    .widget-title {
-      font-size: 1.2rem;
-      font-weight: 700;
-      margin: 0;
+    .btn {
+      background: transparent;
+      border: 1px solid var(--card-border, rgba(128,128,128,0.35));
       color: inherit;
-    }
-
-    .header-controls {
-      display: flex;
-      gap: 0.5rem;
-      align-items: center;
-    }
-
-    .icon-btn {
-      background: rgba(255, 255, 255, 0.1) !important;
-      color: inherit !important;
-      border: 1px solid rgba(255, 255, 255, 0.2);
-      border-radius: 6px;
-      padding: 0.4rem 0.65rem;
-      cursor: pointer;
-      font-size: 0.8rem;
-      transition: all 0.2s ease;
-    }
-
-    [data-theme="dark"] .icon-btn {
-      background: rgba(30, 30, 50, 0.3) !important;
-      border-color: rgba(100, 100, 150, 0.3);
-    }
-
-    .icon-btn:hover {
-      background: rgba(255, 255, 255, 0.2) !important;
-      transform: translateY(-1px);
-    }
-
-    [data-theme="dark"] .icon-btn:hover {
-      background: rgba(30, 30, 50, 0.5) !important;
-    }
-
-    .settings-btn {
-      background: linear-gradient(45deg, #00ddeb, #ff6b6b) !important;
-      color: #333 !important;
-      border: none;
       border-radius: 8px;
-      padding: 8px 14px;
       cursor: pointer;
-      font-size: 0.8rem;
-      font-weight: 600;
-      transition: all 0.3s ease;
+      font-size: 0.78rem;
+      padding: 4px 9px;
+      font-family: inherit;
     }
+    .btn:hover { border-color: var(--accent, #757575); }
+    .btn.primary { background: var(--accent, #757575); color: #fff; border-color: var(--accent, #757575); }
+    .btn:disabled { opacity: 0.5; cursor: default; }
 
-    [data-theme="dark"] .settings-btn {
-      background: linear-gradient(45deg, #2e2767, #620808) !important;
-      color: #a6a6d1 !important;
-    }
-
-    .settings-btn:hover {
-      filter: brightness(1.1);
-      transform: translateY(-1px);
-    }
-
-    .feed-pills {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.4rem;
-      margin-bottom: 0.75rem;
-    }
-
-    .feed-pill {
-      background: rgba(255, 255, 255, 0.08) !important;
-      color: inherit !important;
-      border: 1px solid rgba(255, 255, 255, 0.15);
-      border-radius: 20px;
-      padding: 0.25rem 0.65rem;
-      cursor: pointer;
-      font-size: 0.72rem;
-      font-weight: 600;
-      transition: all 0.2s ease;
-    }
-
-    [data-theme="dark"] .feed-pill {
-      background: rgba(30, 30, 50, 0.25) !important;
-      border-color: rgba(100, 100, 150, 0.25);
-    }
-
-    .feed-pill.active {
-      background: rgba(0, 221, 235, 0.15) !important;
-      color: #00ddeb !important;
-      border-color: rgba(0, 221, 235, 0.4);
-    }
-
-    .feed-pill:hover {
-      filter: brightness(1.15);
-    }
-
-    .news-list {
-      margin-bottom: 0.75rem;
-      max-height: 360px;
-      overflow-y: auto;
-    }
-
-    .news-list::-webkit-scrollbar { width: 4px; }
-    .news-list::-webkit-scrollbar-thumb {
-      background: rgba(0, 221, 235, 0.5);
-      border-radius: 2px;
-    }
-
-    .news-item {
-      background: rgba(255, 255, 255, 0.05) !important;
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 8px;
-      padding: 0.65rem 0.75rem;
-      margin-bottom: 0.5rem;
-      text-align: left;
-      transition: all 0.2s ease;
-      cursor: pointer;
-    }
-
-    [data-theme="dark"] .news-item {
-      background: rgba(30, 30, 50, 0.2) !important;
-      border-color: rgba(100, 100, 150, 0.18);
-    }
-
-    .news-item:hover {
-      background: rgba(255, 255, 255, 0.09) !important;
-      transform: translateY(-1px);
-    }
-
-    [data-theme="dark"] .news-item:hover {
-      background: rgba(30, 30, 50, 0.35) !important;
-    }
-
-    .news-item-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 0.5rem;
-      margin-bottom: 0.3rem;
-    }
-
-    .news-source {
-      font-size: 0.65rem;
-      font-weight: 700;
-      color: #00ddeb;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-      flex-shrink: 0;
-    }
-
-    .news-age {
-      font-size: 0.65rem;
-      opacity: 0.5;
-      white-space: nowrap;
-      flex-shrink: 0;
-    }
-
-    .news-title {
-      font-size: 0.85rem;
-      font-weight: 600;
-      color: inherit;
-      line-height: 1.35;
-      margin-bottom: 0.25rem;
-    }
-
-    .news-title a {
-      color: inherit;
-      text-decoration: none;
-    }
-
-    .news-title a:hover {
-      color: #00ddeb;
-    }
-
-    .news-desc {
+    .note, .warn {
       font-size: 0.75rem;
-      opacity: 0.65;
+      border-radius: 8px;
+      padding: 8px 9px;
+      margin-bottom: 8px;
+      line-height: 1.45;
+    }
+    .note { opacity: 0.7; border: 1px dashed var(--card-border, rgba(128,128,128,0.35)); }
+    .warn { border: 1px solid rgba(245, 158, 11, 0.55); background: rgba(245, 158, 11, 0.10); }
+    .err { border: 1px solid rgba(244, 67, 54, 0.55); background: rgba(244, 67, 54, 0.10);
+           border-radius: 8px; padding: 8px 9px; font-size: 0.75rem; margin-bottom: 8px; }
+    .warn .btn { margin-top: 6px; }
+
+    /* --- headlines --- */
+    .item {
+      display: flex;
+      gap: 9px;
+      padding: 8px 2px;
+      align-items: baseline;
+    }
+    .item + .item { border-top: 1px solid var(--card-border, rgba(128,128,128,0.16)); }
+    .ago {
+      flex: 0 0 46px;
+      font-size: 0.72rem;
+      opacity: 0.55;
+      font-variant-numeric: tabular-nums;
+    }
+    .main { min-width: 0; flex: 1; }
+    .title { font-size: 0.84rem; font-weight: 600; line-height: 1.35; }
+    .meta { font-size: 0.71rem; opacity: 0.6; margin-top: 2px; }
+    .summary {
+      font-size: 0.75rem;
+      opacity: 0.7;
+      margin-top: 3px;
       line-height: 1.4;
       display: -webkit-box;
       -webkit-line-clamp: 2;
       -webkit-box-orient: vertical;
       overflow: hidden;
     }
-
-    .loading-state {
-      text-align: center;
-      padding: 2rem;
-      opacity: 0.6;
-      font-style: italic;
+    .swatch {
+      display: inline-block;
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      margin-right: 5px;
+      vertical-align: middle;
+      background: var(--accent, #757575);
     }
 
-    .error-state {
-      text-align: center;
-      padding: 1.5rem;
-      background: rgba(220, 53, 69, 0.07) !important;
-      border: 1px solid rgba(220, 53, 69, 0.2);
-      border-radius: 8px;
-      color: #dc3545;
-      font-size: 0.8rem;
-    }
+    .empty { opacity: 0.6; font-size: 0.82rem; padding: 12px 2px; line-height: 1.5; }
 
-    [data-theme="dark"] .error-state {
-      color: #ff6b6b;
-    }
-
-    .no-items {
-      text-align: center;
-      padding: 2rem;
-      opacity: 0.55;
-      font-style: italic;
-    }
-
-    .last-updated {
+    /* --- feed picker --- */
+    h2 {
       font-size: 0.68rem;
-      opacity: 0.45;
-      text-align: right;
-      margin-top: 0.25rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      opacity: 0.5;
+      margin: 14px 0 6px;
+      font-weight: 700;
     }
-
-    .settings-panel {
-      background: rgba(255, 255, 255, 0.05) !important;
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 8px;
-      padding: 0.75rem;
-      margin-bottom: 0.75rem;
-    }
-
-    [data-theme="dark"] .settings-panel {
-      background: rgba(30, 30, 50, 0.2) !important;
-      border-color: rgba(100, 100, 150, 0.2);
-    }
-
-    .settings-title {
-      font-size: 0.9rem;
-      font-weight: 600;
-      margin: 0 0 0.6rem 0;
-      text-align: left;
-    }
-
-    .custom-feeds-list {
-      margin-bottom: 0.5rem;
-    }
-
-    .custom-feed-row {
+    h2:first-child { margin-top: 0; }
+    .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 8px; }
+    .feed {
       display: flex;
       align-items: center;
-      gap: 0.4rem;
-      padding: 0.3rem 0;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-    }
-
-    [data-theme="dark"] .custom-feed-row {
-      border-bottom-color: rgba(100, 100, 150, 0.1);
-    }
-
-    .custom-feed-row:last-child {
-      border-bottom: none;
-    }
-
-    .custom-feed-name {
-      flex: 1;
-      font-size: 0.78rem;
-      text-align: left;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    .remove-feed-btn {
-      background: rgba(220, 53, 69, 0.12) !important;
-      color: #dc3545 !important;
-      border: 1px solid rgba(220, 53, 69, 0.2);
-      border-radius: 4px;
-      padding: 0.15rem 0.4rem;
+      gap: 8px;
+      padding: 6px 3px;
+      border-bottom: 1px solid var(--card-border, rgba(128,128,128,0.16));
       cursor: pointer;
-      font-size: 0.65rem;
+      user-select: none;
+      font-size: 0.82rem;
+    }
+    .box {
+      width: 18px; height: 18px;
+      border-radius: 5px;
+      border: 1px solid var(--card-border, rgba(128,128,128,0.45));
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
       flex-shrink: 0;
-      transition: all 0.2s ease;
     }
-
-    .remove-feed-btn:hover {
-      background: rgba(220, 53, 69, 0.25) !important;
-    }
-
-    .add-feed-row {
-      display: flex;
-      gap: 0.4rem;
-      margin-bottom: 0.5rem;
-    }
-
-    .feed-input {
-      flex: 1;
-      padding: 0.4rem 0.55rem;
-      border: 1px solid rgba(255, 255, 255, 0.15);
-      border-radius: 4px;
-      background: rgba(255, 255, 255, 0.08) !important;
+    .box.on { background: var(--accent, #757575); border-color: var(--accent, #757575); color: #fff; }
+    .host { font-size: 0.7rem; opacity: 0.45; margin-left: auto; }
+    input[type="text"], input[type="url"] {
+      background: transparent;
       color: inherit;
-      font-size: 0.78rem;
+      border: 1px solid var(--card-border, rgba(128,128,128,0.35));
+      border-radius: 8px;
+      padding: 6px 8px;
+      font-size: 0.82rem;
       font-family: inherit;
     }
-
-    [data-theme="dark"] .feed-input {
-      background: rgba(30, 30, 50, 0.3) !important;
-      border-color: rgba(100, 100, 150, 0.3);
-    }
-
-    .feed-input::placeholder {
-      color: rgba(150, 150, 150, 0.7);
-    }
-
-    .feed-input:focus {
-      outline: none;
-      border-color: #00ddeb;
-      box-shadow: 0 0 0 2px rgba(0, 221, 235, 0.15);
-    }
-
-    .add-feed-btn {
-      background: linear-gradient(45deg, #00ddeb, #ff6b6b) !important;
-      color: #333 !important;
-      border: none;
-      border-radius: 4px;
-      padding: 0.4rem 0.7rem;
-      cursor: pointer;
-      font-size: 0.75rem;
-      font-weight: 600;
-      transition: all 0.3s ease;
-      flex-shrink: 0;
-    }
-
-    [data-theme="dark"] .add-feed-btn {
-      background: linear-gradient(45deg, #2e2767, #620808) !important;
-      color: #a6a6d1 !important;
-    }
-
-    .add-feed-btn:hover {
-      filter: brightness(1.1);
-    }
-
-    .preset-title {
-      font-size: 0.75rem;
-      font-weight: 600;
-      opacity: 0.6;
-      margin: 0.5rem 0 0.35rem;
-      text-align: left;
-    }
-
-    .preset-grid {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.35rem;
-    }
-
-    .preset-btn {
-      background: rgba(255, 255, 255, 0.07) !important;
-      color: inherit !important;
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      border-radius: 5px;
-      padding: 0.3rem 0.55rem;
-      cursor: pointer;
-      font-size: 0.72rem;
-      transition: all 0.2s ease;
-    }
-
-    [data-theme="dark"] .preset-btn {
-      background: rgba(30, 30, 50, 0.25) !important;
-      border-color: rgba(100, 100, 150, 0.2);
-    }
-
-    .preset-btn:hover {
-      background: rgba(0, 221, 235, 0.12) !important;
-      border-color: rgba(0, 221, 235, 0.3);
-      color: #00ddeb !important;
-    }
-
-    .error-message {
-      color: #dc3545;
-      background: rgba(220, 53, 69, 0.1) !important;
-      padding: 0.5rem;
-      border-radius: 6px;
-      margin: 0.5rem 0;
-      font-size: 0.8rem;
-      text-align: center;
-    }
-
-    [data-theme="dark"] .error-message { color: #ff6b6b; }
-
-    .success-message {
-      color: #28a745;
-      background: rgba(40, 167, 69, 0.1) !important;
-      padding: 0.5rem;
-      border-radius: 6px;
-      margin: 0.5rem 0;
-      font-size: 0.8rem;
-      text-align: center;
-    }
-
-    [data-theme="dark"] .success-message {
-      color: #00ddeb;
-      background: rgba(0, 221, 235, 0.1) !important;
-    }
+    input[type="text"] { min-width: 110px; }
+    input[type="url"] { min-width: 190px; flex: 1; }
+    .hint { font-size: 0.72rem; opacity: 0.55; margin: 2px 0 8px; line-height: 1.45; }
   </style>
 </head>
 <body>
-  <div class="widget-container">
-    <div class="widget-header">
-      <h1 class="widget-title">📰 News Ticker</h1>
-      <div class="header-controls">
-        <button id="refreshBtn" class="icon-btn" title="Refresh">🔄</button>
-        <button id="settingsBtn" class="settings-btn">Feeds</button>
-      </div>
-    </div>
-
-    <div id="feedPills" class="feed-pills"></div>
-
-    <div id="errorMessage" class="error-message" style="display:none;"></div>
-    <div id="successMessage" class="success-message" style="display:none;"></div>
-
-    <div id="settingsPanel" class="settings-panel" style="display:none;">
-      <div class="settings-title">Manage RSS Feeds</div>
-      <div id="customFeedsList" class="custom-feeds-list"></div>
-      <div class="add-feed-row">
-        <input type="url" id="feedUrlInput" class="feed-input" placeholder="https://example.com/rss" maxlength="300">
-        <input type="text" id="feedNameInput" class="feed-input" placeholder="Label" maxlength="30" style="max-width:90px;">
-        <button id="addFeedBtn" class="add-feed-btn">Add</button>
-      </div>
-      <div class="preset-title">Quick Add Presets</div>
-      <div class="preset-grid" id="presetGrid"></div>
-    </div>
-
-    <div id="newsList" class="news-list"></div>
-    <div id="lastUpdated" class="last-updated"></div>
+  <div class="head">
+    <h1>Headlines</h1>
+    <span class="when" id="when"></span>
+    <button class="btn" id="feedsBtn">Feeds</button>
   </div>
 
+  <div id="notes"></div>
+  <div id="view"></div>
+
+  <script src="/plugin-sdk/v1.js"></script>
   <script>
-    document.addEventListener('DOMContentLoaded', () => {
-      const params = new URLSearchParams(window.location.search);
-      const theme = params.get('theme');
-      if (theme === 'dark' || theme === 'light') {
-        document.documentElement.setAttribute('data-theme', theme);
-      }
+  (function () {
+    'use strict';
 
-      const PROXY = 'https://api.allorigins.win/raw?url=';
-      const REFRESH_MS = 10 * 60 * 1000;
+    // ---------------------------------------------------------------------
+    // Fetches through HomeGlow's own /api/proxy rather than a public CORS
+    // service. The previous version went through api.allorigins.win, which is
+    // a free third party: when it is slow, rate-limited or down, every feed
+    // fails at once, and every headline the household reads passes through
+    // someone else's server. The tradeoff is that /api/proxy only allows
+    // hostnames in PROXY_WHITELIST, so this offers to add them for you.
+    // ---------------------------------------------------------------------
 
-      const PRESETS = [
-        { name: 'AP News', url: 'https://feeds.apnews.com/apnews/topnews' },
-        { name: 'Reuters', url: 'https://feeds.reuters.com/reuters/topNews' },
-        { name: 'NPR', url: 'https://feeds.npr.org/1001/rss.xml' },
-        { name: 'BBC', url: 'https://feeds.bbci.co.uk/news/rss.xml' },
-        { name: 'CNN', url: 'http://rss.cnn.com/rss/edition.rss' },
-        { name: 'Tech (Ars)', url: 'https://feeds.arstechnica.com/arstechnica/index' },
-        { name: 'Hacker News', url: 'https://hnrss.org/frontpage' },
-        { name: 'Science Daily', url: 'https://www.sciencedaily.com/rss/top.xml' },
-        { name: 'Space.com', url: 'https://www.space.com/feeds/all' },
-        { name: 'ESPN', url: 'https://www.espn.com/espn/rss/news' },
-      ];
+    var API = '';
+    var SDK = window.HomeGlow && window.HomeGlow.pluginId ? window.HomeGlow : null;
+    var deviceName = new URLSearchParams(window.location.search).get('device');
+    var usePlatform = !!(SDK && deviceName);
+    var LOCAL_FEEDS = 'homeglow.rssReader.feeds';
+    var LOCAL_PREFS = 'homeglow.rssReader.prefs';
 
-      let feeds = [];
-      let activeFeedId = null;
-      let newsItems = [];
-      let loading = false;
-      let lastFetchTime = null;
-      let showSettings = false;
-      let refreshTimer = null;
+    // Every one of these was checked for a 200 and parseable items before
+    // shipping. Feeds rot: the version this replaces still listed Reuters and
+    // AP endpoints that have been dead for years, which is most of why it
+    // "barely worked".
+    var CATALOG = [
+      { group: 'News', items: [
+        { id: 'npr',      name: 'NPR News',        url: 'https://feeds.npr.org/1001/rss.xml' },
+        { id: 'bbc',      name: 'BBC World',       url: 'https://feeds.bbci.co.uk/news/world/rss.xml' },
+        { id: 'guardian', name: 'The Guardian',    url: 'https://www.theguardian.com/world/rss' },
+        { id: 'aljazeera',name: 'Al Jazeera',      url: 'https://www.aljazeera.com/xml/rss/all.xml' },
+        { id: 'sky',      name: 'Sky News',        url: 'https://feeds.skynews.com/feeds/rss/home.xml' },
+        { id: 'nyt',      name: 'New York Times',  url: 'https://rss.nytimes.com/services/xml/rss/nyt/HomePage.xml' }
+      ]},
+      { group: 'Technology', items: [
+        { id: 'ars',      name: 'Ars Technica',    url: 'https://feeds.arstechnica.com/arstechnica/index' },
+        { id: 'hn',       name: 'Hacker News',     url: 'https://hnrss.org/frontpage' },
+        { id: 'verge',    name: 'The Verge',       url: 'https://www.theverge.com/rss/index.xml' }
+      ]},
+      { group: 'Science and space', items: [
+        { id: 'nasa',     name: 'NASA',            url: 'https://www.nasa.gov/rss/dyn/breaking_news.rss' },
+        { id: 'sciday',   name: 'Science Daily',   url: 'https://www.sciencedaily.com/rss/top.xml' },
+        { id: 'space',    name: 'Space.com',       url: 'https://www.space.com/feeds/all' },
+        { id: 'bbcsci',   name: 'BBC Science',     url: 'https://feeds.bbci.co.uk/news/science_and_environment/rss.xml' }
+      ]},
+      { group: 'Sport', items: [
+        { id: 'espn',     name: 'ESPN',            url: 'https://www.espn.com/espn/rss/news' }
+      ]},
+      { group: 'Lighter reading', items: [
+        { id: 'smith',    name: 'Smithsonian',     url: 'https://www.smithsonianmag.com/rss/latest_articles/' },
+        { id: 'lifehack', name: 'Lifehacker',      url: 'https://lifehacker.com/feed/rss' },
+        { id: 'xkcd',     name: 'xkcd',            url: 'https://xkcd.com/rss.xml' }
+      ]}
+    ];
 
-      const newsList = document.getElementById('newsList');
-      const feedPills = document.getElementById('feedPills');
-      const settingsBtn = document.getElementById('settingsBtn');
-      const settingsPanel = document.getElementById('settingsPanel');
-      const refreshBtn = document.getElementById('refreshBtn');
-      const customFeedsList = document.getElementById('customFeedsList');
-      const feedUrlInput = document.getElementById('feedUrlInput');
-      const feedNameInput = document.getElementById('feedNameInput');
-      const addFeedBtn = document.getElementById('addFeedBtn');
-      const presetGrid = document.getElementById('presetGrid');
-      const lastUpdatedEl = document.getElementById('lastUpdated');
-      const errorMessage = document.getElementById('errorMessage');
-      const successMessage = document.getElementById('successMessage');
+    // Two feeds on first run, so a new install shows something without a wall
+    // of choices — and needs only two hostnames allowed through the proxy.
+    var DEFAULT_ON = ['npr', 'bbc'];
 
-      function showError(msg) {
-        errorMessage.textContent = msg;
-        errorMessage.style.display = 'block';
-        successMessage.style.display = 'none';
-        setTimeout(() => { errorMessage.style.display = 'none'; }, 4000);
-      }
+    var state = {
+      feeds: null,        // [{id, name, url, on, custom}]
+      items: [],
+      whitelist: [],
+      blockedHosts: [],
+      fetchErrors: [],
+      notes: [],
+      picking: false,
+      fetchedAt: null,
+      prefs: { maxItems: '20', showSource: true, showSummary: false }
+    };
 
-      function showSuccess(msg) {
-        successMessage.textContent = msg;
-        successMessage.style.display = 'block';
-        errorMessage.style.display = 'none';
-        setTimeout(() => { successMessage.style.display = 'none'; }, 3000);
-      }
+    // ---------- helpers ----------
 
-      function loadData() {
-        try {
-          const saved = localStorage.getItem('newsTicker_feeds');
-          if (saved) feeds = JSON.parse(saved);
-          if (feeds.length > 0 && activeFeedId === null) activeFeedId = feeds[0].id;
-        } catch (e) {
-          console.error('Error loading feeds:', e);
-          feeds = [];
-        }
-      }
-
-      function saveData() {
-        try {
-          localStorage.setItem('newsTicker_feeds', JSON.stringify(feeds));
-        } catch (e) {
-          console.error('Error saving feeds:', e);
-        }
-      }
-
-      function escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-      }
-
-      function stripHtml(html) {
-        const div = document.createElement('div');
-        div.innerHTML = html;
-        return div.textContent || '';
-      }
-
-      function timeAgo(dateStr) {
-        if (!dateStr) return '';
-        const d = new Date(dateStr);
-        if (isNaN(d)) return '';
-        const diff = (Date.now() - d.getTime()) / 1000;
-        if (diff < 60) return 'just now';
-        if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-        if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-        return `${Math.floor(diff / 86400)}d ago`;
-      }
-
-      function renderPills() {
-        feedPills.innerHTML = feeds.map(f => `
-          <button class="feed-pill ${activeFeedId === f.id ? 'active' : ''}" data-id="${f.id}">${escapeHtml(f.name)}</button>
-        `).join('');
-        feedPills.querySelectorAll('.feed-pill').forEach(btn => {
-          btn.addEventListener('click', () => {
-            activeFeedId = parseInt(btn.dataset.id);
-            renderPills();
-            fetchActiveNews();
-          });
-        });
-      }
-
-      function renderCustomFeedsList() {
-        if (feeds.length === 0) {
-          customFeedsList.innerHTML = '<div style="font-size:0.75rem;opacity:0.55;margin-bottom:0.4rem;">No feeds added yet.</div>';
-          return;
-        }
-        customFeedsList.innerHTML = feeds.map(f => `
-          <div class="custom-feed-row">
-            <span class="custom-feed-name" title="${escapeHtml(f.url)}">${escapeHtml(f.name)}</span>
-            <button class="remove-feed-btn" onclick="removeFeed(${f.id})">✕</button>
-          </div>
-        `).join('');
-      }
-
-      function renderPresets() {
-        presetGrid.innerHTML = PRESETS.map(p => `
-          <button class="preset-btn" data-url="${escapeHtml(p.url)}" data-name="${escapeHtml(p.name)}">${escapeHtml(p.name)}</button>
-        `).join('');
-        presetGrid.querySelectorAll('.preset-btn').forEach(btn => {
-          btn.addEventListener('click', () => {
-            addFeedByUrl(btn.dataset.url, btn.dataset.name);
-          });
-        });
-      }
-
-      function addFeedByUrl(url, name) {
-        if (!url) return;
-        if (feeds.some(f => f.url === url)) {
-          showError('This feed is already added');
-          return;
-        }
-        const feed = { id: Date.now(), name: name || new URL(url).hostname, url };
-        feeds.push(feed);
-        saveData();
-        if (activeFeedId === null) activeFeedId = feed.id;
-        renderPills();
-        renderCustomFeedsList();
-        showSuccess(`"${feed.name}" added`);
-        feedUrlInput.value = '';
-        feedNameInput.value = '';
-        fetchActiveNews();
-      }
-
-      addFeedBtn.addEventListener('click', () => {
-        const url = feedUrlInput.value.trim();
-        const name = feedNameInput.value.trim();
-        if (!url) { showError('Please enter a feed URL'); return; }
-        try { new URL(url); } catch { showError('Please enter a valid URL'); return; }
-        addFeedByUrl(url, name);
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
       });
+    }
+    function note(m) { if (state.notes.indexOf(m) === -1) state.notes.push(m); }
 
-      feedUrlInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') addFeedBtn.click();
-      });
+    function hostOf(url) {
+      try { return new URL(url).hostname; } catch (e) { return ''; }
+    }
 
-      window.removeFeed = function(id) {
-        feeds = feeds.filter(f => f.id !== id);
-        if (activeFeedId === id) activeFeedId = feeds.length > 0 ? feeds[0].id : null;
-        saveData();
-        renderPills();
-        renderCustomFeedsList();
-        renderNews();
-        if (activeFeedId) fetchActiveNews();
-      };
-
-      async function fetchActiveNews() {
-        if (!activeFeedId || loading) return;
-        const feed = feeds.find(f => f.id === activeFeedId);
-        if (!feed) return;
-
-        loading = true;
-        newsList.innerHTML = '<div class="loading-state">Loading headlines...</div>';
-        lastUpdatedEl.textContent = '';
-
-        try {
-          const proxyUrl = PROXY + encodeURIComponent(feed.url);
-          const response = await fetch(proxyUrl);
-          if (!response.ok) throw new Error('Network error');
-          const xmlStr = await response.text();
-          if (!xmlStr || xmlStr.trim().length === 0) throw new Error('Empty response');
-          const parser = new DOMParser();
-          const xml = parser.parseFromString(xmlStr, 'application/xml');
-
-          if (xml.querySelector('parsererror')) throw new Error('Invalid XML');
-
-          const items = Array.from(xml.querySelectorAll('item')).slice(0, 20);
-          newsItems = items.map(item => {
-            const linkEl = item.querySelector('link');
-            const link = linkEl
-              ? (linkEl.textContent.trim() || linkEl.nextSibling?.nodeValue?.trim() || '#')
-              : '#';
-            return {
-              title: item.querySelector('title')?.textContent?.trim() || 'Untitled',
-              link,
-              description: item.querySelector('description')?.textContent || '',
-              pubDate: item.querySelector('pubDate')?.textContent || '',
-              source: feed.name
-            };
-          });
-
-          lastFetchTime = new Date();
-          renderNews();
-        } catch (err) {
-          console.error('RSS fetch error:', err);
-          newsList.innerHTML = `
-            <div class="error-state">
-              Could not load headlines for <strong>${escapeHtml(feed.name)}</strong>.<br>
-              <span style="font-size:0.72rem;opacity:0.8;display:block;margin-top:0.4rem;">
-                Make sure <strong>api.allorigins.win</strong> is allowed in the proxy whitelist.
-              </span>
-              <span style="font-size:0.7rem;opacity:0.6;display:block;margin-top:0.3rem;">The feed URL may also be unavailable or have changed.</span>
-            </div>`;
-          newsItems = [];
-        } finally {
-          loading = false;
-          updateLastUpdated();
-        }
-      }
-
-      function renderNews() {
-        if (newsItems.length === 0) {
-          if (!loading) {
-            newsList.innerHTML = feeds.length === 0
-              ? '<div class="no-items">Add a news feed above to get started.</div>'
-              : '<div class="no-items">No headlines available.</div>';
+    function fetchJson(url, options) {
+      return fetch(url, options).then(function (r) {
+        return r.text().then(function (body) {
+          var parsed = null;
+          try { parsed = body ? JSON.parse(body) : null; } catch (e) {}
+          if (!r.ok) {
+            var err = new Error((parsed && parsed.error) || ('HTTP ' + r.status));
+            err.status = r.status;
+            throw err;
           }
-          return;
-        }
+          return parsed;
+        });
+      });
+    }
 
-        newsList.innerHTML = newsItems.map(item => {
-          const desc = stripHtml(item.description).trim().slice(0, 160);
-          return `
-            <div class="news-item">
-              <div class="news-item-header">
-                <span class="news-source">${escapeHtml(item.source)}</span>
-                <span class="news-age">${timeAgo(item.pubDate)}</span>
-              </div>
-              <div class="news-title">
-                <a href="${escapeHtml(item.link)}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.title)}</a>
-              </div>
-              ${desc ? `<div class="news-desc">${escapeHtml(desc)}</div>` : ''}
-            </div>
-          `;
-        }).join('');
-      }
+    function relative(date) {
+      if (!date) return '';
+      var mins = Math.round((Date.now() - date.getTime()) / 60000);
+      if (mins < 1) return 'now';
+      if (mins < 60) return mins + 'm';
+      if (mins < 60 * 24) return Math.round(mins / 60) + 'h';
+      return Math.round(mins / (60 * 24)) + 'd';
+    }
 
-      function updateLastUpdated() {
-        if (lastFetchTime) {
-          lastUpdatedEl.textContent = `Updated ${timeAgo(lastFetchTime.toISOString())}`;
-        }
-      }
+    // ---------- persistence ----------
 
-      settingsBtn.addEventListener('click', () => {
-        showSettings = !showSettings;
-        settingsPanel.style.display = showSettings ? 'block' : 'none';
-        settingsBtn.textContent = showSettings ? 'Done' : 'Feeds';
-        if (showSettings) {
-          renderCustomFeedsList();
+    function defaultFeeds() {
+      var out = [];
+      CATALOG.forEach(function (g) {
+        g.items.forEach(function (f) {
+          out.push({ id: f.id, name: f.name, url: f.url, on: DEFAULT_ON.indexOf(f.id) !== -1, custom: false });
+        });
+      });
+      return out;
+    }
+
+    function loadStored() {
+      var prefsPromise = usePlatform
+        ? SDK.settings.get().then(function (v) { state.prefs = Object.assign(state.prefs, v || {}); })
+            .catch(function () {})
+        : Promise.resolve().then(function () {
+            try {
+              var raw = localStorage.getItem(LOCAL_PREFS);
+              if (raw) state.prefs = Object.assign(state.prefs, JSON.parse(raw));
+            } catch (e) {}
+          });
+
+      var feedsPromise = SDK
+        ? SDK.storage.get('feeds').then(function (v) { return v; }).catch(function () { return null; })
+        : Promise.resolve().then(function () {
+            try { return JSON.parse(localStorage.getItem(LOCAL_FEEDS) || 'null'); } catch (e) { return null; }
+          });
+
+      return Promise.all([prefsPromise, feedsPromise]).then(function (res) {
+        var stored = res[1];
+        if (Array.isArray(stored) && stored.length) {
+          state.feeds = mergeCatalog(stored);
+        } else {
+          state.feeds = defaultFeeds();
         }
       });
+    }
 
-      refreshBtn.addEventListener('click', () => {
-        if (activeFeedId) fetchActiveNews();
+    // Keep a saved selection while still picking up catalog entries added in a
+    // later version — and drop catalog entries that were removed, without
+    // touching anything the household added itself.
+    function mergeCatalog(stored) {
+      var byId = {};
+      stored.forEach(function (f) { byId[f.id] = f; });
+
+      var out = [];
+      CATALOG.forEach(function (g) {
+        g.items.forEach(function (f) {
+          var prev = byId[f.id];
+          out.push({ id: f.id, name: f.name, url: f.url, custom: false, on: prev ? !!prev.on : false });
+          delete byId[f.id];
+        });
       });
+      Object.keys(byId).forEach(function (id) {
+        var f = byId[id];
+        if (f && f.custom && f.url) out.push({ id: f.id, name: f.name, url: f.url, on: !!f.on, custom: true });
+      });
+      return out;
+    }
 
-      function scheduleRefresh() {
-        if (refreshTimer) clearInterval(refreshTimer);
-        refreshTimer = setInterval(() => {
-          if (activeFeedId) fetchActiveNews();
-          updateLastUpdated();
-        }, REFRESH_MS);
+    function saveFeeds() {
+      if (SDK) return SDK.storage.set('feeds', state.feeds).catch(function (e) {
+        note('Could not save the feed list: ' + e.message);
+      });
+      try { localStorage.setItem(LOCAL_FEEDS, JSON.stringify(state.feeds)); } catch (e) {}
+      return Promise.resolve();
+    }
+
+    function savePrefs(partial) {
+      state.prefs = Object.assign(state.prefs, partial);
+      if (usePlatform) return SDK.settings.set(partial).catch(function () {});
+      try { localStorage.setItem(LOCAL_PREFS, JSON.stringify(state.prefs)); } catch (e) {}
+      return Promise.resolve();
+    }
+
+    // ---------- proxy whitelist ----------
+
+    function loadWhitelist() {
+      return fetchJson(API + '/api/settings')
+        .then(function (settings) {
+          var raw = (settings && settings.PROXY_WHITELIST) || '';
+          state.whitelist = String(raw).split(',').map(function (s) { return s.trim(); })
+            .filter(Boolean);
+        })
+        .catch(function () { state.whitelist = []; });
+    }
+
+    function allowHosts(hosts) {
+      var merged = state.whitelist.slice();
+      hosts.forEach(function (h) { if (h && merged.indexOf(h) === -1) merged.push(h); });
+      return fetchJson(API + '/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: 'PROXY_WHITELIST', value: merged.join(',') })
+      }).then(function () { state.whitelist = merged; });
+    }
+
+    // ---------- fetching ----------
+
+    function selectedFeeds() {
+      return (state.feeds || []).filter(function (f) { return f.on && f.url; });
+    }
+
+    function parseFeed(xmlText, feed) {
+      var xml = new DOMParser().parseFromString(xmlText, 'application/xml');
+      if (xml.querySelector('parsererror')) throw new Error('not valid XML');
+
+      // RSS uses <item>, Atom uses <entry>. Reading only <item> — which is what
+      // the previous version did — silently renders nothing for an Atom feed
+      // even when the fetch succeeded.
+      var nodes = xml.querySelectorAll('item');
+      var atom = false;
+      if (!nodes.length) { nodes = xml.querySelectorAll('entry'); atom = true; }
+
+      return Array.prototype.map.call(nodes, function (node) {
+        function text(tag) {
+          var el = node.querySelector(tag);
+          return el ? el.textContent.trim() : '';
+        }
+        var when = text('pubDate') || text('published') || text('updated') || text('date');
+        var parsed = when ? new Date(when) : null;
+        if (parsed && isNaN(parsed.getTime())) parsed = null;
+
+        var summary = text(atom ? 'summary' : 'description') || text('content');
+        // Feed summaries are HTML; render them as plain text rather than
+        // injecting markup from a third party into the dashboard.
+        summary = summary.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+
+        return {
+          title: text('title') || 'Untitled',
+          summary: summary,
+          date: parsed,
+          source: feed.name
+        };
+      });
+    }
+
+    function loadFeeds() {
+      var chosen = selectedFeeds();
+      state.fetchErrors = [];
+      state.blockedHosts = [];
+      if (!chosen.length) { state.items = []; return Promise.resolve(); }
+
+      return Promise.all(chosen.map(function (feed) {
+        return fetch(API + '/api/proxy?targetUrl=' + encodeURIComponent(feed.url))
+          .then(function (r) {
+            return r.text().then(function (body) {
+              if (!r.ok) {
+                var message = body;
+                try { message = (JSON.parse(body) || {}).error || body; } catch (e) {}
+                // Two different 403s reach here: demo mode disables the proxy
+                // outright, while a non-whitelisted host is fixable from the
+                // banner. Saying "not allowed" for the first would send someone
+                // editing a whitelist that was never the problem.
+                if (r.status === 403 && /demo mode/i.test(message)) {
+                  throw Object.assign(new Error('demo'), { demo: true });
+                }
+                if (r.status === 403) {
+                  throw Object.assign(new Error('blocked'), { blockedHost: hostOf(feed.url) });
+                }
+                throw new Error(String(message).slice(0, 90));
+              }
+              return parseFeed(body, feed);
+            });
+          })
+          .catch(function (e) {
+            if (e.demo) { note('The proxy is disabled in demo mode, so feeds cannot be fetched here.'); return []; }
+            if (e.blockedHost) {
+              if (state.blockedHosts.indexOf(e.blockedHost) === -1) state.blockedHosts.push(e.blockedHost);
+              return [];
+            }
+            state.fetchErrors.push(feed.name + ': ' + e.message);
+            return [];
+          });
+      })).then(function (lists) {
+        var all = [];
+        lists.forEach(function (l) { all = all.concat(l); });
+        // Undated items sort last rather than to the top of the list.
+        all.sort(function (a, b) {
+          if (!a.date && !b.date) return 0;
+          if (!a.date) return 1;
+          if (!b.date) return -1;
+          return b.date - a.date;
+        });
+        state.items = all;
+        state.fetchedAt = new Date();
+      });
+    }
+
+    function refresh() {
+      state.notes = [];
+      return loadWhitelist().then(loadFeeds);
+    }
+
+    // ---------- render ----------
+
+    function render() {
+      var age = state.fetchedAt ? relative(state.fetchedAt) : '';
+      document.getElementById('when').textContent =
+        !age ? '' : (age === 'now' ? 'updated just now' : 'updated ' + age + ' ago');
+
+      var html = '';
+      state.notes.forEach(function (n) { html += '<div class="note">' + esc(n) + '</div>'; });
+
+      if (state.blockedHosts.length) {
+        html += '<div class="warn">HomeGlow\'s proxy is not allowed to reach ' +
+          state.blockedHosts.map(function (h) { return '<strong>' + esc(h) + '</strong>'; }).join(', ') +
+          '. Feeds are fetched through it, so these have to be permitted first.' +
+          '<br><button class="btn primary" id="allowBtn">Allow ' +
+          (state.blockedHosts.length === 1 ? 'it' : 'them') + '</button></div>';
+      }
+      if (state.fetchErrors.length) {
+        html += '<div class="err">' + state.fetchErrors.map(esc).join('<br>') + '</div>';
+      }
+      document.getElementById('notes').innerHTML = html;
+
+      if (state.picking) return renderPicker();
+
+      var view = document.getElementById('view');
+      if (!selectedFeeds().length) {
+        view.innerHTML = '<div class="empty">No feeds selected. Choose <strong>Feeds</strong> to pick ' +
+                         'some, or add your own RSS or Atom address.</div>';
+        return;
+      }
+      if (!state.items.length) {
+        view.innerHTML = '<div class="empty">' +
+          (state.blockedHosts.length ? 'Nothing to show until the feeds above are allowed through.'
+                                     : 'No headlines yet.') + '</div>';
+        return;
       }
 
-      loadData();
-      renderPills();
-      renderPresets();
-      renderCustomFeedsList();
-      renderNews();
+      var limit = parseInt(state.prefs.maxItems, 10) || 20;
+      view.innerHTML = state.items.slice(0, limit).map(function (it) {
+        var meta = state.prefs.showSource
+          ? '<div class="meta"><span class="swatch"></span>' + esc(it.source) + '</div>' : '';
+        var summary = (state.prefs.showSummary && it.summary)
+          ? '<div class="summary">' + esc(it.summary) + '</div>' : '';
+        return '<div class="item"><span class="ago">' + esc(relative(it.date)) + '</span>' +
+               '<div class="main"><div class="title">' + esc(it.title) + '</div>' +
+               meta + summary + '</div></div>';
+      }).join('');
+    }
 
-      if (activeFeedId) fetchActiveNews();
-      scheduleRefresh();
+    function renderPicker() {
+      var h = '';
+      CATALOG.forEach(function (group) {
+        h += '<h2>' + esc(group.group) + '</h2>';
+        group.items.forEach(function (entry) {
+          var feed = findFeed(entry.id);
+          var on = feed && feed.on;
+          h += '<div class="feed" data-feed="' + esc(entry.id) + '">' +
+               '<span class="box ' + (on ? 'on' : '') + '">' + (on ? '&#10003;' : '') + '</span>' +
+               '<span>' + esc(entry.name) + '</span>' +
+               '<span class="host">' + esc(hostOf(entry.url)) + '</span></div>';
+        });
+      });
 
-      setInterval(updateLastUpdated, 60000);
+      var custom = (state.feeds || []).filter(function (f) { return f.custom; });
+      h += '<h2>Your own feeds</h2>';
+      if (!custom.length) h += '<div class="hint">Any RSS or Atom address works.</div>';
+      custom.forEach(function (f) {
+        h += '<div class="feed"><span class="box ' + (f.on ? 'on' : '') + '" data-feed="' + esc(f.id) + '">' +
+             (f.on ? '&#10003;' : '') + '</span>' +
+             '<span data-feed="' + esc(f.id) + '">' + esc(f.name) + '</span>' +
+             '<span class="host">' + esc(hostOf(f.url)) + '</span>' +
+             '<button class="btn" data-drop="' + esc(f.id) + '">Remove</button></div>';
+      });
+      h += '<div class="row" style="margin-top:8px">' +
+           '<input type="text" id="newName" placeholder="Name">' +
+           '<input type="url" id="newUrl" placeholder="https://example.com/feed.xml">' +
+           '<button class="btn primary" id="addFeed">Add</button></div>';
+
+      h += '<h2>Display</h2><div class="row">' +
+           '<label class="hint" style="margin:0">Show</label>' +
+           '<select id="maxSel">' +
+           ['10', '20', '30', '50'].map(function (n) {
+             return '<option value="' + n + '"' + (String(state.prefs.maxItems) === n ? ' selected' : '') +
+                    '>' + n + ' headlines</option>';
+           }).join('') + '</select></div>';
+
+      h += '<div class="row"><button class="btn primary" id="closePicker">Done</button></div>';
+      document.getElementById('view').innerHTML = h;
+    }
+
+    function findFeed(id) {
+      var list = state.feeds || [];
+      for (var i = 0; i < list.length; i++) if (list[i].id === id) return list[i];
+      return null;
+    }
+
+    // ---------- events ----------
+
+    document.addEventListener('click', function (ev) {
+      var el;
+
+      if ((el = ev.target.closest('[data-drop]'))) {
+        var dropId = el.getAttribute('data-drop');
+        state.feeds = state.feeds.filter(function (f) { return f.id !== dropId; });
+        saveFeeds().then(renderPicker);
+        return;
+      }
+      if ((el = ev.target.closest('[data-feed]'))) {
+        var feed = findFeed(el.getAttribute('data-feed'));
+        if (!feed) return;
+        feed.on = !feed.on;
+        saveFeeds().then(function () {
+          renderPicker();
+          return refresh();
+        }).then(function () { if (!state.picking) render(); }).catch(function () {});
+        return;
+      }
+
+      switch (ev.target.id) {
+        case 'feedsBtn':
+        case 'closePicker':
+          state.picking = ev.target.id === 'feedsBtn' ? !state.picking : false;
+          document.getElementById('feedsBtn').textContent = state.picking ? 'Close' : 'Feeds';
+          render();
+          break;
+
+        case 'allowBtn': {
+          var btn = document.getElementById('allowBtn');
+          btn.disabled = true;
+          btn.textContent = 'Allowing…';
+          allowHosts(state.blockedHosts)
+            .then(refresh)
+            .then(render)
+            .catch(function (e) {
+              note('Could not update the proxy whitelist: ' + e.message +
+                   '. Add the hostname under Settings → Interface → Proxy whitelist.');
+              render();
+            });
+          break;
+        }
+
+        case 'addFeed': {
+          var name = document.getElementById('newName').value.trim();
+          var url = document.getElementById('newUrl').value.trim();
+          if (!url) { note('Paste the feed address first.'); render(); return; }
+          if (!hostOf(url)) { note('That does not look like a web address.'); render(); return; }
+          state.feeds.push({
+            id: 'custom-' + Date.now().toString(36),
+            name: name || hostOf(url),
+            url: url,
+            on: true,
+            custom: true
+          });
+          saveFeeds().then(function () { renderPicker(); return refresh(); })
+            .then(function () { if (!state.picking) render(); }).catch(function () {});
+          break;
+        }
+      }
     });
+
+    document.addEventListener('change', function (ev) {
+      if (ev.target.id !== 'maxSel') return;
+      savePrefs({ maxItems: ev.target.value }).then(renderPicker);
+    });
+
+    // ---------- boot ----------
+
+    document.addEventListener('DOMContentLoaded', function () {
+      var params = new URLSearchParams(window.location.search);
+      var theme = params.get('theme');
+      if (theme === 'dark' || theme === 'light') document.documentElement.setAttribute('data-theme', theme);
+      if (params.get('transparent') === 'true') document.body.style.background = 'transparent';
+
+      loadStored()
+        .then(refresh)
+        .then(render)
+        .catch(function (e) {
+          note('Could not load headlines: ' + e.message);
+          render();
+        });
+
+      // Feeds move slowly and each refresh is one request per feed through the
+      // household's own server; fifteen minutes is frequent enough for a wall
+      // display and gentle on the publishers.
+      setInterval(function () {
+        if (state.picking || document.hidden) return;
+        refresh().then(render).catch(function () {});
+      }, 15 * 60 * 1000);
+
+      document.addEventListener('visibilitychange', function () {
+        if (!document.hidden && !state.picking) refresh().then(render).catch(function () {});
+      });
+    });
+  })();
   </script>
 </body>
 </html>
