@@ -250,6 +250,10 @@
 
     let editMode = false;
     let menuData = {};
+    // False until the stored menu is actually in hand. Gates every write --
+    // see saveMenuData(). Without it, a read failure leaves an empty grid that
+    // the next edit writes back over the real week.
+    let menuLoaded = false;
     let currentAddingDay = null;
 
     // Day names for the rolling cycle
@@ -367,26 +371,77 @@
       };
     }
 
+    // Menus written before this plugin moved to plugin storage live in the
+    // household settings table under this key. Read once, never written again.
+    const LEGACY_SETTINGS_KEY = 'plugin_tastytiles_recipes';
+
+    /**
+     * One-time migration. Without it, everyone who used the previous version
+     * opens an empty week: the menu is still in settings, but nothing reads it.
+     *
+     * The old key is deliberately NOT deleted. It costs nothing to leave and it
+     * keeps a recoverable copy of the menu.
+     */
+    async function readLegacyMenu() {
+      try {
+        const response = await fetch('/api/settings', { credentials: 'include' });
+        if (!response.ok) return null;
+
+        const settings = await response.json();
+        const stored = settings && settings[LEGACY_SETTINGS_KEY];
+        if (!stored) return null;
+
+        // GET /api/settings deserializes any value starting with { or [, so this
+        // arrives as an object. It was written as a string, so accept both.
+        const parsed = typeof stored === 'string' ? JSON.parse(stored) : stored;
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+        return parsed;
+      } catch (err) {
+        console.error(err);
+        return null;
+      }
+    }
+
     async function loadMenuData() {
       try {
         if (PLATFORM_AVAILABLE) {
           // Plugin storage is shared household-wide and supports JSON payloads.
           const storedDoc = await STORAGE.get(MENU_STORAGE_KEY);
+
           if (storedDoc && typeof storedDoc === 'object' && !Array.isArray(storedDoc)) {
             menuData = normalizeMenuData(storedDoc);
+            menuLoaded = true;
             return;
           }
 
+          // A present-but-unusable value is a failed read, not an empty store.
+          // Only a genuinely absent key (404 -> null) means "nothing saved yet".
+          if (storedDoc !== null && storedDoc !== undefined) {
+            throw new Error('Unexpected plugin storage payload');
+          }
+
+          const legacy = await readLegacyMenu();
+          if (legacy) {
+            menuData = normalizeMenuData(legacy);
+            menuLoaded = true;
+            await STORAGE.set(MENU_STORAGE_KEY, menuData);
+            return;
+          }
+
+          // Nothing stored anywhere: start empty, but do not write. The first
+          // real edit persists it, so a page load can never clear a menu.
           initializeEmptyMenu();
-          await STORAGE.set(MENU_STORAGE_KEY, menuData).catch(() => {});
+          menuLoaded = true;
           return;
         }
 
         // No plugin identity namespace: keep memory-only empty state and warn.
         initializeEmptyMenu();
+        menuLoaded = false;
       } catch (err) {
         console.error(err);
         initializeEmptyMenu();
+        menuLoaded = false;
       }
     }
 
@@ -434,6 +489,14 @@
     }
 
     async function saveMenuData() {
+      // Every save rewrites the whole menu. If the load failed we are holding an
+      // empty grid rather than the stored week, so writing it would replace real
+      // data with nothing.
+      if (!menuLoaded) {
+        console.error('TastyTiles: menu was never loaded; refusing to overwrite stored data.');
+        return;
+      }
+
       try {
         if (PLATFORM_AVAILABLE) {
           await STORAGE.set(MENU_STORAGE_KEY, normalizeMenuData(menuData));
