@@ -9,7 +9,9 @@
     "manifestVersion": 1,
     "id": "rolling-weekly-menu",
     "name": "Rolling Weekly Menu",
-    "description": "A rolling weekly dinner menu. Fill in what is planned for each day in edit mode, and reset the week when it is time to plan again. The menu is saved in HomeGlow settings, so every display in the house shows the same one."
+    "description": "A rolling weekly dinner menu. Fill in what is planned for each day in edit mode, and reset the week when it is time to plan again. The menu is saved in shared household plugin storage, so every display in the house shows the same one.",
+    "apiVersion": "v1",
+    "storage": true
   }
   </script>
   <link rel="stylesheet" href="/index.css">
@@ -60,6 +62,18 @@
       justify-content: center;
       gap: 0.5rem;
       margin-bottom: 1rem;
+    }
+
+    .platform-warning {
+      margin: 0 0 0.75rem 0;
+      padding: 0.5rem;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 107, 107, 0.35);
+      background: rgba(255, 107, 107, 0.1) !important;
+      color: inherit;
+      font-size: 0.75rem;
+      line-height: 1.4;
+      display: none;
     }
 
     .custom-button {
@@ -214,16 +228,26 @@
     <h1 class="widget-title">🍽️ Rolling Weekly Menu</h1>
 
     <div class="menu-controls">
-      <button class="custom-button" onclick="toggleEditMode()">
+      <button class="custom-button" id="toggle-edit-btn" onclick="toggleEditMode()">
         <span id="edit-mode-text">Edit Mode</span>
       </button>
-      <button class="custom-button" onclick="resetWeek()">Reset Week</button>
+      <button class="custom-button" id="reset-week-btn" onclick="resetWeek()">Reset Week</button>
     </div>
+
+    <div id="platform-warning" class="platform-warning"></div>
 
     <div id="menu-days"></div>
   </div>
 
+  <script src="/plugin-sdk/v1.js"></script>
   <script>
+    // Menu data is persisted through manifest-declared plugin storage.
+    var MANIFEST_PLUGIN_ID = readManifestPluginId();
+    var SDK = window.HomeGlow && window.HomeGlow.pluginId ? window.HomeGlow : null;
+    var STORAGE = createStorageClient();
+    var MENU_STORAGE_KEY = 'recipes';
+    var PLATFORM_AVAILABLE = Boolean(STORAGE);
+
     let editMode = false;
     let menuData = {};
     let currentAddingDay = null;
@@ -238,6 +262,8 @@
       if (theme === 'dark' || theme === 'light') {
         document.documentElement.setAttribute('data-theme', theme);
       }
+
+      renderPlatformState();
 
       (async () => {
         await loadMenuData();
@@ -280,42 +306,148 @@
       return rollingOrder;
     }
 
-    async function loadMenuData() {
+    function readManifestPluginId() {
       try {
-        const response = await fetch('/api/settings', {
-          credentials: 'include'
-        });
+        var manifestNode = document.getElementById('homeglow-manifest');
+        if (!manifestNode) return null;
+        var manifest = JSON.parse(manifestNode.textContent || '{}');
+        return manifest && typeof manifest.id === 'string' && manifest.id.length > 0
+          ? manifest.id
+          : null;
+      } catch (err) {
+        console.error(err);
+        return null;
+      }
+    }
 
-        if (!response.ok) throw new Error('Failed to load settings');
+    function createStorageClient() {
+      if (SDK && SDK.storage) return SDK.storage;
+      if (!MANIFEST_PLUGIN_ID) return null;
 
-        const settings = await response.json();
+      var encodedPluginId = encodeURIComponent(MANIFEST_PLUGIN_ID);
+      var basePath = '/api/plugin/v1/storage/' + encodedPluginId;
 
-        if (settings['plugin_tastytiles_recipes']) {
-          menuData = JSON.parse(settings['plugin_tastytiles_recipes']);
-        } else {
-          initializeEmptyMenu();
+      function request(method, suffix, value) {
+        var options = { method: method, headers: {} };
+        if (value !== undefined) {
+          options.headers['Content-Type'] = 'application/json';
+          options.body = JSON.stringify(value);
         }
 
+        return fetch(basePath + suffix, options).then(function (response) {
+          return response.text().then(function (text) {
+            var data = null;
+            try {
+              data = text ? JSON.parse(text) : null;
+            } catch (e) {
+              data = text;
+            }
+
+            if (!response.ok) {
+              var error = new Error((data && data.error) || ('HTTP ' + response.status));
+              error.status = response.status;
+              throw error;
+            }
+
+            return data;
+          });
+        });
+      }
+
+      return {
+        get: function (key) {
+          return request('GET', '/' + encodeURIComponent(key)).catch(function (error) {
+            if (error.status === 404) return null;
+            throw error;
+          });
+        },
+        set: function (key, value) {
+          return request('PUT', '/' + encodeURIComponent(key), value);
+        }
+      };
+    }
+
+    async function loadMenuData() {
+      try {
+        if (PLATFORM_AVAILABLE) {
+          // Plugin storage is shared household-wide and supports JSON payloads.
+          const storedDoc = await STORAGE.get(MENU_STORAGE_KEY);
+          if (storedDoc && typeof storedDoc === 'object' && !Array.isArray(storedDoc)) {
+            menuData = normalizeMenuData(storedDoc);
+            return;
+          }
+
+          initializeEmptyMenu();
+          await STORAGE.set(MENU_STORAGE_KEY, menuData).catch(() => {});
+          return;
+        }
+
+        // No plugin identity namespace: keep memory-only empty state and warn.
+        initializeEmptyMenu();
       } catch (err) {
         console.error(err);
         initializeEmptyMenu();
       }
     }
 
+    function renderPlatformState() {
+      const warning = document.getElementById('platform-warning');
+      const editBtn = document.getElementById('toggle-edit-btn');
+      const resetBtn = document.getElementById('reset-week-btn');
+
+      if (!PLATFORM_AVAILABLE) {
+        warning.textContent = 'Shared menu storage is unavailable because this widget could not resolve a plugin platform namespace. Verify this widget is installed through Admin > Widgets.';
+        warning.style.display = 'block';
+        editBtn.disabled = true;
+        resetBtn.disabled = true;
+        editBtn.style.opacity = '0.6';
+        resetBtn.style.opacity = '0.6';
+        editBtn.style.cursor = 'not-allowed';
+        resetBtn.style.cursor = 'not-allowed';
+        return;
+      }
+
+      warning.style.display = 'none';
+      editBtn.disabled = false;
+      resetBtn.disabled = false;
+      editBtn.style.opacity = '1';
+      resetBtn.style.opacity = '1';
+      editBtn.style.cursor = 'pointer';
+      resetBtn.style.cursor = 'pointer';
+    }
+
+    function normalizeMenuData(candidate) {
+      const normalized = {};
+
+      dayNames.forEach((day, index) => {
+        const rawItems = candidate && candidate[index];
+        normalized[index] = Array.isArray(rawItems)
+          ? rawItems.filter(item => typeof item === 'string' && item.trim().length > 0)
+          : [];
+      });
+
+      if (candidate && typeof candidate.lastCycleDate === 'string') {
+        normalized.lastCycleDate = candidate.lastCycleDate;
+      }
+
+      return normalized;
+    }
+
     async function saveMenuData() {
       try {
-        await fetch('/api/settings', {
-          method: 'POST',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            key: 'plugin_tastytiles_recipes',
-            value: JSON.stringify(menuData)
-          })
-        });
+        if (PLATFORM_AVAILABLE) {
+          await STORAGE.set(MENU_STORAGE_KEY, normalizeMenuData(menuData));
+        }
       } catch (err) {
         console.error(err);
       }
+    }
+
+    function initializeEmptyMenu() {
+      menuData = {};
+      dayNames.forEach((day, index) => {
+        menuData[index] = [];
+      });
     }
 
     async function checkAndCycleDays() {
