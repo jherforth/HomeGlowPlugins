@@ -11,7 +11,16 @@
     "name": "Rolling Weekly Menu",
     "description": "A rolling weekly dinner menu. Fill in what is planned for each day in edit mode, and reset the week when it is time to plan again. The menu is saved in shared household plugin storage, so every display in the house shows the same one.",
     "apiVersion": "v1",
-    "storage": true
+    "storage": true,
+    "settings": [
+      {
+        "key": "repeatWeekly",
+        "type": "boolean",
+        "scope": "household",
+        "default": false,
+        "label": "Repeat the week instead of clearing each day"
+      }
+    ]
   }
   </script>
   <link rel="stylesheet" href="/index.css">
@@ -245,6 +254,7 @@
     var MANIFEST_PLUGIN_ID = readManifestPluginId();
     var SDK = window.HomeGlow && window.HomeGlow.pluginId ? window.HomeGlow : null;
     var STORAGE = createStorageClient();
+    var SETTINGS = createSettingsClient();
     var MENU_STORAGE_KEY = 'recipes';
     var PLATFORM_AVAILABLE = Boolean(STORAGE);
 
@@ -255,6 +265,10 @@
     // the next edit writes back over the real week.
     let menuLoaded = false;
     let currentAddingDay = null;
+    // Declared in the manifest, so it is set in Admin > Widgets rather than from
+    // the widget. Read once per load, which is also the only time it is used:
+    // checkAndCycleDays() runs on the first load of a new day and not again.
+    let repeatWeekly = false;
 
     // Day names for the rolling cycle
     const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -271,6 +285,7 @@
 
       (async () => {
         await loadMenuData();
+        repeatWeekly = await readRepeatWeekly();
         await checkAndCycleDays();
         renderMenu();
       })();
@@ -369,6 +384,44 @@
           return request('PUT', '/' + encodeURIComponent(key), value);
         }
       };
+    }
+
+    // Read-only: the values are written from Admin > Widgets, which renders a
+    // control for every setting the manifest declares. Mirrors the storage
+    // client's SDK-first, direct-fetch-fallback shape.
+    function createSettingsClient() {
+      if (SDK && SDK.settings) return SDK.settings;
+      if (!MANIFEST_PLUGIN_ID) return null;
+
+      var path = '/api/plugin/v1/settings/' + encodeURIComponent(MANIFEST_PLUGIN_ID);
+      return {
+        get: function () {
+          return fetch(path).then(function (response) {
+            if (!response.ok) throw new Error('HTTP ' + response.status);
+            return response.json();
+          });
+        }
+      };
+    }
+
+    /**
+     * Off (the manifest default) keeps the original behavior: a day is cleared
+     * as it passes. On makes the week a standing rotation, so a household that
+     * eats on a fixed cycle does not retype the same menu every week.
+     *
+     * Any failure reads as off. Clearing is what the plugin has always done, so
+     * an unreachable settings route must not silently change the behavior of
+     * the menu -- and only a literal true turns it on.
+     */
+    async function readRepeatWeekly() {
+      if (!SETTINGS) return false;
+      try {
+        const values = await SETTINGS.get();
+        return Boolean(values) && values.repeatWeekly === true;
+      } catch (err) {
+        console.error(err);
+        return false;
+      }
     }
 
     // Menus written before this plugin moved to plugin storage live in the
@@ -530,6 +583,10 @@
     }
 
     function cycleDays() {
+      // A standing rotation consumes nothing. The caller still stamps
+      // lastCycleDate, which is what stops this re-running later today.
+      if (repeatWeekly) return;
+
       // Get yesterday's day index
       const yesterday = new Date();
       yesterday.setDate(yesterday.getDate() - 1);
