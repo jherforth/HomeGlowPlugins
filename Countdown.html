@@ -8,7 +8,9 @@
     "manifestVersion": 1,
     "id": "family-countdown",
     "name": "Family Countdown",
-    "description": "Counts down to the days the family is waiting for: birthdays, holidays, the start of a trip. Add as many countdowns as you like, each with its own title and date, and every one shows the time remaining."
+    "description": "Counts down to the days the family is waiting for: birthdays, holidays, the start of a trip. Countdowns are saved on the server, each countdown can be made per-display (default) or shown on all displays.",
+    "apiVersion": "v1",
+    "storage": true
   }
   </script>
   <link rel="stylesheet" href="/index.css">
@@ -126,6 +128,28 @@
       100% { opacity: 1; }
     }
 
+    .countdown-actions {
+      display: flex;
+      gap: 0.35rem;
+    }
+
+    .edit-btn {
+      background: #4a90d9 !important;
+      color: white !important;
+      border: none;
+      border-radius: 4px;
+      padding: 0.25rem 0.5rem;
+      cursor: pointer;
+      font-size: 0.7rem;
+      font-weight: 600;
+      transition: all 0.3s ease;
+    }
+
+    .edit-btn:hover {
+      background: #3a7bc0 !important;
+      transform: translateY(-1px);
+    }
+
     .delete-btn {
       background: #ff6b6b !important;
       color: white !important;
@@ -154,6 +178,27 @@
     [data-theme="dark"] .add-form {
       background: rgba(30, 30, 50, 0.2);
       border-color: rgba(100, 100, 150, 0.2);
+    }
+
+    .scope-option {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.8rem;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .scope-badge {
+      font-size: 0.6rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      padding: 0.1rem 0.3rem;
+      border-radius: 3px;
+      border: 1px solid currentColor;
+      opacity: 0.7;
+      white-space: nowrap;
     }
 
     .form-row {
@@ -308,6 +353,12 @@
         <input type="time" id="eventTime" class="form-input" value="00:00">
       </div>
       <div class="form-row">
+        <label class="scope-option">
+          <input type="checkbox" id="eventAllDisplays">
+          <span>Show on every display</span>
+        </label>
+      </div>
+      <div class="form-row">
         <button id="addCountdownBtn" class="custom-button">Add Countdown</button>
         <button id="cancelBtn" class="custom-button" style="background: #6c757d !important;">Cancel</button>
       </div>
@@ -316,6 +367,7 @@
     </div>
   </div>
 
+  <script src="/plugin-sdk/v1.js"></script>
   <script>
     document.addEventListener('DOMContentLoaded', () => {
       // Handle theme
@@ -329,6 +381,31 @@
       let countdowns = [];
       let updateInterval;
       let showForm = false;
+      // Which countdown the form is editing, or null when adding a new one.
+      let editingId = null;
+      // False until the stored countdowns are actually in hand. Gates every
+      // write: without it a failed read leaves an empty list that the next
+      // mutation would persist over the real one.
+      let countdownsLoaded = false;
+
+      // One key per countdown. A single document would make two displays
+      // adding at the same moment a get-modify-set race on one key, and one
+      // add would be lost.
+      const KEY_PREFIX = 'c:';
+      const MIGRATION_KEY = 'migratedFromLocalStorage';
+      const LEGACY_KEY = 'homeglowCountdowns';
+
+      // The dashboard passes this display's device name on the iframe URL.
+      const MY_DEVICE = params.get('device') || '';
+
+      // Names of devices the server currently knows, used only to decide
+      // whether a countdown's owning display still exists. Null means the
+      // lookup failed, which is treated as "cannot tell" -- see isVisible().
+      let knownDevices = null;
+
+      const SDK = window.HomeGlow && window.HomeGlow.pluginId ? window.HomeGlow : null;
+      const STORAGE = SDK ? SDK.storage : null;
+      const PLATFORM_AVAILABLE = Boolean(STORAGE);
 
       // DOM elements
       const countdownList = document.getElementById('countdownList');
@@ -338,29 +415,189 @@
       const eventEmoji = document.getElementById('eventEmoji');
       const eventDate = document.getElementById('eventDate');
       const eventTime = document.getElementById('eventTime');
+      const eventAllDisplays = document.getElementById('eventAllDisplays');
       const addCountdownBtn = document.getElementById('addCountdownBtn');
       const cancelBtn = document.getElementById('cancelBtn');
       const errorMessage = document.getElementById('errorMessage');
       const successMessage = document.getElementById('successMessage');
 
-      // Load countdowns from localStorage
-      function loadCountdowns() {
+      // Interpolated into innerHTML below. Titles are free text, and with
+      // countdowns shared across displays an unescaped one would run on every
+      // other display in the house, not just the one that typed it.
+      function escapeHtml(value) {
+        return String(value == null ? '' : value)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      }
+
+      // Date.now() alone collides when two displays add within the same
+      // millisecond, and under one-key-per-countdown a collision silently
+      // overwrites. The random suffix is what makes the key unique.
+      function newCountdownId() {
+        return String(Date.now()) + '-' + Math.random().toString(36).slice(2, 8);
+      }
+
+      // Drop anything that is not a usable countdown rather than rendering
+      // undefined, and keep the id the key carries so the two cannot disagree.
+      function normalizeCountdown(id, value) {
+        if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+        if (typeof value.title !== 'string' || !value.title.trim()) return null;
+        if (typeof value.date !== 'string' || Number.isNaN(new Date(value.date).getTime())) return null;
+        return {
+          id: id,
+          title: value.title,
+          emoji: typeof value.emoji === 'string' && value.emoji ? value.emoji : '🎉',
+          date: value.date,
+          created: typeof value.created === 'string' ? value.created : new Date().toISOString(),
+          // null / absent means every display. A device name means that one
+          // display only. Anything else is treated as every display rather
+          // than as a countdown nobody can see.
+          device: typeof value.device === 'string' && value.device ? value.device : null
+        };
+      }
+
+      async function loadKnownDevices() {
         try {
-          const saved = localStorage.getItem('homeglowCountdowns');
-          countdowns = saved ? JSON.parse(saved) : [];
+          const response = await fetch('/api/devices');
+          if (!response.ok) return null;
+          const devices = await response.json();
+          if (!Array.isArray(devices)) return null;
+          return devices.map((device) => device && device.name).filter(Boolean);
         } catch (error) {
-          console.error('Error loading countdowns:', error);
-          countdowns = [];
+          console.error('Error loading device list:', error);
+          return null;
         }
       }
 
-      // Save countdowns to localStorage
-      function saveCountdowns() {
+      // A countdown for every display is always shown. One pinned to a display
+      // is shown there.
+      //
+      // The third case is a display that was renamed after the countdown was
+      // created: plugin storage holds the old name and, unlike device settings,
+      // nothing rewrites it on rename. Rather than let that countdown become
+      // invisible everywhere -- the silent loss this plugin exists to stop --
+      // an owner no longer present in the device list is treated as every
+      // display, so it resurfaces and can be fixed or deleted. If the device
+      // list could not be read at all, the name is honored as written, so a
+      // pinned countdown is never broadcast on a guess.
+      function isVisible(countdown) {
+        if (!countdown.device) return true;
+        if (countdown.device === MY_DEVICE) return true;
+        if (knownDevices === null) return false;
+        return knownDevices.indexOf(countdown.device) === -1;
+      }
+
+      // Countdowns written before this plugin moved to server storage live in
+      // one browser key. Imported once per install, and the original key is
+      // deliberately left intact as a fallback copy.
+      function readLegacyCountdowns() {
         try {
-          localStorage.setItem('homeglowCountdowns', JSON.stringify(countdowns));
+          const saved = localStorage.getItem(LEGACY_KEY);
+          const parsed = saved ? JSON.parse(saved) : null;
+          return Array.isArray(parsed) ? parsed : [];
         } catch (error) {
-          console.error('Error saving countdowns:', error);
+          console.error('Error reading legacy countdowns:', error);
+          return [];
+        }
+      }
+
+      async function migrateFromLocalStorage() {
+        const legacy = readLegacyCountdowns();
+        if (legacy.length === 0) return [];
+
+        const imported = [];
+        for (const candidate of legacy) {
+          const id = newCountdownId();
+          const countdown = normalizeCountdown(id, candidate);
+          if (!countdown) continue;
+          await STORAGE.set(KEY_PREFIX + id, {
+            title: countdown.title,
+            emoji: countdown.emoji,
+            date: countdown.date,
+            created: countdown.created,
+            // Countdowns that predate server storage were only ever on one
+            // browser, so they are pinned to the display that imports them.
+            device: MY_DEVICE || null
+          });
+          imported.push(countdown);
+        }
+        return imported;
+      }
+
+      // Load countdowns from server storage, shared by every display.
+      async function loadCountdowns() {
+        countdowns = [];
+        countdownsLoaded = false;
+
+        if (!PLATFORM_AVAILABLE) {
+          showError('Shared storage unavailable — install this widget through Admin > Widgets.');
+          return;
+        }
+
+        try {
+          const all = await STORAGE.list();
+          const documents = all && typeof all === 'object' && !Array.isArray(all) ? all : {};
+
+          countdowns = Object.keys(documents)
+            .filter((key) => key.indexOf(KEY_PREFIX) === 0)
+            .map((key) => normalizeCountdown(key.slice(KEY_PREFIX.length), documents[key]))
+            .filter(Boolean);
+          countdownsLoaded = true;
+
+          // Only migrate on a genuinely empty store, and only once, so a
+          // deleted countdown does not come back on the next load.
+          if (countdowns.length === 0 && documents[MIGRATION_KEY] === undefined) {
+            countdowns = await migrateFromLocalStorage();
+            await STORAGE.set(MIGRATION_KEY, { at: new Date().toISOString() });
+          }
+        } catch (error) {
+          console.error('Error loading countdowns:', error);
+          showError('Failed to load countdowns');
+          countdowns = [];
+          countdownsLoaded = false;
+        }
+      }
+
+      // Writes touch one countdown's key, never the whole list, so a
+      // concurrent add or delete on another display cannot be clobbered.
+      async function saveCountdown(countdown) {
+        if (!countdownsLoaded) {
+          console.error('Countdown: list was never loaded; refusing to write.');
           showError('Failed to save countdown');
+          return false;
+        }
+        try {
+          await STORAGE.set(KEY_PREFIX + countdown.id, {
+            title: countdown.title,
+            emoji: countdown.emoji,
+            date: countdown.date,
+            created: countdown.created,
+            device: countdown.device || null
+          });
+          return true;
+        } catch (error) {
+          console.error('Error saving countdown:', error);
+          showError('Failed to save countdown');
+          return false;
+        }
+      }
+
+      async function removeCountdown(id) {
+        if (!countdownsLoaded) {
+          console.error('Countdown: list was never loaded; refusing to delete.');
+          showError('Failed to delete countdown');
+          return false;
+        }
+        try {
+          await STORAGE.remove(KEY_PREFIX + id);
+          return true;
+        } catch (error) {
+          console.error('Error deleting countdown:', error);
+          showError('Failed to delete countdown');
+          return false;
         }
       }
 
@@ -445,18 +682,19 @@
 
       // Render countdowns
       function renderCountdowns() {
-        if (countdowns.length === 0) {
+        const visible = countdowns.filter(isVisible);
+
+        if (visible.length === 0) {
           countdownList.innerHTML = '<div class="no-countdowns">No countdowns yet. Add one to get started!</div>';
           return;
         }
 
         // Sort countdowns by date (soonest first)
-        const sortedCountdowns = [...countdowns].sort((a, b) => new Date(a.date) - new Date(b.date));
+        const sortedCountdowns = [...visible].sort((a, b) => new Date(a.date) - new Date(b.date));
 
-        countdownList.innerHTML = sortedCountdowns.map((countdown, index) => {
+        countdownList.innerHTML = sortedCountdowns.map((countdown) => {
           const timeRemaining = calculateTimeRemaining(countdown.date);
-          const originalIndex = countdowns.findIndex(c => c.id === countdown.id);
-          
+
           let displayClass = 'countdown-display';
           if (timeRemaining.expired) {
             displayClass += ' countdown-expired';
@@ -467,10 +705,15 @@
           return `
             <div class="countdown-item">
               <div class="countdown-header">
-                <div class="countdown-emoji">${countdown.emoji}</div>
-                <button class="delete-btn" onclick="deleteCountdown(${originalIndex})">Delete</button>
+                <div class="countdown-emoji">${escapeHtml(countdown.emoji)}</div>
+                <div class="countdown-actions">
+                  <button class="edit-btn" onclick="editCountdown('${escapeHtml(countdown.id)}')">Edit</button>
+                  <button class="delete-btn" onclick="deleteCountdown('${escapeHtml(countdown.id)}')">Delete</button>
+                </div>
               </div>
-              <h3 class="countdown-title">${countdown.title}</h3>
+              <h3 class="countdown-title">${escapeHtml(countdown.title)}${
+                countdown.device ? '' : ' <span class="scope-badge">All displays</span>'
+              }</h3>
               <div class="${displayClass}">${timeRemaining.text}</div>
               <p class="countdown-date">${formatDate(countdown.date)}</p>
             </div>
@@ -478,17 +721,44 @@
         }).join('');
       }
 
-      // Delete countdown
-      window.deleteCountdown = function(index) {
-        if (index < 0 || index >= countdowns.length) {
-          return;
-        }
+      // Delete by id, never by array index: the rendered list is sorted by
+      // date and the underlying list can change on another display, so an
+      // index resolves to the wrong countdown.
+      window.deleteCountdown = async function(id) {
+        const index = countdowns.findIndex(c => c.id === id);
+        if (index === -1) return;
 
+        if (!await removeCountdown(id)) return;
         countdowns.splice(index, 1);
-        saveCountdowns();
+        if (editingId === id) cancelEdit();
         renderCountdowns();
         showSuccess('Countdown deleted successfully!');
       };
+
+      // Load the countdown into the form for editing.
+      window.editCountdown = function(id) {
+        const countdown = countdowns.find(c => c.id === id);
+        if (!countdown) return;
+
+        editingId = id;
+        const [datePart, timePart] = String(countdown.date).split('T');
+        eventTitle.value = countdown.title;
+        eventEmoji.value = countdown.emoji;
+        eventDate.value = datePart || '';
+        eventTime.value = (timePart || '00:00').slice(0, 5);
+        eventAllDisplays.checked = !countdown.device;
+
+        showForm = true;
+        addForm.style.display = 'block';
+        toggleFormBtn.textContent = '✕ Cancel';
+        addCountdownBtn.textContent = 'Save Changes';
+        eventTitle.focus();
+      };
+
+      function cancelEdit() {
+        editingId = null;
+        addCountdownBtn.textContent = 'Add Countdown';
+      }
 
       // Toggle form visibility
       function toggleForm() {
@@ -497,6 +767,8 @@
         toggleFormBtn.textContent = showForm ? '✕ Cancel' : '+ Add New Countdown';
         
         if (showForm) {
+          cancelEdit();
+          eventAllDisplays.checked = false;
           eventTitle.focus();
           // Set default date to tomorrow
           const tomorrow = new Date();
@@ -509,20 +781,27 @@
 
       // Clear form
       function clearForm() {
+        cancelEdit();
         eventTitle.value = '';
         eventEmoji.value = '🎉';
         eventDate.value = '';
         eventTime.value = '00:00';
+        eventAllDisplays.checked = false;
         errorMessage.textContent = '';
         successMessage.textContent = '';
       }
 
-      // Add countdown
-      function addCountdown() {
+      // Add, or save an edit when the form was opened from the Edit button.
+      async function addCountdown() {
         const title = eventTitle.value.trim();
         const emoji = eventEmoji.value;
         const date = eventDate.value;
         const time = eventTime.value;
+        // Chosen while creating the countdown rather than configured afterwards,
+        // so the decision is made where it is understood. Unticked keeps the
+        // behavior this plugin has always had -- a countdown belongs to the
+        // display it was typed on -- and sharing it is the deliberate act.
+        const device = eventAllDisplays.checked ? null : (MY_DEVICE || null);
 
         // Validation
         if (!title) {
@@ -545,23 +824,42 @@
           return;
         }
 
-        // Check for duplicate titles
-        if (countdowns.some(c => c.title.toLowerCase() === title.toLowerCase())) {
+        // Check for duplicate titles. A countdown being edited must not
+        // collide with itself.
+        // Only against countdowns this display can see: another display's
+        // pinned countdown is not a name clash anyone here could resolve.
+        if (countdowns.some(c => c.id !== editingId && isVisible(c) && c.title.toLowerCase() === title.toLowerCase())) {
           showError('A countdown with this name already exists');
           return;
         }
 
-        // Add countdown
+        if (editingId) {
+          const existing = countdowns.find(c => c.id === editingId);
+          if (!existing) {
+            showError('That countdown no longer exists');
+            return;
+          }
+
+          const updated = { ...existing, title, emoji, date: fullDate, device };
+          if (!await saveCountdown(updated)) return;
+          Object.assign(existing, updated);
+          renderCountdowns();
+          showSuccess(`Countdown "${title}" updated successfully!`);
+          toggleForm();
+          return;
+        }
+
         const newCountdown = {
-          id: Date.now(),
+          id: newCountdownId(),
           title,
           emoji,
           date: fullDate,
-          created: new Date().toISOString()
+          created: new Date().toISOString(),
+          device
         };
 
+        if (!await saveCountdown(newCountdown)) return;
         countdowns.push(newCountdown);
-        saveCountdowns();
         renderCountdowns();
         showSuccess(`Countdown "${title}" added successfully!`);
         toggleForm();
@@ -585,10 +883,15 @@
         if (e.key === 'Enter') addCountdown();
       });
 
-      // Initialize
-      loadCountdowns();
-      renderCountdowns();
-      startUpdateInterval();
+      // Initialize. The first render waits for the load so the list is never
+      // drawn empty and then repopulated. The 1 s interval that follows is
+      // pure arithmetic over the in-memory list -- it issues no requests.
+      (async () => {
+        knownDevices = await loadKnownDevices();
+        await loadCountdowns();
+        renderCountdowns();
+        startUpdateInterval();
+      })();
 
       // Cleanup on page unload
       window.addEventListener('beforeunload', () => {
