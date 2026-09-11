@@ -452,10 +452,11 @@
               <input type="text" class="form-input option-input" placeholder="Option 2">
             </div>
           </div>
-          <button type="button" class="custom-button" onclick="addOption()">+ Add Option</button>
+          <button type="button" class="custom-button" id="addOptionBtn" onclick="addOption()">+ Add Option</button>
         </div>
         
-        <button type="button" class="custom-button" onclick="createPoll()">Create Poll</button>
+        <button type="button" class="custom-button" id="createPollBtn" onclick="createPoll()">Create Poll</button>
+        <button type="button" class="custom-button" id="cancelEditBtn" onclick="cancelEdit()" style="display: none; margin-left: 0.5rem; background: #6c757d !important;">Cancel</button>
       </div>
     </div>
     
@@ -480,6 +481,11 @@
     // False until polls are actually in hand. Gates every write: without it a
     // failed read leaves an empty list that the next write would persist.
     let dataLoaded = false;
+    // Which poll the form is editing, or null when creating a new one.
+    let editingPollId = null;
+    // Which poll's Delete has been armed. The sandbox blocks confirm(), so the
+    // second click on the button is the confirmation.
+    let pendingDeleteId = null;
 
     // This page is served from the API origin, so relative paths reach the
     // backend wherever it is. The previous ':3000' -> ':5000' rewrite only held
@@ -795,6 +801,28 @@
         return;
       }
       
+      if (editingPollId) {
+        const poll = polls.find(p => String(p.id) === editingPollId);
+        if (!poll) { showError('That poll no longer exists'); cancelEdit(); return; }
+        if (options.length !== poll.options.length) {
+          showError('Adding or removing options would invalidate existing votes');
+          return;
+        }
+
+        const before = { question: poll.question, options: poll.options };
+        poll.question = question;
+        poll.options = options.map(text => ({ text }));
+        if (!await savePolls()) {
+          poll.question = before.question;
+          poll.options = before.options;
+          return;
+        }
+        cancelEdit();
+        renderPolls();
+        showSuccess('Poll updated');
+        return;
+      }
+
       const poll = {
         id: newPollId(),
         question: question,
@@ -863,8 +891,18 @@
         : `Vote recorded for ${currentUser.username}!`);
     }
 
+    // The first click arms, the second deletes. confirm() is ignored in the
+    // sandboxed iframe the dashboard embeds plugins in -- it returns false, so
+    // the original confirm-guarded delete silently did nothing there.
     async function deletePoll(pollId) {
-      if (!confirm('Are you sure you want to delete this poll?')) return;
+      const id0 = String(pollId);
+      if (pendingDeleteId !== id0) {
+        pendingDeleteId = id0;
+        renderPolls();
+        return;
+      }
+      pendingDeleteId = null;
+
       if (!dataLoaded) {
         console.error('Polls: data was never loaded; refusing to delete.');
         showError('Error deleting poll');
@@ -891,35 +929,55 @@
       }
     }
 
-    // Editing text only. Votes reference an option *index*, so relabelling is
-    // safe while adding or removing an option would silently repoint every vote
-    // cast so far -- hence no option count changes here.
-    async function editPoll(pollId) {
+    // Editing reuses the create form rather than prompt(): the dashboard embeds
+    // plugins in an iframe sandboxed without allow-modals, so prompt() and
+    // confirm() are ignored outright and return null / false. Anything built on
+    // them silently does nothing.
+    //
+    // Text only. Votes reference an option *index*, so relabelling is safe while
+    // adding or removing an option would silently repoint every vote cast so far
+    // -- hence the option inputs are fixed in number while editing.
+    function editPoll(pollId) {
       const poll = polls.find(p => String(p.id) === String(pollId));
       if (!poll) return;
 
-      const question = prompt('Poll question:', poll.question);
-      if (question === null) return;
-      if (!question.trim()) { showError('Please enter a poll question'); return; }
+      editingPollId = String(poll.id);
+      document.getElementById('pollQuestion').value = poll.question;
 
-      const labels = [];
-      for (let i = 0; i < poll.options.length; i++) {
-        const label = prompt(`Option ${i + 1}:`, poll.options[i].text);
-        if (label === null) return;
-        if (!label.trim()) { showError('Options cannot be empty'); return; }
-        labels.push(label.trim());
-      }
+      const container = document.getElementById('optionsContainer');
+      container.innerHTML = poll.options.map((option, index) => `
+        <div class="option-input-group">
+          <input type="text" class="form-input option-input" placeholder="Option ${index + 1}">
+        </div>
+      `).join('');
+      const inputs = document.querySelectorAll('.option-input');
+      poll.options.forEach((option, index) => {
+        if (inputs[index]) inputs[index].value = option.text;
+      });
 
-      const before = { question: poll.question, options: poll.options };
-      poll.question = question.trim();
-      poll.options = labels.map(text => ({ text }));
-      if (!await savePolls()) {
-        poll.question = before.question;
-        poll.options = before.options;
-        return;
-      }
-      renderPolls();
-      showSuccess('Poll updated');
+      document.getElementById('createPollBtn').textContent = 'Save Changes';
+      document.getElementById('cancelEditBtn').style.display = '';
+      // Options cannot be added or removed mid-edit without repointing votes.
+      const addBtn = document.getElementById('addOptionBtn');
+      if (addBtn) addBtn.style.display = 'none';
+    }
+
+    function cancelEdit() {
+      editingPollId = null;
+      document.getElementById('pollQuestion').value = '';
+      document.getElementById('optionsContainer').innerHTML = `
+        <div class="option-input-group">
+          <input type="text" class="form-input option-input" placeholder="Option 1">
+        </div>
+        <div class="option-input-group">
+          <input type="text" class="form-input option-input" placeholder="Option 2">
+        </div>
+      `;
+      document.getElementById('createPollBtn').textContent = 'Create Poll';
+      document.getElementById('cancelEditBtn').style.display = 'none';
+      const addBtn = document.getElementById('addOptionBtn');
+      if (addBtn) addBtn.style.display = '';
+      pendingDeleteId = null;
     }
 
     function getUserVoteForPoll(poll) {
@@ -936,11 +994,16 @@
         return;
       }
       
+      if (pendingDeleteId && !polls.some(p => String(p.id) === pendingDeleteId)) {
+        pendingDeleteId = null;
+      }
+
       container.innerHTML = polls.map(poll => {
         const userVoteIndex = getUserVoteForPoll(poll);
         const hasVoted = userVoteIndex !== null;
         const { counts, total } = voteCountsFor(poll);
         const pollId = escapeHtml(String(poll.id));
+        const armed = pendingDeleteId === String(poll.id);
 
         return `
           <div class="poll-item">
@@ -985,7 +1048,7 @@
             <div class="poll-meta">
               Total votes: ${total} | Created by: ${escapeHtml(poll.createdBy)} | ${new Date(poll.createdAt).toLocaleDateString()}
               <button type="button" class="custom-button" onclick="editPoll('${pollId}')" style="margin-left: 1rem; font-size: 0.7rem; padding: 4px 8px;">Edit</button>
-              <button type="button" class="custom-button" onclick="deletePoll('${pollId}')" style="margin-left: 0.5rem; font-size: 0.7rem; padding: 4px 8px;">Delete</button>
+              <button type="button" class="custom-button" onclick="deletePoll('${pollId}')" style="margin-left: 0.5rem; font-size: 0.7rem; padding: 4px 8px;${armed ? ' background: #ff6b6b !important;' : ''}">${armed ? 'Confirm delete' : 'Delete'}</button>
             </div>
           </div>
         `;
