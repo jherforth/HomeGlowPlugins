@@ -635,10 +635,16 @@
       if (!candidate || typeof candidate !== 'object') return null;
       if (typeof candidate.question !== 'string' || !candidate.question.trim()) return null;
       if (!Array.isArray(candidate.options) || candidate.options.length < 2) return null;
-      const options = candidate.options
-        .map((o) => (o && typeof o.text === 'string' ? { text: o.text } : null))
-        .filter(Boolean);
-      if (options.length < 2) return null;
+      // Arity is preserved deliberately: a vote stores the option's *index*, so
+      // dropping one option silently reattributes every vote after it to its
+      // neighbour and pushes the last one out of range. A label that is not a
+      // string is coerced, and one with nothing usable gets a placeholder, so an
+      // index always means what it meant when the vote was cast.
+      const options = candidate.options.map((o, index) => {
+        if (o && typeof o.text === 'string') return { text: o.text };
+        if (o && (typeof o.text === 'number' || typeof o.text === 'boolean')) return { text: String(o.text) };
+        return { text: `Option ${index + 1}` };
+      });
       return {
         id: String(candidate.id != null ? candidate.id : newPollId()),
         question: candidate.question,
