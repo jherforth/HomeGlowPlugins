@@ -502,6 +502,9 @@
     // Which poll's Delete has been armed. The sandbox blocks confirm(), so the
     // second click on the button is the confirmation.
     let pendingDeleteId = null;
+    // Set by the click that arms, so the same click bubbling up to the document
+    // listener below does not immediately disarm it again.
+    let armClickHandled = false;
 
     // This page is served from the API origin, so relative paths reach the
     // backend wherever it is. The previous ':3000' -> ':5000' rewrite only held
@@ -884,6 +887,26 @@
         : `Vote recorded for ${currentUser.username}!`);
     }
 
+    // Anything that is not the armed button disarms it. Without this the only way
+    // out of the armed state is to perform another action, so a stray first click
+    // leaves "Confirm delete" sitting there with nowhere to click to take it back.
+    function disarmDelete() {
+      if (!pendingDeleteId) return;
+      pendingDeleteId = null;
+      renderPolls();
+    }
+
+    document.addEventListener('click', () => {
+      // The arming click reaches this listener too, on its way up.
+      if (armClickHandled) { armClickHandled = false; return; }
+      disarmDelete();
+    });
+
+    // A click on another widget never reaches this document -- the plugin is in an
+    // iframe -- but it does take focus away from it, which is the closest signal
+    // available for "the family is looking at something else now".
+    window.addEventListener('blur', disarmDelete);
+
     // The first click arms, the second deletes. confirm() is ignored in the
     // sandboxed iframe the dashboard embeds plugins in -- it returns false, so
     // the original confirm-guarded delete silently did nothing there.
@@ -891,6 +914,7 @@
       const id0 = String(pollId);
       if (pendingDeleteId !== id0) {
         pendingDeleteId = id0;
+        armClickHandled = true;
         renderPolls();
         return;
       }
