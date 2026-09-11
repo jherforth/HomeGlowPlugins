@@ -530,10 +530,16 @@
     const voteCountsFor = (poll) => {
       const cast = Object.values(pollVotes(poll.id));
       const counts = poll.options.map(() => []);
+      // `total` counts only votes that landed on an option. Counting every
+      // stored record instead would let a vote whose index no longer resolves
+      // inflate the denominator, so the percentages would not sum to 100.
+      let total = 0;
       for (const v of cast) {
-        if (typeof v.o === 'number' && counts[v.o]) counts[v.o].push(v.u);
+        if (typeof v.o !== 'number' || !counts[v.o]) continue;
+        counts[v.o].push(v.u);
+        total++;
       }
-      return { counts, total: cast.length };
+      return { counts, total };
     };
 
     document.addEventListener('DOMContentLoaded', () => {
@@ -825,6 +831,7 @@
       const previous = polls;
       polls = [poll].concat(polls);
       if (!await savePolls()) { polls = previous; return; }
+      pendingDeleteId = null;
       toggleCreateForm(false);
       renderPolls();
       
@@ -864,6 +871,7 @@
       }
 
       (votes[poll.id] = votes[poll.id] || {})[userId] = record;
+      pendingDeleteId = null;
       renderPolls();
       showSuccess(moved
         ? `Vote moved for ${currentUser.username}`
