@@ -56,6 +56,22 @@
       color: inherit;
     }
 
+    .current-user-display {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+
+    .current-user-avatar {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      flex: 0 0 auto;
+    }
+
     .user-selection {
       background: rgba(255, 255, 255, 0.1) !important;
       border: 1px solid rgba(255, 255, 255, 0.2);
@@ -428,14 +444,15 @@
     
     <!-- Current User Display -->
     <div id="currentUserDisplay" class="current-user-display" style="display: none;">
+      <span id="currentUserAvatar" class="current-user-avatar"></span>
       Voting as: <span id="currentUserName"></span>
       <button type="button" class="custom-button" onclick="clearUserSelection()" style="margin-left: 0.5rem; font-size: 0.7rem; padding: 4px 8px;">Switch User</button>
     </div>
     
     <!-- Poll Creation Section -->
     <div class="poll-section">
-      <div class="poll-creation">
-        <h3 style="margin-top: 0; font-size: 1rem;">Create New Poll</h3>
+      <button type="button" class="custom-button" id="toggleCreateBtn" onclick="toggleCreateForm()">+ Create Poll</button>
+      <div class="poll-creation" id="pollCreation" style="display: none; margin-top: 0.75rem;">
         
         <div class="form-group">
           <label class="form-label">Poll Question:</label>
@@ -452,11 +469,10 @@
               <input type="text" class="form-input option-input" placeholder="Option 2">
             </div>
           </div>
-          <button type="button" class="custom-button" id="addOptionBtn" onclick="addOption()">+ Add Option</button>
+          <button type="button" class="custom-button" onclick="addOption()">+ Add Option</button>
         </div>
         
-        <button type="button" class="custom-button" id="createPollBtn" onclick="createPoll()">Create Poll</button>
-        <button type="button" class="custom-button" id="cancelEditBtn" onclick="cancelEdit()" style="display: none; margin-left: 0.5rem; background: #6c757d !important;">Cancel</button>
+        <button type="button" class="custom-button" onclick="createPoll()">Create Poll</button>
       </div>
     </div>
     
@@ -564,7 +580,6 @@
     }
 
     function renderUserSelection() {
-      const apiBase = window.location.origin;
       const userGrid = document.getElementById('userGrid');
 
       if (users.length === 0) {
@@ -574,12 +589,7 @@
 
       userGrid.innerHTML = users.map(user => `
         <div class="user-option" onclick="selectUser(${JSON.stringify(user).replace(/"/g, '&quot;')})">
-          <div class="user-avatar">
-            ${user.profile_picture ?
-              `<img src="${apiBase}/Uploads/users/${user.profile_picture}" alt="${user.username}">` :
-              `<span style="font-size: 1.5rem;">👤</span>`
-            }
-          </div>
+          <div class="user-avatar">${avatarMarkup(user, 40)}</div>
           <div class="user-name">${escapeHtml(user.username)}</div>
         </div>
       `).join('');
@@ -591,6 +601,7 @@
       
       // Update UI
       document.getElementById('currentUserName').textContent = user.username;
+      document.getElementById('currentUserAvatar').innerHTML = avatarMarkup(user, 28);
       document.getElementById('currentUserDisplay').style.display = 'block';
       document.querySelector('.user-selection').style.display = 'none';
       
@@ -801,28 +812,6 @@
         return;
       }
       
-      if (editingPollId) {
-        const poll = polls.find(p => String(p.id) === editingPollId);
-        if (!poll) { showError('That poll no longer exists'); cancelEdit(); return; }
-        if (options.length !== poll.options.length) {
-          showError('Adding or removing options would invalidate existing votes');
-          return;
-        }
-
-        const before = { question: poll.question, options: poll.options };
-        poll.question = question;
-        poll.options = options.map(text => ({ text }));
-        if (!await savePolls()) {
-          poll.question = before.question;
-          poll.options = before.options;
-          return;
-        }
-        cancelEdit();
-        renderPolls();
-        showSuccess('Poll updated');
-        return;
-      }
-
       const poll = {
         id: newPollId(),
         question: question,
@@ -836,20 +825,10 @@
       const previous = polls;
       polls = [poll].concat(polls);
       if (!await savePolls()) { polls = previous; return; }
+      toggleCreateForm(false);
       renderPolls();
       
-      // Clear form
-      document.getElementById('pollQuestion').value = '';
-      const container = document.getElementById('optionsContainer');
-      container.innerHTML = `
-        <div class="option-input-group">
-          <input type="text" class="form-input option-input" placeholder="Option 1">
-        </div>
-        <div class="option-input-group">
-          <input type="text" class="form-input option-input" placeholder="Option 2">
-        </div>
-      `;
-      
+      // toggleCreateForm(false) above already cleared and collapsed the form.
       showSuccess('Poll created successfully!');
     }
 
@@ -929,7 +908,37 @@
       }
     }
 
-    // Editing reuses the create form rather than prompt(): the dashboard embeds
+    // The create form starts collapsed: on a wall display the widget is mostly
+    // read, so an always-open form is permanent clutter.
+    function toggleCreateForm(show) {
+      const form = document.getElementById('pollCreation');
+      const btn = document.getElementById('toggleCreateBtn');
+      const open = show === undefined ? form.style.display === 'none' : Boolean(show);
+      form.style.display = open ? '' : 'none';
+      btn.textContent = open ? '✕ Cancel' : '+ Create Poll';
+      if (open) {
+        document.getElementById('pollQuestion').focus();
+      } else {
+        clearCreateForm();
+      }
+    }
+
+    function clearCreateForm() {
+      document.getElementById('pollQuestion').value = '';
+      document.getElementById('optionsContainer').innerHTML = `
+        <div class="option-input-group">
+          <input type="text" class="form-input option-input" placeholder="Option 1">
+        </div>
+        <div class="option-input-group">
+          <input type="text" class="form-input option-input" placeholder="Option 2">
+        </div>
+      `;
+    }
+
+    // Editing happens in the poll's own card rather than in the create form: the
+    // create form is collapsed by default, so reopening it to edit would present
+    // create UI for an edit, and the poll's own tally stays in view this way.
+    // prompt() is not an option either -- the dashboard embeds
     // plugins in an iframe sandboxed without allow-modals, so prompt() and
     // confirm() are ignored outright and return null / false. Anything built on
     // them silently does nothing.
@@ -940,44 +949,47 @@
     function editPoll(pollId) {
       const poll = polls.find(p => String(p.id) === String(pollId));
       if (!poll) return;
-
       editingPollId = String(poll.id);
-      document.getElementById('pollQuestion').value = poll.question;
-
-      const container = document.getElementById('optionsContainer');
-      container.innerHTML = poll.options.map((option, index) => `
-        <div class="option-input-group">
-          <input type="text" class="form-input option-input" placeholder="Option ${index + 1}">
-        </div>
-      `).join('');
-      const inputs = document.querySelectorAll('.option-input');
-      poll.options.forEach((option, index) => {
-        if (inputs[index]) inputs[index].value = option.text;
-      });
-
-      document.getElementById('createPollBtn').textContent = 'Save Changes';
-      document.getElementById('cancelEditBtn').style.display = '';
-      // Options cannot be added or removed mid-edit without repointing votes.
-      const addBtn = document.getElementById('addOptionBtn');
-      if (addBtn) addBtn.style.display = 'none';
+      pendingDeleteId = null;
+      renderPolls();
+      const field = document.getElementById('editQuestion');
+      if (field) field.focus();
     }
 
     function cancelEdit() {
       editingPollId = null;
-      document.getElementById('pollQuestion').value = '';
-      document.getElementById('optionsContainer').innerHTML = `
-        <div class="option-input-group">
-          <input type="text" class="form-input option-input" placeholder="Option 1">
-        </div>
-        <div class="option-input-group">
-          <input type="text" class="form-input option-input" placeholder="Option 2">
-        </div>
-      `;
-      document.getElementById('createPollBtn').textContent = 'Create Poll';
-      document.getElementById('cancelEditBtn').style.display = 'none';
-      const addBtn = document.getElementById('addOptionBtn');
-      if (addBtn) addBtn.style.display = '';
-      pendingDeleteId = null;
+      renderPolls();
+    }
+
+    // Text only. Votes reference an option *index*, so relabelling is safe while
+    // adding or removing an option would silently repoint every vote already
+    // cast -- which is why the card offers no way to change the option count.
+    async function savePollEdit(pollId) {
+      const poll = polls.find(p => String(p.id) === String(pollId));
+      if (!poll) { showError('That poll no longer exists'); cancelEdit(); return; }
+
+      const question = (document.getElementById('editQuestion').value || '').trim();
+      if (!question) { showError('Please enter a poll question'); return; }
+
+      const inputs = document.querySelectorAll('.edit-option-input');
+      const labels = [];
+      for (let i = 0; i < poll.options.length; i++) {
+        const value = inputs[i] ? (inputs[i].value || '').trim() : '';
+        if (!value) { showError('Options cannot be empty'); return; }
+        labels.push(value);
+      }
+
+      const before = { question: poll.question, options: poll.options };
+      poll.question = question;
+      poll.options = labels.map(text => ({ text }));
+      if (!await savePolls()) {
+        poll.question = before.question;
+        poll.options = before.options;
+        return;
+      }
+      editingPollId = null;
+      renderPolls();
+      showSuccess('Poll updated');
     }
 
     function getUserVoteForPoll(poll) {
@@ -1004,6 +1016,30 @@
         const { counts, total } = voteCountsFor(poll);
         const pollId = escapeHtml(String(poll.id));
         const armed = pendingDeleteId === String(poll.id);
+
+        if (editingPollId === String(poll.id)) {
+          return `
+            <div class="poll-item">
+              <div class="form-group">
+                <label class="form-label">Poll Question:</label>
+                <input type="text" id="editQuestion" class="form-input" value="${escapeAttr(poll.question)}">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Options:</label>
+                ${poll.options.map((option, index) => `
+                  <div class="option-input-group">
+                    <input type="text" class="form-input edit-option-input" value="${escapeAttr(option.text)}" placeholder="Option ${index + 1}">
+                  </div>
+                `).join('')}
+              </div>
+              <button type="button" class="custom-button" onclick="savePollEdit('${pollId}')">Save Changes</button>
+              <button type="button" class="custom-button" onclick="cancelEdit()" style="margin-left: 0.5rem; background: #6c757d !important;">Cancel</button>
+              <div class="poll-meta" style="margin-top: 0.5rem;">
+                ${total} vote${total === 1 ? '' : 's'} cast — options cannot be added or removed without invalidating them
+              </div>
+            </div>
+          `;
+        }
 
         return `
           <div class="poll-item">
@@ -1053,6 +1089,29 @@
           </div>
         `;
       }).join('');
+    }
+
+    // escapeHtml() works by round-tripping textContent through innerHTML, which
+    // escapes & < > and leaves quotes alone. That is correct for text between
+    // tags and wrong inside an attribute, where a quote ends the value early.
+    function escapeAttr(value) {
+      return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    // Shared by the picker and the "Voting as" line, so both stay consistent.
+    function avatarMarkup(user, size) {
+      const px = size || 40;
+      if (user && user.profile_picture) {
+        return `<img src="${escapeAttr(window.location.origin + '/Uploads/users/' + user.profile_picture)}"`
+          + ` alt="${escapeAttr(user.username)}"`
+          + ` style="width: ${px}px; height: ${px}px; border-radius: 50%; object-fit: cover; display: block;">`;
+      }
+      return `<span style="font-size: ${Math.round(px * 0.7)}px; line-height: 1;">👤</span>`;
     }
 
     function escapeHtml(text) {
