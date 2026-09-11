@@ -8,7 +8,9 @@
     "manifestVersion": 1,
     "id": "family-polls",
     "name": "Family Poll",
-    "description": "Runs a quick family vote. Ask a question, add the options, and everyone picks their profile and votes straight from the dashboard. Results update as the votes come in."
+    "description": "Runs a quick family vote. Ask a question, add the options, and everyone picks their profile and votes straight from the dashboard. Polls and votes are saved on the server, so every display shows the same tally.",
+    "apiVersion": "v1",
+    "storage": true
   }
   </script>
   <link rel="stylesheet" href="/index.css">
@@ -466,11 +468,51 @@
     </div>
   </div>
 
+  <script src="/plugin-sdk/v1.js"></script>
   <script>
     let polls = [];
     let users = [];
     let currentUser = null;
-    const API_BASE = window.location.origin.replace(':3000', ':5000'); // Adjust for HomeGlow's backend port
+    // Votes keyed by poll id, then by user id: { [pollId]: { [userId]: {o, u, t} } }.
+    // Tallies are derived from this at render time rather than stored, so there is
+    // no counter to drift out of step with the votes themselves.
+    let votes = {};
+    // False until polls are actually in hand. Gates every write: without it a
+    // failed read leaves an empty list that the next write would persist.
+    let dataLoaded = false;
+
+    // This page is served from the API origin, so relative paths reach the
+    // backend wherever it is. The previous ':3000' -> ':5000' rewrite only held
+    // for one dev layout.
+    const API_BASE = '';
+
+    const POLLS_KEY = 'polls';
+    const VOTE_PREFIX = 'v:';
+    const MIGRATION_KEY = 'migratedFromLocalStorage';
+    const LEGACY_POLLS_KEY = 'pollWidget_polls';
+
+    const SDK = window.HomeGlow && window.HomeGlow.pluginId ? window.HomeGlow : null;
+    const STORAGE = SDK ? SDK.storage : null;
+    const PLATFORM_AVAILABLE = Boolean(STORAGE);
+
+    // One key per voter per poll. A single document holding nested votes would
+    // be get-modify-set, so two people voting at the same moment on different
+    // displays would lose one of the votes.
+    const voteKey = (pollId, userId) => VOTE_PREFIX + pollId + ':' + userId;
+
+    // Date.now() alone collides when two displays create a poll within the same
+    // millisecond, and under one-key-per-poll a collision silently overwrites.
+    const newPollId = () => String(Date.now()) + '-' + Math.random().toString(36).slice(2, 8);
+
+    const pollVotes = (pollId) => votes[pollId] || {};
+    const voteCountsFor = (poll) => {
+      const cast = Object.values(pollVotes(poll.id));
+      const counts = poll.options.map(() => []);
+      for (const v of cast) {
+        if (typeof v.o === 'number' && counts[v.o]) counts[v.o].push(v.u);
+      }
+      return { counts, total: cast.length };
+    };
 
     document.addEventListener('DOMContentLoaded', () => {
       // Handle theme
@@ -480,10 +522,13 @@
         document.documentElement.setAttribute('data-theme', theme);
       }
 
-      // Load data
-      loadUsers();
-      loadData();
-      renderPolls();
+      // Render once the stored polls are actually in hand, so the list is never
+      // drawn empty and then repopulated.
+      (async () => {
+        await loadData();
+        await loadUsers();
+        renderPolls();
+      })();
     });
 
     async function loadUsers() {
@@ -562,25 +607,128 @@
       renderPolls(); // Re-render polls
     }
 
-    function loadData() {
+    // Poll metadata only. Votes never live in here -- see voteKey().
+    function normalizePoll(candidate) {
+      if (!candidate || typeof candidate !== 'object') return null;
+      if (typeof candidate.question !== 'string' || !candidate.question.trim()) return null;
+      if (!Array.isArray(candidate.options) || candidate.options.length < 2) return null;
+      const options = candidate.options
+        .map((o) => (o && typeof o.text === 'string' ? { text: o.text } : null))
+        .filter(Boolean);
+      if (options.length < 2) return null;
+      return {
+        id: String(candidate.id != null ? candidate.id : newPollId()),
+        question: candidate.question,
+        options,
+        createdBy: typeof candidate.createdBy === 'string' ? candidate.createdBy : 'Anonymous',
+        createdAt: typeof candidate.createdAt === 'string' ? candidate.createdAt : new Date().toISOString()
+      };
+    }
+
+    async function loadData() {
+      polls = [];
+      votes = {};
+      dataLoaded = false;
+
+      if (!PLATFORM_AVAILABLE) {
+        showError('Shared storage unavailable — install this widget through Admin > Widgets.');
+        return;
+      }
+
       try {
-        const savedPolls = localStorage.getItem('pollWidget_polls');
-        if (savedPolls) {
-          polls = JSON.parse(savedPolls);
+        const all = await STORAGE.list();
+        const documents = all && typeof all === 'object' && !Array.isArray(all) ? all : {};
+
+        const stored = documents[POLLS_KEY];
+        polls = Array.isArray(stored) ? stored.map(normalizePoll).filter(Boolean) : [];
+
+        for (const key of Object.keys(documents)) {
+          if (key.indexOf(VOTE_PREFIX) !== 0) continue;
+          // v:<pollId>:<userId> — the poll id may itself contain '-', never ':'.
+          const rest = key.slice(VOTE_PREFIX.length);
+          const split = rest.lastIndexOf(':');
+          if (split <= 0) continue;
+          const pollId = rest.slice(0, split);
+          const userId = rest.slice(split + 1);
+          const value = documents[key];
+          if (!value || typeof value !== 'object') continue;
+          (votes[pollId] = votes[pollId] || {})[userId] = value;
+        }
+
+        dataLoaded = true;
+
+        if (polls.length === 0 && documents[MIGRATION_KEY] === undefined) {
+          await migrateFromLocalStorage();
+          await STORAGE.set(MIGRATION_KEY, { at: new Date().toISOString() });
         }
       } catch (error) {
         console.error('Error loading poll data:', error);
         showError('Error loading saved polls');
+        polls = [];
+        votes = {};
+        dataLoaded = false;
       }
     }
 
-    function saveData() {
+    // Writes the poll list only. Votes are written one key at a time by vote(),
+    // so a concurrent vote elsewhere cannot be clobbered by a metadata write.
+    async function savePolls() {
+      if (!dataLoaded) {
+        console.error('Polls: data was never loaded; refusing to overwrite stored polls.');
+        showError('Error saving poll data');
+        return false;
+      }
       try {
-        localStorage.setItem('pollWidget_polls', JSON.stringify(polls));
+        await STORAGE.set(POLLS_KEY, polls);
+        return true;
       } catch (error) {
         console.error('Error saving poll data:', error);
         showError('Error saving poll data');
+        return false;
       }
+    }
+
+    // Polls written before this plugin moved to server storage live in one
+    // browser. Imported once; the original key is left intact as a fallback.
+    async function migrateFromLocalStorage() {
+      let legacy = [];
+      try {
+        const saved = localStorage.getItem(LEGACY_POLLS_KEY);
+        const parsed = saved ? JSON.parse(saved) : null;
+        legacy = Array.isArray(parsed) ? parsed : [];
+      } catch (error) {
+        console.error('Error reading legacy polls:', error);
+        return;
+      }
+      if (legacy.length === 0) return;
+
+      const imported = [];
+      for (const candidate of legacy) {
+        const poll = normalizePoll(candidate);
+        if (!poll) continue;
+        imported.push(poll);
+
+        // Votes were nested per option; fan them out into per-voter keys.
+        const optionList = Array.isArray(candidate.options) ? candidate.options : [];
+        for (let index = 0; index < optionList.length; index++) {
+          const cast = Array.isArray(optionList[index] && optionList[index].votes)
+            ? optionList[index].votes : [];
+          for (const v of cast) {
+            if (!v || v.userId === undefined || v.userId === null) continue;
+            const record = {
+              o: index,
+              u: typeof v.username === 'string' ? v.username : '',
+              t: typeof v.timestamp === 'string' ? v.timestamp : new Date().toISOString()
+            };
+            await STORAGE.set(voteKey(poll.id, v.userId), record);
+            (votes[poll.id] = votes[poll.id] || {})[String(v.userId)] = record;
+          }
+        }
+      }
+
+      if (imported.length === 0) return;
+      polls = imported;
+      await STORAGE.set(POLLS_KEY, polls);
     }
 
     function showError(message) {
@@ -625,7 +773,7 @@
       }
     }
 
-    function createPoll() {
+    async function createPoll() {
       const question = document.getElementById('pollQuestion').value.trim();
       const optionInputs = document.querySelectorAll('.option-input');
       
@@ -648,20 +796,18 @@
       }
       
       const poll = {
-        id: Date.now(),
+        id: newPollId(),
         question: question,
-        options: options.map(option => ({
-          text: option,
-          votes: [],
-          count: 0
-        })),
-        totalVotes: 0,
+        // Metadata carries no votes or counts; both are derived from the
+        // per-voter keys at render time.
+        options: options.map(option => ({ text: option })),
         createdAt: new Date().toISOString(),
         createdBy: currentUser ? currentUser.username : 'Anonymous'
       };
-      
-      polls.unshift(poll);
-      saveData();
+
+      const previous = polls;
+      polls = [poll].concat(polls);
+      if (!await savePolls()) { polls = previous; return; }
       renderPolls();
       
       // Clear form
@@ -679,56 +825,107 @@
       showSuccess('Poll created successfully!');
     }
 
-    function vote(pollId, optionIndex) {
+    async function vote(pollId, optionIndex) {
       if (!currentUser) {
         showError('Please select your profile first');
         return;
       }
-      
-      const poll = polls.find(p => p.id === pollId);
-      if (!poll) return;
-      
-      // Check if user already voted on this poll
-      const hasVoted = poll.options.some(option => 
-        option.votes.some(vote => vote.userId === currentUser.id)
-      );
-      
-      if (hasVoted) {
-        showError(`${currentUser.username} has already voted on this poll`);
+      if (!dataLoaded) {
+        console.error('Polls: data was never loaded; refusing to vote.');
+        showError('Error saving vote');
         return;
       }
-      
-      // Record vote
-      poll.options[optionIndex].votes.push({
-        userId: currentUser.id,
-        username: currentUser.username,
-        timestamp: new Date().toISOString()
-      });
-      poll.options[optionIndex].count++;
-      poll.totalVotes++;
-      
-      saveData();
+
+      const poll = polls.find(p => String(p.id) === String(pollId));
+      if (!poll || !poll.options[optionIndex]) return;
+
+      // The voter writes only their own key, so two people voting at once
+      // cannot collide. Voting again overwrites that one key, which moves the
+      // vote rather than adding a second.
+      const userId = String(currentUser.id);
+      const previous = pollVotes(poll.id)[userId];
+      const moved = previous !== undefined && previous.o !== optionIndex;
+      if (previous !== undefined && previous.o === optionIndex) return;
+
+      const record = { o: optionIndex, u: currentUser.username, t: new Date().toISOString() };
+      try {
+        await STORAGE.set(voteKey(poll.id, userId), record);
+      } catch (error) {
+        console.error('Error saving vote:', error);
+        showError('Error saving vote');
+        return;
+      }
+
+      (votes[poll.id] = votes[poll.id] || {})[userId] = record;
       renderPolls();
-      showSuccess(`Vote recorded for ${currentUser.username}!`);
+      showSuccess(moved
+        ? `Vote moved for ${currentUser.username}`
+        : `Vote recorded for ${currentUser.username}!`);
     }
 
-    function deletePoll(pollId) {
-      if (confirm('Are you sure you want to delete this poll?')) {
-        polls = polls.filter(p => p.id !== pollId);
-        saveData();
-        renderPolls();
+    async function deletePoll(pollId) {
+      if (!confirm('Are you sure you want to delete this poll?')) return;
+      if (!dataLoaded) {
+        console.error('Polls: data was never loaded; refusing to delete.');
+        showError('Error deleting poll');
+        return;
+      }
+
+      const id = String(pollId);
+      const previous = polls;
+      polls = polls.filter(p => String(p.id) !== id);
+      if (!await savePolls()) { polls = previous; return; }
+
+      // Every v:<pollId>:* key has to go. Left behind they are invisible and
+      // count against the 500-keys-per-plugin cap forever.
+      const cast = Object.keys(pollVotes(id));
+      const results = await Promise.allSettled(cast.map(userId => STORAGE.remove(voteKey(id, userId))));
+      delete votes[id];
+
+      const failed = results.filter(r => r.status === 'rejected').length;
+      renderPolls();
+      if (failed > 0) {
+        showError(`Poll deleted, but ${failed} of ${cast.length} votes could not be removed`);
+      } else {
         showSuccess('Poll deleted');
       }
     }
 
+    // Editing text only. Votes reference an option *index*, so relabelling is
+    // safe while adding or removing an option would silently repoint every vote
+    // cast so far -- hence no option count changes here.
+    async function editPoll(pollId) {
+      const poll = polls.find(p => String(p.id) === String(pollId));
+      if (!poll) return;
+
+      const question = prompt('Poll question:', poll.question);
+      if (question === null) return;
+      if (!question.trim()) { showError('Please enter a poll question'); return; }
+
+      const labels = [];
+      for (let i = 0; i < poll.options.length; i++) {
+        const label = prompt(`Option ${i + 1}:`, poll.options[i].text);
+        if (label === null) return;
+        if (!label.trim()) { showError('Options cannot be empty'); return; }
+        labels.push(label.trim());
+      }
+
+      const before = { question: poll.question, options: poll.options };
+      poll.question = question.trim();
+      poll.options = labels.map(text => ({ text }));
+      if (!await savePolls()) {
+        poll.question = before.question;
+        poll.options = before.options;
+        return;
+      }
+      renderPolls();
+      showSuccess('Poll updated');
+    }
+
     function getUserVoteForPoll(poll) {
       if (!currentUser) return null;
-      
-      for (let i = 0; i < poll.options.length; i++) {
-        const userVote = poll.options[i].votes.find(vote => vote.userId === currentUser.id);
-        if (userVote) return i;
-      }
-      return null;
+      const own = pollVotes(poll.id)[String(currentUser.id)];
+      return own && typeof own.o === 'number' ? own.o : null;
     }
 
     function renderPolls() {
@@ -742,7 +939,9 @@
       container.innerHTML = polls.map(poll => {
         const userVoteIndex = getUserVoteForPoll(poll);
         const hasVoted = userVoteIndex !== null;
-        
+        const { counts, total } = voteCountsFor(poll);
+        const pollId = escapeHtml(String(poll.id));
+
         return `
           <div class="poll-item">
             <div class="poll-question">${escapeHtml(poll.question)}</div>
@@ -750,8 +949,8 @@
             ${!hasVoted && currentUser ? `
               <div class="poll-options">
                 ${poll.options.map((option, index) => `
-                  <div class="poll-option" onclick="vote(${poll.id}, ${index})">
-                    <input type="radio" name="poll_${poll.id}" value="${index}">
+                  <div class="poll-option" onclick="vote('${pollId}', ${index})">
+                    <input type="radio" name="poll_${pollId}" value="${index}">
                     <span>${escapeHtml(option.text)}</span>
                   </div>
                 `).join('')}
@@ -759,7 +958,8 @@
             ` : `
               <div class="poll-results">
                 ${poll.options.map((option, index) => {
-                  const percentage = poll.totalVotes > 0 ? Math.round((option.count / poll.totalVotes) * 100) : 0;
+                  const voters = counts[index] || [];
+                  const percentage = total > 0 ? Math.round((voters.length / total) * 100) : 0;
                   const isUserVote = index === userVoteIndex;
                   
                   return `
@@ -770,9 +970,9 @@
                       </div>
                       <div class="result-percentage">${percentage}%</div>
                     </div>
-                    ${option.votes.length > 0 ? `
+                    ${voters.length > 0 ? `
                       <div class="voter-list">
-                        Voted by: ${option.votes.map(vote => vote.username).join(', ')}
+                        Voted by: ${voters.map(name => escapeHtml(name)).join(', ')}
                       </div>
                     ` : ''}
                   `;
@@ -783,8 +983,9 @@
             ${!currentUser ? '<div style="text-align: center; color: rgba(255,255,255,0.7); font-style: italic; margin: 1rem 0;">Select your profile above to vote</div>' : ''}
             
             <div class="poll-meta">
-              Total votes: ${poll.totalVotes} | Created by: ${poll.createdBy} | ${new Date(poll.createdAt).toLocaleDateString()}
-              <button type="button" class="custom-button" onclick="deletePoll(${poll.id})" style="margin-left: 1rem; font-size: 0.7rem; padding: 4px 8px;">Delete</button>
+              Total votes: ${total} | Created by: ${escapeHtml(poll.createdBy)} | ${new Date(poll.createdAt).toLocaleDateString()}
+              <button type="button" class="custom-button" onclick="editPoll('${pollId}')" style="margin-left: 1rem; font-size: 0.7rem; padding: 4px 8px;">Edit</button>
+              <button type="button" class="custom-button" onclick="deletePoll('${pollId}')" style="margin-left: 0.5rem; font-size: 0.7rem; padding: 4px 8px;">Delete</button>
             </div>
           </div>
         `;
