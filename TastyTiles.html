@@ -11,7 +11,16 @@
     "name": "Rolling Weekly Menu",
     "description": "A rolling weekly dinner menu. Fill in what is planned for each day in edit mode, and reset the week when it is time to plan again. The menu is saved in shared household plugin storage, so every display in the house shows the same one.",
     "apiVersion": "v1",
-    "storage": true
+    "storage": true,
+    "settings": [
+      {
+        "key": "repeatWeekly",
+        "type": "boolean",
+        "scope": "household",
+        "default": false,
+        "label": "Repeat the week instead of clearing each day"
+      }
+    ]
   }
   </script>
   <link rel="stylesheet" href="/index.css">
@@ -245,12 +254,21 @@
     var MANIFEST_PLUGIN_ID = readManifestPluginId();
     var SDK = window.HomeGlow && window.HomeGlow.pluginId ? window.HomeGlow : null;
     var STORAGE = createStorageClient();
+    var SETTINGS = createSettingsClient();
     var MENU_STORAGE_KEY = 'recipes';
     var PLATFORM_AVAILABLE = Boolean(STORAGE);
 
     let editMode = false;
     let menuData = {};
+    // False until the stored menu is actually in hand. Gates every write --
+    // see saveMenuData(). Without it, a read failure leaves an empty grid that
+    // the next edit writes back over the real week.
+    let menuLoaded = false;
     let currentAddingDay = null;
+    // Declared in the manifest, so it is set in Admin > Widgets rather than from
+    // the widget. Read once per load, which is also the only time it is used:
+    // checkAndCycleDays() runs on the first load of a new day and not again.
+    let repeatWeekly = false;
 
     // Day names for the rolling cycle
     const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -267,6 +285,7 @@
 
       (async () => {
         await loadMenuData();
+        repeatWeekly = await readRepeatWeekly();
         await checkAndCycleDays();
         renderMenu();
       })();
@@ -367,26 +386,115 @@
       };
     }
 
+    // Read-only: the values are written from Admin > Widgets, which renders a
+    // control for every setting the manifest declares. Mirrors the storage
+    // client's SDK-first, direct-fetch-fallback shape.
+    function createSettingsClient() {
+      if (SDK && SDK.settings) return SDK.settings;
+      if (!MANIFEST_PLUGIN_ID) return null;
+
+      var path = '/api/plugin/v1/settings/' + encodeURIComponent(MANIFEST_PLUGIN_ID);
+      return {
+        get: function () {
+          return fetch(path).then(function (response) {
+            if (!response.ok) throw new Error('HTTP ' + response.status);
+            return response.json();
+          });
+        }
+      };
+    }
+
+    /**
+     * Off (the manifest default) keeps the original behavior: a day is cleared
+     * as it passes. On makes the week a standing rotation, so a household that
+     * eats on a fixed cycle does not retype the same menu every week.
+     *
+     * Any failure reads as off. Clearing is what the plugin has always done, so
+     * an unreachable settings route must not silently change the behavior of
+     * the menu -- and only a literal true turns it on.
+     */
+    async function readRepeatWeekly() {
+      if (!SETTINGS) return false;
+      try {
+        const values = await SETTINGS.get();
+        return Boolean(values) && values.repeatWeekly === true;
+      } catch (err) {
+        console.error(err);
+        return false;
+      }
+    }
+
+    // Menus written before this plugin moved to plugin storage live in the
+    // household settings table under this key. Read once, never written again.
+    const LEGACY_SETTINGS_KEY = 'plugin_tastytiles_recipes';
+
+    /**
+     * One-time migration. Without it, everyone who used the previous version
+     * opens an empty week: the menu is still in settings, but nothing reads it.
+     *
+     * The old key is deliberately NOT deleted. It costs nothing to leave and it
+     * keeps a recoverable copy of the menu.
+     */
+    async function readLegacyMenu() {
+      try {
+        const response = await fetch('/api/settings', { credentials: 'include' });
+        if (!response.ok) return null;
+
+        const settings = await response.json();
+        const stored = settings && settings[LEGACY_SETTINGS_KEY];
+        if (!stored) return null;
+
+        // GET /api/settings deserializes any value starting with { or [, so this
+        // arrives as an object. It was written as a string, so accept both.
+        const parsed = typeof stored === 'string' ? JSON.parse(stored) : stored;
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+        return parsed;
+      } catch (err) {
+        console.error(err);
+        return null;
+      }
+    }
+
     async function loadMenuData() {
       try {
         if (PLATFORM_AVAILABLE) {
           // Plugin storage is shared household-wide and supports JSON payloads.
           const storedDoc = await STORAGE.get(MENU_STORAGE_KEY);
+
           if (storedDoc && typeof storedDoc === 'object' && !Array.isArray(storedDoc)) {
             menuData = normalizeMenuData(storedDoc);
+            menuLoaded = true;
             return;
           }
 
+          // A present-but-unusable value is a failed read, not an empty store.
+          // Only a genuinely absent key (404 -> null) means "nothing saved yet".
+          if (storedDoc !== null && storedDoc !== undefined) {
+            throw new Error('Unexpected plugin storage payload');
+          }
+
+          const legacy = await readLegacyMenu();
+          if (legacy) {
+            menuData = normalizeMenuData(legacy);
+            menuLoaded = true;
+            await STORAGE.set(MENU_STORAGE_KEY, menuData);
+            return;
+          }
+
+          // Nothing stored anywhere: start empty, but do not write. The first
+          // real edit persists it, so a page load can never clear a menu.
           initializeEmptyMenu();
-          await STORAGE.set(MENU_STORAGE_KEY, menuData).catch(() => {});
+          menuLoaded = true;
           return;
         }
 
         // No plugin identity namespace: keep memory-only empty state and warn.
         initializeEmptyMenu();
+        menuLoaded = false;
       } catch (err) {
         console.error(err);
         initializeEmptyMenu();
+        menuLoaded = false;
       }
     }
 
@@ -434,6 +542,14 @@
     }
 
     async function saveMenuData() {
+      // Every save rewrites the whole menu. If the load failed we are holding an
+      // empty grid rather than the stored week, so writing it would replace real
+      // data with nothing.
+      if (!menuLoaded) {
+        console.error('TastyTiles: menu was never loaded; refusing to overwrite stored data.');
+        return;
+      }
+
       try {
         if (PLATFORM_AVAILABLE) {
           await STORAGE.set(MENU_STORAGE_KEY, normalizeMenuData(menuData));
@@ -467,6 +583,10 @@
     }
 
     function cycleDays() {
+      // A standing rotation consumes nothing. The caller still stamps
+      // lastCycleDate, which is what stops this re-running later today.
+      if (repeatWeekly) return;
+
       // Get yesterday's day index
       const yesterday = new Date();
       yesterday.setDate(yesterday.getDate() - 1);
