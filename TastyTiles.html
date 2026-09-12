@@ -20,6 +20,10 @@
         "default": false,
         "label": "Repeat the week instead of clearing each day"
       }
+    ],
+    "hideableControls": [
+      { "id": "editMenu", "label": "Edit the menu (add and remove items)" },
+      { "id": "resetWeek", "label": "Clear the whole week" }
     ]
   }
   </script>
@@ -257,6 +261,18 @@
     var SETTINGS = createSettingsClient();
     var MENU_STORAGE_KEY = 'recipes';
     var PLATFORM_AVAILABLE = Boolean(STORAGE);
+
+    // Control limits: the dashboard names this plugin's hidden controls on the
+    // iframe URL, already unprefixed. No param means hide nothing, which is what
+    // an older dashboard and a direct load of this page both produce.
+    var HIDDEN_CONTROLS = (new URLSearchParams(window.location.search).get('hide') || '')
+      .split(',').filter(Boolean);
+    var HIDE_EDIT_MENU = HIDDEN_CONTROLS.indexOf('editMenu') !== -1;
+    var HIDE_RESET_WEEK = HIDDEN_CONTROLS.indexOf('resetWeek') !== -1;
+
+    // At parse time, not on DOMContentLoaded: this script sits after the buttons
+    // in the document, so a hidden one can go before it is ever painted.
+    applyControlLimits();
 
     let editMode = false;
     let menuData = {};
@@ -498,30 +514,56 @@
       }
     }
 
+    /**
+     * Honoring the display's control limits is this widget's job -- the host
+     * cannot reach into the iframe. A hidden control is removed rather than
+     * disabled: a display that may not manage the menu should not show the
+     * button at all.
+     */
+    function applyControlLimits() {
+      // The controls row holds nothing but these two buttons, so hiding both
+      // would leave an empty flex box carrying its own bottom margin. Dropping
+      // the row takes the buttons with it.
+      if (HIDE_EDIT_MENU && HIDE_RESET_WEEK) {
+        const row = document.querySelector('.menu-controls');
+        if (row) row.remove();
+        return;
+      }
+
+      if (HIDE_EDIT_MENU) {
+        const editBtn = document.getElementById('toggle-edit-btn');
+        if (editBtn) editBtn.remove();
+      }
+      if (HIDE_RESET_WEEK) {
+        const resetBtn = document.getElementById('reset-week-btn');
+        if (resetBtn) resetBtn.remove();
+      }
+    }
+
+    function setControlEnabled(button, enabled) {
+      button.disabled = !enabled;
+      button.style.opacity = enabled ? '1' : '0.6';
+      button.style.cursor = enabled ? 'pointer' : 'not-allowed';
+    }
+
     function renderPlatformState() {
       const warning = document.getElementById('platform-warning');
-      const editBtn = document.getElementById('toggle-edit-btn');
-      const resetBtn = document.getElementById('reset-week-btn');
+      // Either button may be gone: applyControlLimits() has already run, and a
+      // control this display hides is not in the DOM to be disabled.
+      const buttons = [
+        document.getElementById('toggle-edit-btn'),
+        document.getElementById('reset-week-btn'),
+      ].filter(Boolean);
 
       if (!PLATFORM_AVAILABLE) {
         warning.textContent = 'Shared menu storage is unavailable because this widget could not resolve a plugin platform namespace. Verify this widget is installed through Admin > Widgets.';
         warning.style.display = 'block';
-        editBtn.disabled = true;
-        resetBtn.disabled = true;
-        editBtn.style.opacity = '0.6';
-        resetBtn.style.opacity = '0.6';
-        editBtn.style.cursor = 'not-allowed';
-        resetBtn.style.cursor = 'not-allowed';
+        buttons.forEach(button => setControlEnabled(button, false));
         return;
       }
 
       warning.style.display = 'none';
-      editBtn.disabled = false;
-      resetBtn.disabled = false;
-      editBtn.style.opacity = '1';
-      resetBtn.style.opacity = '1';
-      editBtn.style.cursor = 'pointer';
-      resetBtn.style.cursor = 'pointer';
+      buttons.forEach(button => setControlEnabled(button, true));
     }
 
     function normalizeMenuData(candidate) {
@@ -653,6 +695,12 @@
     }
 
     function toggleEditMode() {
+      // The button that calls this is removed when editing is hidden, so this is
+      // a guard against a stray call reaching a label that no longer exists --
+      // and what keeps editMode false, which is what hides the per-day add and
+      // remove buttons inside renderMenu().
+      if (HIDE_EDIT_MENU) return;
+
       editMode = !editMode;
       document.getElementById('edit-mode-text').textContent = editMode ? 'View Mode' : 'Edit Mode';
       renderMenu();
