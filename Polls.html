@@ -28,13 +28,9 @@
       padding: 0.75rem;
       box-sizing: border-box;
       font-size: 0.85rem;
-      color: #333;
+      color: var(--text, #FFFFFF);
     }
 
-    [data-theme="dark"] body {
-      color: #a6a6d1;
-      background: transparent !important;
-    }
 
     .widget-container {
       background: transparent !important;
@@ -73,18 +69,14 @@
     }
 
     .user-selection {
-      background: rgba(255, 255, 255, 0.1) !important;
-      border: 1px solid rgba(255, 255, 255, 0.2);
+      background: rgba(128, 128, 128, 0.15) !important;
+      border: 1px solid var(--card-border, #3a3a3a);
       border-radius: 8px;
       padding: 1rem;
       margin-bottom: 1rem;
       text-align: center;
     }
 
-    [data-theme="dark"] .user-selection {
-      background: rgba(30, 30, 50, 0.3) !important;
-      border-color: rgba(100, 100, 150, 0.3);
-    }
 
     .user-grid {
       display: grid;
@@ -102,31 +94,21 @@
       border-radius: 8px;
       cursor: pointer;
       transition: all 0.3s ease;
-      background: rgba(255, 255, 255, 0.05) !important;
+      background: rgba(128, 128, 128, 0.08) !important;
     }
 
-    [data-theme="dark"] .user-option {
-      background: rgba(30, 30, 50, 0.2) !important;
-    }
 
     .user-option:hover {
-      background: rgba(255, 255, 255, 0.1) !important;
+      background: rgba(128, 128, 128, 0.18) !important;
       transform: translateY(-2px);
     }
 
-    [data-theme="dark"] .user-option:hover {
-      background: rgba(30, 30, 50, 0.4) !important;
-    }
 
     .user-option.selected {
-      border-color: #00ddeb;
-      background: rgba(0, 221, 235, 0.1) !important;
+      border-color: var(--accent, #757575);
+      background: rgba(var(--accent-rgb, 158, 127, 255), 0.15) !important;
     }
 
-    [data-theme="dark"] .user-option.selected {
-      border-color: #00ddeb;
-      background: rgba(0, 221, 235, 0.2) !important;
-    }
 
     .user-avatar {
       width: 50px;
@@ -136,15 +118,11 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      background: rgba(255, 255, 255, 0.1) !important;
+      background: rgba(128, 128, 128, 0.15) !important;
       margin-bottom: 0.5rem;
-      border: 2px solid rgba(255, 255, 255, 0.2);
+      border: 2px solid var(--card-border, #3a3a3a);
     }
 
-    [data-theme="dark"] .user-avatar {
-      background: rgba(30, 30, 50, 0.3) !important;
-      border-color: rgba(100, 100, 150, 0.3);
-    }
 
     .user-avatar img {
       width: 100%;
@@ -160,8 +138,8 @@
     }
 
     .current-user-display {
-      background: rgba(0, 221, 235, 0.1) !important;
-      border: 1px solid #00ddeb;
+      background: rgba(var(--accent-rgb, 158, 127, 255), 0.1) !important;
+      border: 1px solid var(--accent, #757575);
       border-radius: 6px;
       padding: 0.5rem;
       margin-bottom: 1rem;
@@ -175,15 +153,12 @@
     }
 
     .poll-creation {
-      border: 1px solid rgba(255, 255, 255, 0.2);
+      border: 1px solid var(--card-border, #3a3a3a);
       border-radius: 8px;
       padding: 1rem;
       margin-bottom: 1rem;
     }
 
-    [data-theme="dark"] .poll-creation {
-      border-color: rgba(100, 100, 150, 0.3);
-    }
 
     .form-group {
       margin-bottom: 0.75rem;
@@ -199,22 +174,18 @@
     .form-input {
       width: 100%;
       padding: 0.5rem;
-      border: 1px solid rgba(255, 255, 255, 0.3);
+      border: 1px solid var(--card-border, #3a3a3a);
       border-radius: 4px;
-      background: rgba(255, 255, 255, 0.1) !important;
+      background: rgba(128, 128, 128, 0.12) !important;
       color: inherit;
       font-size: 0.8rem;
       box-sizing: border-box;
     }
 
-    [data-theme="dark"] .form-input {
-      border-color: rgba(100, 100, 150, 0.3);
-      background: rgba(30, 30, 50, 0.3) !important;
-    }
 
     .form-input:focus {
       outline: none;
-      border-color: #00ddeb;
+      border-color: var(--accent, #757575);
     }
 
     .option-input-group {
@@ -228,8 +199,8 @@
     }
 
     .remove-option-btn {
-      background: #dc3545 !important;
-      color: white !important;
+      background: var(--error, #ef4444) !important;
+      color: #fff !important;
       border: none;
       border-radius: 4px;
       padding: 0.5rem;
@@ -239,8 +210,10 @@
     }
 
     .custom-button {
-      background: linear-gradient(45deg, #00ddeb, #ff6b6b) !important;
-      color: #333 !important;
+      /* Secondary to accent, the two interface colors the household picks;
+         the dashboard passes them in, the fallbacks are the stylesheet's. */
+      background: linear-gradient(45deg, var(--secondary, #38bdf8), var(--accent, #757575)) !important;
+      color: var(--text, #333) !important;
       border: none;
       border-radius: 8px;
       padding: 8px 16px;
@@ -251,10 +224,6 @@
       margin: 0.25rem;
     }
 
-    [data-theme="dark"] .custom-button {
-      background: linear-gradient(45deg, #2e2767, #620808) !important;
-      color: #a6a6d1 !important;
-    }
 
     .custom-button:hover {
       filter: brightness(1.1);
@@ -268,16 +237,13 @@
     }
 
     .poll-item {
-      border: 1px solid rgba(255, 255, 255, 0.2);
+      border: 1px solid var(--card-border, #3a3a3a);
       border-radius: 8px;
       padding: 1rem;
       margin-bottom: 1rem;
       text-align: left;
     }
 
-    [data-theme="dark"] .poll-item {
-      border-color: rgba(100, 100, 150, 0.3);
-    }
 
     .poll-question {
       font-weight: 600;
@@ -296,12 +262,9 @@
     }
 
     .poll-option:hover {
-      background: rgba(255, 255, 255, 0.1) !important;
+      background: rgba(128, 128, 128, 0.15) !important;
     }
 
-    [data-theme="dark"] .poll-option:hover {
-      background: rgba(30, 30, 50, 0.3) !important;
-    }
 
     .poll-option input[type="radio"] {
       margin-right: 0.5rem;
@@ -326,26 +289,20 @@
     .result-progress {
       flex: 1;
       height: 20px;
-      background: rgba(255, 255, 255, 0.1) !important;
+      background: rgba(128, 128, 128, 0.15) !important;
       border-radius: 10px;
       overflow: hidden;
       margin-right: 0.5rem;
     }
 
-    [data-theme="dark"] .result-progress {
-      background: rgba(30, 30, 50, 0.3) !important;
-    }
 
     .result-fill {
       height: 100%;
-      background: linear-gradient(45deg, #00ddeb, #ff6b6b) !important;
+      background: linear-gradient(45deg, var(--secondary, #38bdf8), var(--accent, #757575)) !important;
       transition: width 0.5s ease;
       border-radius: 10px;
     }
 
-    [data-theme="dark"] .result-fill {
-      background: linear-gradient(45deg, #2e2767, #620808) !important;
-    }
 
     .result-percentage {
       font-size: 0.8rem;
@@ -355,76 +312,56 @@
 
     .poll-meta {
       font-size: 0.7rem;
-      color: rgba(255, 255, 255, 0.7);
+      color: var(--text-secondary, #A3A3A3);
       margin-top: 0.5rem;
       text-align: center;
     }
 
-    [data-theme="dark"] .poll-meta {
-      color: rgba(166, 166, 209, 0.7);
-    }
 
     .voter-list {
       font-size: 0.7rem;
-      color: rgba(255, 255, 255, 0.6);
+      color: var(--text-secondary, #A3A3A3);
       margin-top: 0.25rem;
     }
 
-    [data-theme="dark"] .voter-list {
-      color: rgba(166, 166, 209, 0.6);
-    }
 
     .no-polls {
       text-align: center;
-      color: rgba(255, 255, 255, 0.7);
+      color: var(--text-secondary, #A3A3A3);
       font-style: italic;
       padding: 2rem;
     }
 
-    [data-theme="dark"] .no-polls {
-      color: rgba(166, 166, 209, 0.7);
-    }
 
     .error-message {
-      background: rgba(220, 53, 69, 0.1) !important;
-      border: 1px solid #dc3545;
-      color: #dc3545;
+      background: rgba(239, 68, 68, 0.1) !important;
+      border: 1px solid var(--error, #ef4444);
+      color: var(--error, #ef4444);
       padding: 0.5rem;
       border-radius: 4px;
       margin-bottom: 1rem;
       font-size: 0.8rem;
     }
 
-    [data-theme="dark"] .error-message {
-      color: #ff6b6b;
-      border-color: #ff6b6b;
-    }
 
     .success-message {
-      background: rgba(40, 167, 69, 0.1) !important;
-      border: 1px solid #28a745;
-      color: #28a745;
+      background: rgba(16, 185, 129, 0.1) !important;
+      border: 1px solid var(--success, #10b981);
+      color: var(--success, #10b981);
       padding: 0.5rem;
       border-radius: 4px;
       margin-bottom: 1rem;
       font-size: 0.8rem;
     }
 
-    [data-theme="dark"] .success-message {
-      color: #00ddeb;
-      border-color: #00ddeb;
-    }
 
     .loading {
       text-align: center;
-      color: rgba(255, 255, 255, 0.7);
+      color: var(--text-secondary, #A3A3A3);
       font-style: italic;
       padding: 1rem;
     }
 
-    [data-theme="dark"] .loading {
-      color: rgba(166, 166, 209, 0.7);
-    }
   </style>
 </head>
 <body>
@@ -1071,7 +1008,7 @@
                 `).join('')}
               </div>
               <button type="button" class="custom-button" onclick="savePollEdit('${pollId}')">Save Changes</button>
-              <button type="button" class="custom-button" onclick="cancelEdit()" style="margin-left: 0.5rem; background: #6c757d !important;">Cancel</button>
+              <button type="button" class="custom-button" onclick="cancelEdit()" style="margin-left: 0.5rem; background: var(--text-secondary, #A3A3A3) !important;">Cancel</button>
               <div class="poll-meta" style="margin-top: 0.5rem;">
                 ${total} vote${total === 1 ? '' : 's'} cast — options cannot be added or removed without invalidating them
               </div>
@@ -1117,12 +1054,12 @@
               </div>
             `}
             
-            ${!currentUser ? '<div style="text-align: center; color: rgba(255,255,255,0.7); font-style: italic; margin: 1rem 0;">Select your profile above to vote</div>' : ''}
+            ${!currentUser ? '<div style="text-align: center; color: var(--text-secondary, #A3A3A3); font-style: italic; margin: 1rem 0;">Select your profile above to vote</div>' : ''}
             
             <div class="poll-meta">
               Total votes: ${total} | Created by: ${escapeHtml(poll.createdBy)} | ${new Date(poll.createdAt).toLocaleDateString()}
               <button type="button" class="custom-button" onclick="editPoll('${pollId}')" style="margin-left: 1rem; font-size: 0.7rem; padding: 4px 8px;">Edit</button>
-              <button type="button" class="custom-button" onclick="deletePoll('${pollId}')" style="margin-left: 0.5rem; font-size: 0.7rem; padding: 4px 8px;${armed ? ' background: #ff6b6b !important;' : ''}">${armed ? 'Confirm delete' : 'Delete'}</button>
+              <button type="button" class="custom-button" onclick="deletePoll('${pollId}')" style="margin-left: 0.5rem; font-size: 0.7rem; padding: 4px 8px;${armed ? ' background: var(--error, #ef4444) !important;' : ''}">${armed ? 'Confirm delete' : 'Delete'}</button>
             </div>
           </div>
         `;
