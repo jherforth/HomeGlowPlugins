@@ -2,491 +2,214 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Date & Clock</title>
+  <title>Date &amp; Clock</title>
+  <link rel="stylesheet" href="/index.css">
+  <style>
+    :root {
+      --text-main: var(--text, #f0f0f0);
+      --text-muted: var(--text-secondary, #999999);
+      --border-color: var(--border, rgba(128,128,128,0.25));
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: transparent !important;
+    }
+    .widget-container {
+      position: absolute;
+      top: 50%;
+      left: 0;
+      right: 0;
+      transform: translateY(-50%);
+      display: flex;
+      align-items: center;
+      justify-content: space-around;
+      padding: 0 16px;
+    }
+    .date-col {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      gap: 5px;
+      flex: 1.1;
+    }
+    .day-name {
+      font-size: 0.95rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      color: var(--text-muted);
+      line-height: 1.1;
+    }
+    .full-date {
+      font-size: 2.35rem;
+      font-weight: 900;
+      letter-spacing: -0.025em;
+      line-height: 1.05;
+      white-space: nowrap;
+      color: var(--text-main);
+    }
+    .year-val {
+      font-size: 0.9rem;
+      font-weight: 700;
+      color: var(--text-muted);
+      opacity: 0.65;
+      line-height: 1.1;
+    }
+    .divider {
+      width: 1px;
+      height: 72px;
+      background: var(--border-color);
+      opacity: 0.35;
+      margin: 0 10px;
+    }
+    .time-col {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      gap: 3px;
+      flex: 1.1;
+    }
+    .time-row {
+      display: flex;
+      align-items: baseline;
+      justify-content: center;
+      gap: 6px;
+    }
+    .digits {
+      font-size: 3.85rem;
+      font-weight: 900;
+      color: #00ddeb;
+      line-height: 0.95;
+      letter-spacing: -0.035em;
+      font-variant-numeric: tabular-nums;
+    }
+    .ampm-badge {
+      font-size: 1.35rem;
+      font-weight: 800;
+      color: #00ddeb;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+    .seconds-val {
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: var(--text-muted);
+      opacity: 0.65;
+      letter-spacing: 0.08em;
+      font-variant-numeric: tabular-nums;
+    }
+  </style>
   <script type="application/json" id="homeglow-manifest">
   {
     "manifestVersion": 1,
     "id": "date-clock",
-    "name": "Date and Clock",
-    "description": "A large date and clock face for the dashboard. It follows the household timezone from HomeGlow settings by default, and accepts any IANA timezone name if this particular display should show a different one."
+    "name": "Date & Clock",
+    "description": "Clean, balanced date and digital clock card with responsive scaling. Timezone is configured in the Admin Panel; leave it blank to use the household timezone.",
+    "apiVersion": "v1",
+    "settings": [
+      {
+        "key": "timezone",
+        "label": "Timezone (IANA name, e.g. America/Chicago — blank for household)",
+        "type": "string",
+        "default": "",
+        "scope": "household"
+      }
+    ]
   }
   </script>
-  <link rel="stylesheet" href="/index.css">
-  <style>
-    * {
-      background: transparent !important;
-      background-color: transparent !important;
-      background-image: none !important;
-    }
-
-    body {
-      background: transparent !important;
-      font-family: 'Inter', sans-serif;
-      margin: 0;
-      padding: 0.75rem;
-      box-sizing: border-box;
-      color: #333;
-    }
-
-    [data-theme="dark"] body {
-      color: #a6a6d1;
-    }
-
-    .widget-container {
-      background: transparent !important;
-      border: none !important;
-      box-shadow: none !important;
-      backdrop-filter: none !important;
-      width: 100%;
-      height: calc(100vh - 1.5rem);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      overflow: hidden;
-    }
-
-    /* The layout wrapper — flex direction switches via container queries */
-    .clock-layout {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 0.5rem;
-      width: 100%;
-      height: 100%;
-      container-type: size;
-      container-name: clock;
-    }
-
-    /* Wide & short: row layout */
-    @container clock (min-aspect-ratio: 1.6/1) {
-      .clock-inner {
-        flex-direction: row !important;
-        align-items: center !important;
-        justify-content: center !important;
-        gap: clamp(1rem, 4cqw, 3rem) !important;
-      }
-
-      .date-block {
-        text-align: right !important;
-      }
-
-      .divider {
-        display: block !important;
-        width: 2px !important;
-        height: clamp(40px, 12cqh, 120px) !important;
-        background: linear-gradient(180deg, transparent, currentColor, transparent) !important;
-        opacity: 0.25 !important;
-        flex-shrink: 0;
-      }
-    }
-
-    /* Tall & narrow: column layout (default) */
-    .clock-inner {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: clamp(0.25rem, 2cqh, 1.5rem);
-      width: 100%;
-    }
-
-    .divider {
-      display: none;
-    }
-
-    /* Date block */
-    .date-block {
-      text-align: center;
-      display: flex;
-      flex-direction: column;
-      gap: 0.1em;
-    }
-
-    .day-of-week {
-      font-size: clamp(0.6rem, 3.5cqw, 1.4rem);
-      font-weight: 500;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-      opacity: 0.65;
-      line-height: 1.2;
-    }
-
-    @container clock (min-aspect-ratio: 1.6/1) {
-      .day-of-week {
-        font-size: clamp(0.55rem, 2cqw, 1.1rem) !important;
-      }
-
-      .month-day {
-        font-size: clamp(1rem, 5.5cqw, 3.5rem) !important;
-      }
-
-      .year {
-        font-size: clamp(0.55rem, 2cqw, 1.1rem) !important;
-      }
-    }
-
-    .month-day {
-      font-size: clamp(1.2rem, 9cqw, 5rem);
-      font-weight: 700;
-      letter-spacing: -0.02em;
-      line-height: 1;
-      color: inherit;
-    }
-
-    .year {
-      font-size: clamp(0.6rem, 3.5cqw, 1.4rem);
-      font-weight: 400;
-      opacity: 0.55;
-      letter-spacing: 0.08em;
-      line-height: 1.2;
-    }
-
-    /* Time block */
-    .time-block {
-      text-align: center;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 0.1em;
-    }
-
-    .time-display {
-      font-size: clamp(1.8rem, 14cqw, 8rem);
-      font-weight: 700;
-      letter-spacing: -0.03em;
-      line-height: 1;
-      color: #00ddeb;
-      font-variant-numeric: tabular-nums;
-      transition: opacity 0.1s ease;
-    }
-
-    [data-theme="dark"] .time-display {
-      color: #00ddeb;
-    }
-
-    @container clock (min-aspect-ratio: 1.6/1) {
-      .time-display {
-        font-size: clamp(1.5rem, 8cqw, 6rem) !important;
-      }
-
-      .ampm {
-        font-size: clamp(0.55rem, 2cqw, 1.1rem) !important;
-      }
-
-      .seconds-display {
-        font-size: clamp(0.55rem, 2cqw, 1.1rem) !important;
-      }
-    }
-
-    .ampm {
-      font-size: clamp(0.6rem, 3.5cqw, 1.4rem);
-      font-weight: 600;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
-      opacity: 0.7;
-      line-height: 1.2;
-    }
-
-    .seconds-display {
-      font-size: clamp(0.55rem, 3cqw, 1.2rem);
-      font-weight: 400;
-      opacity: 0.5;
-      font-variant-numeric: tabular-nums;
-      letter-spacing: 0.05em;
-      line-height: 1.2;
-    }
-
-    /* Tick animation on seconds change */
-    @keyframes tick {
-      0%   { opacity: 1; }
-      10%  { opacity: 0.6; }
-      20%  { opacity: 1; }
-    }
-
-    .tick {
-      animation: tick 0.3s ease;
-    }
-
-    /* Timezone config */
-    .tz-bar {
-      position: absolute;
-      bottom: 0.5rem;
-      right: 0.6rem;
-      display: flex;
-      align-items: center;
-      gap: 0.4rem;
-    }
-
-    .tz-label {
-      font-size: clamp(0.5rem, 1.8cqw, 0.75rem);
-      opacity: 0.45;
-      letter-spacing: 0.04em;
-      cursor: pointer;
-      user-select: none;
-      transition: opacity 0.2s;
-    }
-
-    .tz-label:hover {
-      opacity: 0.8;
-    }
-
-    .tz-popover {
-      position: absolute;
-      bottom: calc(100% + 0.5rem);
-      right: 0;
-      background: rgba(30, 30, 40, 0.95) !important;
-      border: 1px solid rgba(255,255,255,0.15) !important;
-      border-radius: 8px;
-      padding: 0.6rem;
-      display: none;
-      flex-direction: column;
-      gap: 0.4rem;
-      min-width: 220px;
-      z-index: 10;
-      box-shadow: 0 4px 16px rgba(0,0,0,0.3) !important;
-    }
-
-    [data-theme="light"] .tz-popover {
-      background: rgba(255,255,255,0.97) !important;
-      border-color: rgba(0,0,0,0.12) !important;
-    }
-
-    .tz-popover.open {
-      display: flex;
-    }
-
-    .tz-popover label {
-      font-size: 0.7rem;
-      opacity: 0.7;
-      color: #a6a6d1;
-    }
-
-    [data-theme="light"] .tz-popover label {
-      color: #555;
-    }
-
-    .tz-input {
-      background: rgba(255,255,255,0.08) !important;
-      border: 1px solid rgba(255,255,255,0.2) !important;
-      border-radius: 4px;
-      padding: 0.35rem 0.5rem;
-      color: #fff !important;
-      font-size: 0.75rem;
-      font-family: inherit;
-      width: 100%;
-      box-sizing: border-box;
-    }
-
-    [data-theme="light"] .tz-input {
-      background: rgba(0,0,0,0.05) !important;
-      border-color: rgba(0,0,0,0.15) !important;
-      color: #333 !important;
-    }
-
-    .tz-input:focus {
-      outline: none;
-      border-color: #00ddeb !important;
-    }
-
-    .tz-save-btn {
-      background: linear-gradient(45deg, #00ddeb, #0099aa) !important;
-      color: #111 !important;
-      border: none;
-      border-radius: 4px;
-      padding: 0.35rem 0.6rem;
-      cursor: pointer;
-      font-size: 0.7rem;
-      font-weight: 600;
-      transition: filter 0.2s;
-      align-self: flex-end;
-    }
-
-    .tz-save-btn:hover {
-      filter: brightness(1.15);
-    }
-
-    .tz-error {
-      font-size: 0.65rem;
-      color: #ff6b6b;
-      display: none;
-    }
-  </style>
 </head>
 <body>
   <div class="widget-container">
-    <div class="clock-layout">
-      <div class="clock-inner">
-        <div class="date-block">
-          <div class="day-of-week" id="dayOfWeek"></div>
-          <div class="month-day" id="monthDay"></div>
-          <div class="year" id="year"></div>
-        </div>
-
-        <div class="divider"></div>
-
-        <div class="time-block">
-          <div class="time-display" id="timeDisplay"></div>
-          <div class="ampm" id="ampm"></div>
-          <div class="seconds-display" id="secondsDisplay"></div>
-        </div>
+    <div class="date-col">
+      <span class="day-name" id="dayName">--</span>
+      <span class="full-date" id="fullDate">--</span>
+      <span class="year-val" id="yearVal">----</span>
+    </div>
+    <div class="divider"></div>
+    <div class="time-col">
+      <div class="time-row">
+        <span class="digits" id="timeDigits">--:--</span>
+        <span class="ampm-badge" id="ampmVal">--</span>
       </div>
-
-      <div class="tz-bar">
-        <span class="tz-label" id="tzLabel" title="Click to change timezone"></span>
-        <div class="tz-popover" id="tzPopover">
-          <label for="tzInput">IANA Timezone (e.g. America/Chicago)</label>
-          <input type="text" id="tzInput" class="tz-input" placeholder="America/New_York" spellcheck="false">
-          <span class="tz-error" id="tzError">Invalid timezone</span>
-          <button class="tz-save-btn" id="tzSaveBtn">Save</button>
-        </div>
-      </div>
+      <span class="seconds-val" id="secVal">--</span>
     </div>
   </div>
 
   <script>
-    document.addEventListener('DOMContentLoaded', () => {
-      const params = new URLSearchParams(window.location.search);
-      const theme = params.get('theme');
-      if (theme === 'dark' || theme === 'light') {
-        document.documentElement.setAttribute('data-theme', theme);
+    // Timezone resolution: ?tz= param > Admin Panel setting > household
+    // timezone from /api/timezone > device system timezone. There is no
+    // on-widget configuration UI; the timezone lives in the Admin Panel.
+    let resolvedTz = null;
+
+    function isValidTimezone(tz) {
+      try {
+        Intl.DateTimeFormat(undefined, { timeZone: tz });
+        return true;
+      } catch (_) {
+        return false;
       }
+    }
 
-      const dayOfWeekEl   = document.getElementById('dayOfWeek');
-      const monthDayEl    = document.getElementById('monthDay');
-      const yearEl        = document.getElementById('year');
-      const timeDisplayEl = document.getElementById('timeDisplay');
-      const ampmEl        = document.getElementById('ampm');
-      const secondsEl     = document.getElementById('secondsDisplay');
-      const tzLabel       = document.getElementById('tzLabel');
-      const tzPopover     = document.getElementById('tzPopover');
-      const tzInput       = document.getElementById('tzInput');
-      const tzError       = document.getElementById('tzError');
-      const tzSaveBtn     = document.getElementById('tzSaveBtn');
-
-      function isValidTimezone(tz) {
-        try {
-          Intl.DateTimeFormat(undefined, { timeZone: tz });
-          return true;
-        } catch {
-          return false;
+    async function resolveTimezone() {
+      const p = new URLSearchParams(window.location.search);
+      const paramTz = p.get('tz');
+      if (paramTz && isValidTimezone(paramTz)) return paramTz;
+      try {
+        if (window.HomeGlow && window.HomeGlow.settings) {
+          const cfg = await window.HomeGlow.settings.get();
+          if (cfg && cfg.timezone && isValidTimezone(cfg.timezone)) return cfg.timezone;
         }
-      }
-
-      // Resolve timezone: API > ?tz= param > localStorage override > system default
-      async function resolveTimezone() {
-        try {
-          const res = await fetch('/api/timezone');
-          if (res.ok) {
-            const data = await res.json();
-            const tz = data.timezone || data.tz || data;
-            if (typeof tz === 'string' && isValidTimezone(tz)) return tz;
-          }
-        } catch {
-          // API unreachable — fall through to next source
+      } catch (_) {}
+      try {
+        const res = await fetch('/api/timezone');
+        if (res.ok) {
+          const data = await res.json();
+          const tz = data.timezone || data.tz;
+          if (typeof tz === 'string' && isValidTimezone(tz)) return tz;
         }
-        const paramTz = params.get('tz');
-        if (paramTz && isValidTimezone(paramTz)) return paramTz;
-        const storedTz = localStorage.getItem('homeglowDateClockTz');
-        if (storedTz && isValidTimezone(storedTz)) return storedTz;
-        return Intl.DateTimeFormat().resolvedOptions().timeZone;
+      } catch (_) {}
+      return Intl.DateTimeFormat().resolvedOptions().timeZone;
+    }
+
+    function update() {
+      const now = new Date();
+      const tzOpt = resolvedTz ? { timeZone: resolvedTz } : {};
+      document.getElementById('dayName').textContent = now.toLocaleDateString(undefined, { weekday: 'long', ...tzOpt });
+      document.getElementById('fullDate').textContent = now.toLocaleDateString(undefined, { month: 'long', day: 'numeric', ...tzOpt });
+      document.getElementById('yearVal').textContent = now.toLocaleDateString(undefined, { year: 'numeric', ...tzOpt });
+
+      const parts = new Intl.DateTimeFormat('en-US', {
+        hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true, ...tzOpt
+      }).formatToParts(now);
+      const get = (t) => (parts.find((x) => x.type === t) || {}).value || '';
+      document.getElementById('timeDigits').textContent = `${get('hour')}:${get('minute')}`;
+      document.getElementById('ampmVal').textContent = get('dayPeriod').toUpperCase();
+      document.getElementById('secVal').textContent = `:${get('second')}`;
+    }
+
+    function applyTheme() {
+      const p = new URLSearchParams(window.location.search);
+      document.documentElement.setAttribute('data-theme', p.get('theme') || 'dark');
+      if (p.get('transparent') === 'true') {
+        const c = document.querySelector('.widget-container');
+        if (c) { c.style.background = 'transparent'; c.style.border = 'none'; }
       }
+    }
 
-      let timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-
-      function pad(n) {
-        return String(n).padStart(2, '0');
-      }
-
-      let lastSecond = -1;
-
-      function update() {
-        const now = new Date();
-
-        // Extract all date/time parts in the configured timezone
-        const parts = new Intl.DateTimeFormat('en-US', {
-          timeZone: timezone,
-          weekday: 'long',
-          month: 'long',
-          day: 'numeric',
-          year: 'numeric',
-          hour: 'numeric',
-          minute: '2-digit',
-          second: '2-digit',
-          hour12: true,
-        }).formatToParts(now);
-
-        const get = (type) => parts.find(p => p.type === type)?.value ?? '';
-
-        const weekday = get('weekday');
-        const month   = get('month');
-        const day     = get('day');
-        const year    = get('year');
-        const hour    = get('hour');
-        const minute  = get('minute');
-        const second  = get('second');
-        const dayPeriod = get('dayPeriod').toUpperCase();
-
-        dayOfWeekEl.textContent   = weekday;
-        monthDayEl.textContent    = `${month} ${day}`;
-        yearEl.textContent        = year;
-        timeDisplayEl.textContent = `${hour}:${minute}`;
-        ampmEl.textContent        = dayPeriod;
-        secondsEl.textContent     = `${second}s`;
-
-        const secs = parseInt(second, 10);
-        if (secs !== lastSecond) {
-          lastSecond = secs;
-          timeDisplayEl.classList.remove('tick');
-          void timeDisplayEl.offsetWidth;
-          timeDisplayEl.classList.add('tick');
-        }
-      }
-
-      // Timezone label + popover
-      function refreshLabel() {
-        tzLabel.textContent = timezone;
-        tzInput.value = timezone;
-      }
-
-      tzLabel.addEventListener('click', (e) => {
-        e.stopPropagation();
-        tzPopover.classList.toggle('open');
-        if (tzPopover.classList.contains('open')) tzInput.focus();
-      });
-
-      document.addEventListener('click', () => tzPopover.classList.remove('open'));
-      tzPopover.addEventListener('click', (e) => e.stopPropagation());
-
-      tzSaveBtn.addEventListener('click', () => {
-        const val = tzInput.value.trim();
-        if (!isValidTimezone(val)) {
-          tzError.style.display = 'block';
-          return;
-        }
-        tzError.style.display = 'none';
-        timezone = val;
-        localStorage.setItem('homeglowDateClockTz', val);
-        refreshLabel();
-        tzPopover.classList.remove('open');
-        update();
-      });
-
-      tzInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') tzSaveBtn.click();
-        if (e.key === 'Escape') tzPopover.classList.remove('open');
-      });
-
-      tzInput.addEventListener('input', () => {
-        tzError.style.display = 'none';
-      });
-
-      resolveTimezone().then((tz) => {
-        timezone = tz;
-        refreshLabel();
-        update();
-        setInterval(update, 500);
-      });
+    document.addEventListener('DOMContentLoaded', async () => {
+      applyTheme();
+      resolvedTz = await resolveTimezone();
+      update();
+      setInterval(update, 1000);
     });
   </script>
 </body>
