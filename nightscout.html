@@ -8,7 +8,7 @@
   "id": "nightscout-cgm",
   "name": "Nightscout CGM",
   "description": "Real-time CGM monitor showing Blood Glucose, Trend Arrow, Delta, Reading Age, IOB, and COB.",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "apiVersion": "v1",
   "settings": [
     {
@@ -55,6 +55,9 @@
       flex-direction: column;
       box-sizing: border-box;
       user-select: none;
+      /* Establish the container context so cqw units below scale with the
+         widget's own width (not the viewport) when the widget is resized. */
+      container-type: inline-size;
     }
     .cgm-container {
       display: flex;
@@ -71,7 +74,7 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
-      font-size: clamp(0.75rem, 2.8cqw, 0.95rem);
+      font-size: clamp(0.7rem, 3.2cqw, 1.5rem);
       font-weight: 800;
       text-transform: uppercase;
       letter-spacing: 0.08em;
@@ -86,7 +89,7 @@
       line-height: 1;
     }
     .sgv-value {
-      font-size: clamp(4.2rem, 16cqw, 6.2rem);
+      font-size: clamp(4rem, 20cqw, 12rem);
       font-weight: 900;
       line-height: 1;
       font-variant-numeric: tabular-nums;
@@ -96,7 +99,7 @@
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      font-size: clamp(2.8rem, 11cqw, 4.4rem);
+      font-size: clamp(2.5rem, 13cqw, 8rem);
       font-weight: 900;
       line-height: 1;
       transform: translateY(-2px);
@@ -105,7 +108,7 @@
       display: flex;
       justify-content: space-around;
       align-items: center;
-      font-size: clamp(0.95rem, 3.8cqw, 1.35rem);
+      font-size: clamp(0.9rem, 4.5cqw, 2.5rem);
       font-weight: 800;
       color: var(--text-main);
       border-top: 1px solid var(--border-color);
@@ -117,7 +120,7 @@
       align-items: center;
     }
     .sub-label {
-      font-size: clamp(0.65rem, 2.4cqw, 0.8rem);
+      font-size: clamp(0.6rem, 2.8cqw, 1.2rem);
       text-transform: uppercase;
       font-weight: 800;
       color: var(--text-muted);
