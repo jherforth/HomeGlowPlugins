@@ -55,9 +55,9 @@
       flex-direction: column;
       box-sizing: border-box;
       user-select: none;
-      /* Establish the container context so cqw units below scale with the
-         widget's own width (not the viewport) when the widget is resized. */
-      container-type: inline-size;
+      /* Establish the container context so cqw/cqh units below scale with the
+         widget's own size (not the viewport) when the widget is resized. */
+      container-type: size;
     }
     .cgm-container {
       display: flex;
@@ -89,7 +89,7 @@
       line-height: 1;
     }
     .sgv-value {
-      font-size: clamp(4rem, 20cqw, 12rem);
+      font-size: clamp(4rem, min(20cqw, 25cqh), 12rem);
       font-weight: 900;
       line-height: 1;
       font-variant-numeric: tabular-nums;
@@ -99,7 +99,7 @@
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      font-size: clamp(2.5rem, 13cqw, 8rem);
+      font-size: clamp(2.5rem, min(13cqw, 16cqh), 8rem);
       font-weight: 900;
       line-height: 1;
       transform: translateY(-2px);
