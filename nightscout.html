@@ -83,13 +83,20 @@
     .cgm-main {
       display: flex;
       align-items: center;
-      justify-content: center;
-      gap: 12px;
-      margin: -4px 0;
+      justify-content: space-between;
+      gap: 8px;
+      flex: 1;
+      min-height: 0;
       line-height: 1;
     }
+    .sgv-group {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-shrink: 0;
+    }
     .sgv-value {
-      font-size: clamp(4rem, min(20cqw, 25cqh), 12rem);
+      font-size: clamp(5rem, min(32cqw, 55cqh), 22rem);
       font-weight: 900;
       line-height: 1;
       font-variant-numeric: tabular-nums;
@@ -99,29 +106,29 @@
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      font-size: clamp(2.5rem, min(13cqw, 16cqh), 8rem);
+      font-size: clamp(3rem, min(16cqw, 28cqh), 12rem);
       font-weight: 900;
       line-height: 1;
       transform: translateY(-2px);
     }
     .cgm-sub {
       display: flex;
-      justify-content: space-around;
-      align-items: center;
-      font-size: clamp(0.9rem, 4.5cqw, 2.5rem);
+      flex-direction: column;
+      justify-content: center;
+      gap: 6px;
+      font-size: clamp(0.8rem, 3.5cqw, 1.8rem);
       font-weight: 800;
       color: var(--text-main);
-      border-top: 1px solid var(--border-color);
-      padding-top: 6px;
-      overflow-x: hidden;
-      overflow-y: visible;
+      border-left: 1px solid var(--border-color);
+      padding-left: 12px;
+      min-width: 0;
+      overflow: hidden;
     }
     .sub-item {
       display: flex;
       flex-direction: column;
-      align-items: center;
+      align-items: flex-start;
       min-width: 0;
-      flex-shrink: 1;
     }
     .sub-item > span:last-child {
       white-space: nowrap;
@@ -154,8 +161,10 @@
       <span id="time-ago">-- MIN AGO</span>
     </div>
     <div class="cgm-main">
-      <span class="sgv-value status-in-range" id="sgv">---</span>
-      <span class="direction-arrow" id="arrow"></span>
+      <div class="sgv-group">
+        <span class="sgv-value status-in-range" id="sgv">---</span>
+        <span class="direction-arrow" id="arrow"></span>
+      </div>
     </div>
     <div class="cgm-sub">
       <div class="sub-item">
