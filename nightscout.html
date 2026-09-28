@@ -113,7 +113,8 @@
       color: var(--text-main);
       border-top: 1px solid var(--border-color);
       padding-top: 6px;
-      overflow: hidden;
+      overflow-x: hidden;
+      overflow-y: visible;
     }
     .sub-item {
       display: flex;
@@ -127,6 +128,9 @@
       overflow: hidden;
       text-overflow: ellipsis;
       max-width: 100%;
+    }
+    .sub-label {
+      line-height: 1.2;
     }
     .sub-label {
       font-size: clamp(0.6rem, 2.8cqw, 1.2rem);
