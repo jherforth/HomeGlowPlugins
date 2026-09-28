@@ -113,11 +113,20 @@
       color: var(--text-main);
       border-top: 1px solid var(--border-color);
       padding-top: 6px;
+      overflow: hidden;
     }
     .sub-item {
       display: flex;
       flex-direction: column;
       align-items: center;
+      min-width: 0;
+      flex-shrink: 1;
+    }
+    .sub-item > span:last-child {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 100%;
     }
     .sub-label {
       font-size: clamp(0.6rem, 2.8cqw, 1.2rem);
