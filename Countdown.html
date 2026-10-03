@@ -31,12 +31,7 @@
       padding: 0.75rem;
       box-sizing: border-box;
       font-size: 0.85rem;
-      color: #333;
-    }
-
-    [data-theme="dark"] body {
-      color: #a6a6d1;
-      background: transparent !important;
+      color: var(--text, #FFFFFF);
     }
 
     .widget-container {
@@ -66,17 +61,12 @@
     }
 
     .countdown-item {
-      background: rgba(255, 255, 255, 0.1);
-      border: 1px solid rgba(255, 255, 255, 0.2);
+      background: rgba(128, 128, 128, 0.15);
+      border: 1px solid var(--card-border, #3a3a3a);
       border-radius: 8px;
       padding: 0.75rem;
       margin-bottom: 0.5rem;
       position: relative;
-    }
-
-    [data-theme="dark"] .countdown-item {
-      background: rgba(30, 30, 50, 0.3);
-      border-color: rgba(100, 100, 150, 0.3);
     }
 
     .countdown-header {
@@ -100,12 +90,8 @@
     .countdown-display {
       font-size: 1.1rem;
       font-weight: 700;
-      color: #00ddeb;
+      color: var(--accent, #757575);
       margin: 0.25rem 0;
-    }
-
-    [data-theme="dark"] .countdown-display {
-      color: #00ddeb;
     }
 
     .countdown-date {
@@ -115,12 +101,12 @@
     }
 
     .countdown-expired {
-      color: #ff6b6b !important;
+      color: var(--error, #ef4444) !important;
       font-weight: 600;
     }
 
     .countdown-today {
-      color: #28a745 !important;
+      color: var(--success, #10b981) !important;
       font-weight: 700;
       animation: pulse 2s infinite;
     }
@@ -137,7 +123,7 @@
     }
 
     .edit-btn {
-      background: #4a90d9 !important;
+      background: var(--accent, #757575) !important;
       color: white !important;
       border: none;
       border-radius: 4px;
@@ -149,12 +135,12 @@
     }
 
     .edit-btn:hover {
-      background: #3a7bc0 !important;
+      filter: brightness(1.1);
       transform: translateY(-1px);
     }
 
     .delete-btn {
-      background: #ff6b6b !important;
+      background: var(--error, #ef4444) !important;
       color: white !important;
       border: none;
       border-radius: 4px;
@@ -166,21 +152,16 @@
     }
 
     .delete-btn:hover {
-      background: #ff5252 !important;
+      filter: brightness(1.1);
       transform: translateY(-1px);
     }
 
     .add-form {
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: rgba(128, 128, 128, 0.1);
+      border: 1px solid var(--card-border, #3a3a3a);
       border-radius: 8px;
       padding: 0.75rem;
       margin-top: 1rem;
-    }
-
-    [data-theme="dark"] .add-form {
-      background: rgba(30, 30, 50, 0.2);
-      border-color: rgba(100, 100, 150, 0.2);
     }
 
     .scope-option {
@@ -212,8 +193,8 @@
     }
 
     .form-input {
-      background: rgba(255, 255, 255, 0.1) !important;
-      border: 1px solid rgba(255, 255, 255, 0.2) !important;
+      background: var(--surface, #262626) !important;
+      border: 1px solid var(--card-border, #3a3a3a) !important;
       border-radius: 4px;
       padding: 0.5rem;
       color: inherit !important;
@@ -221,20 +202,15 @@
       flex: 1;
     }
 
-    [data-theme="dark"] .form-input {
-      background: rgba(30, 30, 50, 0.3) !important;
-      border-color: rgba(100, 100, 150, 0.3) !important;
-    }
-
     .form-input:focus {
       outline: none;
-      border-color: #00ddeb !important;
-      box-shadow: 0 0 0 2px rgba(0, 221, 235, 0.2);
+      border-color: var(--accent, #757575) !important;
+      box-shadow: 0 0 0 2px rgba(var(--accent-rgb, 158, 127, 255), 0.2);
     }
 
     .emoji-select {
-      background: rgba(255, 255, 255, 0.1) !important;
-      border: 1px solid rgba(255, 255, 255, 0.2) !important;
+      background: var(--surface, #262626) !important;
+      border: 1px solid var(--card-border, #3a3a3a) !important;
       border-radius: 4px;
       padding: 0.5rem;
       color: inherit !important;
@@ -242,14 +218,11 @@
       width: 60px;
     }
 
-    [data-theme="dark"] .emoji-select {
-      background: rgba(30, 30, 50, 0.3) !important;
-      border-color: rgba(100, 100, 150, 0.3) !important;
-    }
-
     .custom-button {
-      background: linear-gradient(45deg, #00ddeb, #ff6b6b) !important;
-      color: #333 !important;
+      /* Secondary to accent, the two interface colors the household picks;
+         the dashboard passes them in, the fallbacks are the stylesheet's. */
+      background: linear-gradient(45deg, var(--secondary, #38bdf8), var(--accent, #757575)) !important;
+      color: var(--text, #333) !important;
       border: none;
       border-radius: 8px;
       padding: 8px 16px;
@@ -258,11 +231,6 @@
       font-weight: 600;
       transition: all 0.3s ease;
       margin: 0.25rem;
-    }
-
-    [data-theme="dark"] .custom-button {
-      background: linear-gradient(45deg, #2e2767, #620808) !important;
-      color: #a6a6d1 !important;
     }
 
     .custom-button:hover {
@@ -277,14 +245,14 @@
     }
 
     .error-message {
-      color: #ff6b6b;
+      color: var(--error, #ef4444);
       font-size: 0.75rem;
       margin: 0.5rem 0;
       text-align: center;
     }
 
     .success-message {
-      color: #28a745;
+      color: var(--success, #10b981);
       font-size: 0.75rem;
       margin: 0.5rem 0;
       text-align: center;
@@ -298,9 +266,9 @@
     }
 
     .toggle-form-btn {
-      background: rgba(255, 255, 255, 0.1) !important;
+      background: rgba(128, 128, 128, 0.15) !important;
       color: inherit !important;
-      border: 1px solid rgba(255, 255, 255, 0.2);
+      border: 1px solid var(--card-border, #3a3a3a);
       border-radius: 8px;
       padding: 8px 16px;
       cursor: pointer;
@@ -310,18 +278,9 @@
       margin-bottom: 1rem;
     }
 
-    [data-theme="dark"] .toggle-form-btn {
-      background: rgba(30, 30, 50, 0.3) !important;
-      border-color: rgba(100, 100, 150, 0.3);
-    }
-
     .toggle-form-btn:hover {
-      background: rgba(255, 255, 255, 0.2) !important;
+      background: rgba(128, 128, 128, 0.25) !important;
       transform: translateY(-1px);
-    }
-
-    [data-theme="dark"] .toggle-form-btn:hover {
-      background: rgba(30, 30, 50, 0.5) !important;
     }
   </style>
 </head>
@@ -363,7 +322,7 @@
       </div>
       <div class="form-row">
         <button id="addCountdownBtn" class="custom-button">Add Countdown</button>
-        <button id="cancelBtn" class="custom-button" style="background: #6c757d !important;">Cancel</button>
+        <button id="cancelBtn" class="custom-button" style="background: var(--text-secondary, #A3A3A3) !important;">Cancel</button>
       </div>
       <div id="errorMessage" class="error-message"></div>
       <div id="successMessage" class="success-message"></div>
