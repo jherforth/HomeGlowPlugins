@@ -10,7 +10,10 @@
     "name": "Family Countdown",
     "description": "Counts down to the days the family is waiting for: birthdays, holidays, the start of a trip. Countdowns are saved on the server, each countdown can be made per-display (default) or shown on all displays.",
     "apiVersion": "v1",
-    "storage": true
+    "storage": true,
+    "hideableControls": [
+      { "id": "manageCountdowns", "label": "Add, edit, or delete countdowns" }
+    ]
   }
   </script>
   <link rel="stylesheet" href="/index.css">
@@ -369,6 +372,27 @@
 
   <script src="/plugin-sdk/v1.js"></script>
   <script>
+    // Control limits: the dashboard names this plugin's hidden controls on the
+    // iframe URL, already unprefixed. No param means hide nothing, which is what
+    // an older dashboard and a direct load of this page both produce.
+    var HIDDEN_CONTROLS = (new URLSearchParams(window.location.search).get('hide') || '')
+      .split(',').filter(Boolean);
+    var HIDE_MANAGE = HIDDEN_CONTROLS.indexOf('manageCountdowns') !== -1;
+
+    // At parse time, not on DOMContentLoaded: this script sits after the button
+    // and the form in the document, so hidden ones can go before they are ever
+    // painted. The per-item Edit and Delete buttons are rendered later, and
+    // renderCountdowns() leaves them out under the same gate.
+    applyControlLimits();
+
+    function applyControlLimits() {
+      if (!HIDE_MANAGE) return;
+      var toggle = document.getElementById('toggleFormBtn');
+      if (toggle) toggle.remove();
+      var form = document.getElementById('addForm');
+      if (form) form.remove();
+    }
+
     document.addEventListener('DOMContentLoaded', () => {
       // Handle theme
       const params = new URLSearchParams(window.location.search);
@@ -706,10 +730,11 @@
             <div class="countdown-item">
               <div class="countdown-header">
                 <div class="countdown-emoji">${escapeHtml(countdown.emoji)}</div>
+                ${HIDE_MANAGE ? '' : `
                 <div class="countdown-actions">
                   <button class="edit-btn" onclick="editCountdown('${escapeHtml(countdown.id)}')">Edit</button>
                   <button class="delete-btn" onclick="deleteCountdown('${escapeHtml(countdown.id)}')">Delete</button>
-                </div>
+                </div>`}
               </div>
               <h3 class="countdown-title">${escapeHtml(countdown.title)}${
                 countdown.device ? '' : ' <span class="scope-badge">All displays</span>'
@@ -725,6 +750,7 @@
       // date and the underlying list can change on another display, so an
       // index resolves to the wrong countdown.
       window.deleteCountdown = async function(id) {
+        if (HIDE_MANAGE) return;
         const index = countdowns.findIndex(c => c.id === id);
         if (index === -1) return;
 
@@ -737,6 +763,7 @@
 
       // Load the countdown into the form for editing.
       window.editCountdown = function(id) {
+        if (HIDE_MANAGE) return;
         const countdown = countdowns.find(c => c.id === id);
         if (!countdown) return;
 
@@ -873,15 +900,18 @@
         updateInterval = setInterval(renderCountdowns, 1000);
       }
 
-      // Event listeners
-      toggleFormBtn.addEventListener('click', toggleForm);
-      addCountdownBtn.addEventListener('click', addCountdown);
-      cancelBtn.addEventListener('click', toggleForm);
+      // Event listeners. Under the control limit the button and the form were
+      // removed before this ran, so there is nothing to listen on.
+      if (!HIDE_MANAGE) {
+        toggleFormBtn.addEventListener('click', toggleForm);
+        addCountdownBtn.addEventListener('click', addCountdown);
+        cancelBtn.addEventListener('click', toggleForm);
 
-      // Enter key support
-      eventTitle.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') addCountdown();
-      });
+        // Enter key support
+        eventTitle.addEventListener('keypress', (e) => {
+          if (e.key === 'Enter') addCountdown();
+        });
+      }
 
       // Initialize. The first render waits for the load so the list is never
       // drawn empty and then repopulated. The 1 s interval that follows is
