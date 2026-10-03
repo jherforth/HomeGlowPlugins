@@ -18,6 +18,9 @@
         "default": "", "scope": "device" },
       { "key": "showDone", "label": "Show finished routines", "type": "boolean",
         "default": true, "scope": "device" }
+    ],
+    "hideableControls": [
+      { "id": "setUp", "label": "Set up routines (create, retire, remove, add steps)" }
     ]
   }
   </script>
@@ -292,6 +295,22 @@
     // and say which one is in use, instead of silently discarding writes.
     var SDK = window.HomeGlow && window.HomeGlow.pluginId ? window.HomeGlow : null;
     var LOCAL_PREFIX = 'homeglow.routines.';
+
+    // Control limits: the dashboard names this plugin's hidden controls on the
+    // iframe URL, already unprefixed. No param means hide nothing, which is what
+    // an older dashboard and a direct load of this page both produce. Set up is
+    // the one gate: everything that edits a routine lives behind it, while
+    // marking steps done stays on the board.
+    var HIDDEN_CONTROLS = (new URLSearchParams(window.location.search).get('hide') || '')
+      .split(',').filter(Boolean);
+    var HIDE_SET_UP = HIDDEN_CONTROLS.indexOf('setUp') !== -1;
+
+    // At parse time, not on DOMContentLoaded: this script sits after the button
+    // in the document, so a hidden one can go before it is ever painted.
+    if (HIDE_SET_UP) {
+      var gearBtn = document.getElementById('gear');
+      if (gearBtn) gearBtn.remove();
+    }
 
     var store = {
       shared: !!SDK,
@@ -741,7 +760,9 @@
 
       var view = document.getElementById('view');
       if (!state.routines.length) {
-        view.innerHTML = '<div class="empty">No routines yet. Choose <strong>Set up</strong> to build one.</div>';
+        view.innerHTML = HIDE_SET_UP
+          ? '<div class="empty">No routines yet.</div>'
+          : '<div class="empty">No routines yet. Choose <strong>Set up</strong> to build one.</div>';
         return;
       }
 
@@ -916,6 +937,9 @@
       switch (ev.target.id) {
         case 'gear':
         case 'closeSetup':
+          // The button is gone under the gate; a stale reference must not open
+          // the setup view either.
+          if (HIDE_SET_UP) break;
           state.setup = ev.target.id === 'gear' ? !state.setup : false;
           document.getElementById('gear').textContent = state.setup ? 'Close' : 'Set up';
           render();
