@@ -10,7 +10,14 @@
     "name": "Family Poll",
     "description": "Runs a quick family vote. Ask a question, add the options, and everyone picks their profile and votes straight from the dashboard. Polls and votes are saved on the server, so every display shows the same tally.",
     "apiVersion": "v1",
-    "storage": true
+    "storage": true,
+    "settings": [
+      { "key": "voter", "label": "Who votes from this display (profile id; the widget sets it when a profile is picked)",
+        "type": "string", "default": "", "scope": "device" }
+    ],
+    "hideableControls": [
+      { "id": "managePolls", "label": "Create, edit, or delete polls" }
+    ]
   }
   </script>
   <link rel="stylesheet" href="/index.css">
@@ -383,11 +390,11 @@
     <div id="currentUserDisplay" class="current-user-display" style="display: none;">
       <span id="currentUserAvatar" class="current-user-avatar"></span>
       Voting as: <span id="currentUserName"></span>
-      <button type="button" class="custom-button" onclick="clearUserSelection()" style="margin-left: 0.5rem; font-size: 0.7rem; padding: 4px 8px;">Switch User</button>
+      <button type="button" class="custom-button" id="switchUserBtn" onclick="clearUserSelection()" style="margin-left: 0.5rem; font-size: 0.7rem; padding: 4px 8px;">Switch User</button>
     </div>
     
     <!-- Poll Creation Section -->
-    <div class="poll-section">
+    <div class="poll-section" id="pollCreationSection">
       <button type="button" class="custom-button" id="toggleCreateBtn" onclick="toggleCreateForm()">+ Create Poll</button>
       <div class="poll-creation" id="pollCreation" style="display: none; margin-top: 0.75rem;">
         
@@ -456,6 +463,62 @@
     const SDK = window.HomeGlow && window.HomeGlow.pluginId ? window.HomeGlow : null;
     const STORAGE = SDK ? SDK.storage : null;
     const PLATFORM_AVAILABLE = Boolean(STORAGE);
+    const SETTINGS = SDK ? SDK.settings : null;
+
+    // Control limits: the dashboard names this plugin's hidden controls on the
+    // iframe URL, already unprefixed. No param means hide nothing, which is what
+    // an older dashboard and a direct load of this page both produce.
+    const HIDDEN_CONTROLS = (new URLSearchParams(window.location.search).get('hide') || '')
+      .split(',').filter(Boolean);
+    const HIDE_MANAGE_POLLS = HIDDEN_CONTROLS.indexOf('managePolls') !== -1;
+    // Switch User is deliberately not hideable: on a shared display, switching
+    // voters is how a poll works, and a Wall display would hide it for good.
+
+    // At parse time, not on DOMContentLoaded: this script sits after the
+    // controls in the document, so a hidden one can go before it is painted.
+    applyControlLimits();
+
+    function applyControlLimits() {
+      if (HIDE_MANAGE_POLLS) {
+        // The section holds only the Create Poll toggle and the form it opens.
+        // Edit and Delete on each poll are left out at render time instead.
+        const section = document.getElementById('pollCreationSection');
+        if (section) section.remove();
+      }
+    }
+
+    // Which profile votes from this display. On the platform it is a
+    // device-scoped setting, so the kitchen display and a phone hold different
+    // voters and the choice survives cleared site data. localStorage remains
+    // the whole story without a plugin identity, and a fallback copy with one:
+    // the SDK resolves device scope from the ?device= param the dashboard
+    // passes, so a direct load can have its settings call rejected.
+    const VOTER_KEY = 'pollWidget_currentUser';
+
+    async function readVoterId() {
+      const local = localStorage.getItem(VOTER_KEY);
+      if (!SETTINGS) return local;
+      try {
+        const values = await SETTINGS.get();
+        const stored = values && typeof values.voter === 'string' ? values.voter : '';
+        if (stored) return stored;
+        // Imported once from the browser key; the key is left intact as a copy.
+        if (local) await SETTINGS.set({ voter: local });
+        return local;
+      } catch (error) {
+        console.error('Could not read the voter setting:', error);
+        return local;
+      }
+    }
+
+    function writeVoterId(id) {
+      if (id === null) localStorage.removeItem(VOTER_KEY);
+      else localStorage.setItem(VOTER_KEY, id);
+      if (!SETTINGS) return;
+      SETTINGS.set({ voter: id === null ? '' : id }).catch((error) => {
+        console.error('Could not save the voter setting:', error);
+      });
+    }
 
     // One key per voter per poll. A single document holding nested votes would
     // be get-modify-set, so two people voting at the same moment on different
@@ -511,7 +574,7 @@
         renderUserSelection();
         
         // Load saved user selection
-        const savedUserId = localStorage.getItem('pollWidget_currentUser');
+        const savedUserId = await readVoterId();
         if (savedUserId) {
           const savedUser = users.find(u => u.id === parseInt(savedUserId));
           if (savedUser) {
@@ -543,7 +606,7 @@
 
     function selectUser(user) {
       currentUser = user;
-      localStorage.setItem('pollWidget_currentUser', user.id.toString());
+      writeVoterId(user.id.toString());
       
       // Update UI
       document.getElementById('currentUserName').textContent = user.username;
@@ -562,7 +625,7 @@
 
     function clearUserSelection() {
       currentUser = null;
-      localStorage.removeItem('pollWidget_currentUser');
+      writeVoterId(null);
       
       document.getElementById('currentUserDisplay').style.display = 'none';
       document.querySelector('.user-selection').style.display = 'block';
@@ -743,6 +806,7 @@
     }
 
     async function createPoll() {
+      if (HIDE_MANAGE_POLLS) return;
       const question = document.getElementById('pollQuestion').value.trim();
       const optionInputs = document.querySelectorAll('.option-input');
       
@@ -848,6 +912,7 @@
     // sandboxed iframe the dashboard embeds plugins in -- it returns false, so
     // the original confirm-guarded delete silently did nothing there.
     async function deletePoll(pollId) {
+      if (HIDE_MANAGE_POLLS) return;
       const id0 = String(pollId);
       if (pendingDeleteId !== id0) {
         pendingDeleteId = id0;
@@ -888,6 +953,8 @@
     function toggleCreateForm(show) {
       const form = document.getElementById('pollCreation');
       const btn = document.getElementById('toggleCreateBtn');
+      // Gone under managePolls; see applyControlLimits().
+      if (!form || !btn) return;
       const open = show === undefined ? form.style.display === 'none' : Boolean(show);
       form.style.display = open ? '' : 'none';
       btn.textContent = open ? '✕ Cancel' : '+ Create Poll';
@@ -922,6 +989,7 @@
     // adding or removing an option would silently repoint every vote cast so far
     // -- hence the option inputs are fixed in number while editing.
     function editPoll(pollId) {
+      if (HIDE_MANAGE_POLLS) return;
       const poll = polls.find(p => String(p.id) === String(pollId));
       if (!poll) return;
       editingPollId = String(poll.id);
@@ -940,6 +1008,7 @@
     // adding or removing an option would silently repoint every vote already
     // cast -- which is why the card offers no way to change the option count.
     async function savePollEdit(pollId) {
+      if (HIDE_MANAGE_POLLS) return;
       const poll = polls.find(p => String(p.id) === String(pollId));
       if (!poll) { showError('That poll no longer exists'); cancelEdit(); return; }
 
@@ -1058,8 +1127,10 @@
             
             <div class="poll-meta">
               Total votes: ${total} | Created by: ${escapeHtml(poll.createdBy)} | ${new Date(poll.createdAt).toLocaleDateString()}
+              ${HIDE_MANAGE_POLLS ? '' : `
               <button type="button" class="custom-button" onclick="editPoll('${pollId}')" style="margin-left: 1rem; font-size: 0.7rem; padding: 4px 8px;">Edit</button>
-              <button type="button" class="custom-button" onclick="deletePoll('${pollId}')" style="margin-left: 0.5rem; font-size: 0.7rem; padding: 4px 8px;${armed ? ' background: var(--error, #ef4444) !important;' : ''}">${armed ? 'Confirm delete' : 'Delete'}</button>
+              <button type="button" class="custom-button" onclick="deletePoll('${pollId}')" style="margin-left: 0.5rem; font-size: 0.7rem; padding: 4px 8px;${armed ? ' background: #ff6b6b !important;' : ''}">${armed ? 'Confirm delete' : 'Delete'}</button>`}
+
             </div>
           </div>
         `;

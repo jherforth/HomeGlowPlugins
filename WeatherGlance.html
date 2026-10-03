@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Weather Glance</title>
+  <script type="application/json" id="homeglow-manifest">
+  {
+    "manifestVersion": 1,
+    "id": "weather-glance",
+    "name": "Weather Glance",
+    "description": "Current conditions at a glance, with a tap-to-open detail view: the full forecast, the next hours, feels-like, humidity, wind and air quality. Uses the same weather provider as the core weather widget.",
+    "apiVersion": "v1",
+    "settings": [
+      { "key": "location", "label": "Location (city, ZIP or lat,lon). Leave empty to use this display's weather widget location.",
+        "type": "string", "default": "" },
+      { "key": "units", "label": "Temperature unit", "type": "select",
+        "options": ["Fahrenheit", "Celsius"], "default": "Fahrenheit" },
+      { "key": "layout", "label": "Layout", "type": "select",
+        "options": ["Automatic", "Compact", "Medium", "Full"], "default": "Automatic", "scope": "device" }
+    ]
+  }
+  </script>
+  <link rel="stylesheet" href="/index.css">
+  <style>
+    :root {
+      --wg-hot: #ff6b6b;
+      --wg-cold: #2bb3e0;
+      --wg-wet: #3a8fd8;
+    }
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+    }
+    body {
+      /* /index.css pads the body's bottom to clear the dashboard's dock; in a
+         widget frame that padding just cuts the tile short. */
+      padding: 0;
+      background: var(--card-bg, #fff);
+      /* The host defines --text, not --text-color. */
+      color: var(--text, #222);
+      font-family: 'Inter', system-ui, sans-serif;
+      font-size: 14px;
+      box-sizing: border-box;
+    }
+    body.transparent { background: transparent; }
+    *, *::before, *::after { box-sizing: inherit; }
+
+    .muted { opacity: 0.7; }
+    .cap::first-letter { text-transform: uppercase; }
+    .hot { color: var(--wg-hot); font-weight: 700; }
+    .cold { color: var(--wg-cold); }
+
+    /* --- the tile --------------------------------------------------------- */
+    .tile {
+      height: 100%;
+      padding: 12px 14px;
+      cursor: pointer;
+      outline: none;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      -webkit-tap-highlight-color: rgba(var(--accent-rgb, 0, 221, 235), 0.15);
+    }
+    .tile:focus-visible { box-shadow: inset 0 0 0 2px var(--accent, #00ddeb); border-radius: 8px; }
+    .now { display: flex; align-items: center; gap: 14px; min-width: 0; }
+    .now .icon { font-size: 3rem; line-height: 1; }
+    .now .temp { font-size: 2.4rem; font-weight: 700; line-height: 1.05; }
+    .now .where { font-size: 1.05rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .now .text { min-width: 0; }
+    .hint { font-size: 0.75rem; opacity: 0.55; margin-top: auto; }
+
+    .tile.compact { align-items: center; justify-content: center; text-align: center; gap: 2px; }
+    .tile.compact .icon { font-size: 2.6rem; }
+    .tile.compact .temp { font-size: 2rem; font-weight: 700; }
+
+    .days { display: flex; flex-direction: column; gap: 6px; min-height: 0; overflow: hidden; }
+    .day-row {
+      display: grid;
+      grid-template-columns: 3.2em 1.8em 1fr auto;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      border: 1px solid var(--card-border, rgba(0,0,0,0.1));
+      border-radius: 8px;
+      background: rgba(var(--accent-rgb, 0, 221, 235), 0.05);
+    }
+    .day-row .name { font-weight: 700; }
+    .day-row .emoji { font-size: 1.3rem; text-align: center; }
+    .day-row .cond { font-size: 0.85rem; opacity: 0.75; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    .full-grid { display: grid; grid-template-columns: 1fr 1.2fr 1.4fr; gap: 16px; flex: 1; min-height: 0; }
+    .full-grid > section { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 8px; }
+    .facts { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; font-size: 0.9rem; }
+    .facts dt { opacity: 0.65; }
+    .facts dd { margin: 0; font-weight: 600; }
+    .section-title { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; opacity: 0.65; }
+
+    .chart-wrap { flex: 1; min-height: 120px; position: relative; }
+    .chart-wrap svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+    .toggles { display: flex; gap: 6px; }
+    .chip {
+      font: inherit;
+      font-size: 0.8rem;
+      padding: 4px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--accent, #00ddeb);
+      background: transparent;
+      color: inherit;
+      cursor: pointer;
+    }
+    .chip[aria-pressed="true"] { background: var(--accent, #00ddeb); color: #fff; }
+
+    .state { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 16px; gap: 8px; }
+    .state .error { padding: 8px 12px; border-radius: 8px; background: rgba(255, 0, 0, 0.1); color: var(--error, #c62828); font-size: 0.9rem; }
+
+    /* --- details: a sheet over the whole widget --------------------------- */
+    .details {
+      position: fixed;
+      inset: 0;
+      background: var(--card-bg, #fff);
+      color: var(--text, #222);
+      display: flex;
+      flex-direction: column;
+      z-index: 10;
+    }
+    body.transparent .details { background: var(--card-bg, #fff); }
+    .details[hidden] { display: none; }
+    .details header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 14px 8px;
+      border-bottom: 1px solid var(--card-border, rgba(0,0,0,0.1));
+    }
+    .details header h2 { margin: 0; font-size: 1.1rem; }
+    .close {
+      font: inherit;
+      font-size: 1.1rem;
+      line-height: 1;
+      padding: 6px 9px;
+      border-radius: 8px;
+      border: 1px solid var(--card-border, rgba(0,0,0,0.15));
+      background: transparent;
+      color: inherit;
+      cursor: pointer;
+    }
+    .details .body { overflow-y: auto; padding: 12px 14px 16px; display: flex; flex-direction: column; gap: 16px; }
+    .cards { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
+    .card {
+      flex: 0 0 auto;
+      min-width: 76px;
+      padding: 8px 6px;
+      border-radius: 10px;
+      border: 1px solid var(--card-border, rgba(0,0,0,0.1));
+      background: rgba(var(--accent-rgb, 0, 221, 235), 0.06);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
+      text-align: center;
+    }
+    .card .wd { font-weight: 700; }
+    .card .dn { font-size: 0.75rem; opacity: 0.65; }
+    .card .emoji { font-size: 1.5rem; line-height: 1.1; }
+    .card .wet { font-size: 0.75rem; color: var(--wg-wet); font-weight: 600; }
+    /* The day's range on a shared scale, so warmer and colder days read at a glance. */
+    .range { width: 6px; height: 46px; border-radius: 3px; background: rgba(128,128,128,0.18); position: relative; }
+    .range span { position: absolute; left: 0; right: 0; border-radius: 3px; background: linear-gradient(180deg, var(--wg-hot), var(--wg-cold)); }
+    .hours { display: flex; flex-direction: column; }
+    .hour { display: grid; grid-template-columns: 5.5em 1fr auto; gap: 10px; align-items: center; padding: 7px 2px; border-bottom: 1px solid var(--card-border, rgba(0,0,0,0.06)); }
+    .hour:last-child { border-bottom: none; }
+    .hour .t { font-weight: 600; font-size: 0.85rem; }
+    .hour .temp { font-weight: 700; }
+    .hour .wet { color: var(--wg-wet); font-weight: 600; font-size: 0.85rem; }
+    .details footer { font-size: 0.75rem; opacity: 0.55; }
+  </style>
+</head>
+<body>
+  <div id="app" class="state"><div class="muted" id="loading">…</div></div>
+  <div id="details" class="details" hidden role="dialog" aria-modal="true" aria-labelledby="details-title"></div>
+
+  <script src="/plugin-sdk/v1.js"></script>
+  <script>
+  (function () {
+    'use strict';
+
+    // --- URL parameters the dashboard passes every plugin --------------------
+    var params = new URLSearchParams(window.location.search);
+    var theme = params.get('theme');
+    if (theme === 'dark' || theme === 'light') document.documentElement.setAttribute('data-theme', theme);
+    if (params.get('transparent') === 'true') document.body.classList.add('transparent');
+    var device = params.get('device') || '';
+    var lang = (params.get('lang') || navigator.language || 'en').split('-')[0];
+
+    // --- strings: English and Spanish, the languages HomeGlow ships ---------
+    var STRINGS = {
+      en: {
+        loading: 'Loading weather…',
+        feelsLike: 'Feels like',
+        humidity: 'Humidity',
+        wind: 'Wind',
+        airQuality: 'Air quality',
+        aqi: ['Good', 'Fair', 'Moderate', 'Poor', 'Very poor'],
+        sunrise: 'Sunrise',
+        sunset: 'Sunset',
+        forecast: 'Forecast',
+        forecastDays: '{n}-day forecast',
+        today: 'Today',
+        nextHours: 'Next hours',
+        temperature: 'Temperature',
+        precipitation: 'Precipitation',
+        close: 'Close',
+        details: 'Tap for details',
+        updated: 'Updated {t}',
+        unavailable: 'Weather is unavailable right now.',
+        setLocation: 'Set a location for this plugin in Admin Panel → Widgets → Plugins.',
+        noHours: 'No hourly forecast from this weather provider.',
+        dry: 'No precipitation expected in the next hours.',
+        conditions: {
+          'clear-night': 'Clear night', cloudy: 'Cloudy', exceptional: 'Unusual weather', fog: 'Fog',
+          hail: 'Hail', lightning: 'Lightning', 'lightning-rainy': 'Thunderstorms', partlycloudy: 'Partly cloudy',
+          pouring: 'Heavy rain', rainy: 'Rain', snowy: 'Snow', 'snowy-rainy': 'Sleet', sunny: 'Sunny',
+          windy: 'Windy', 'windy-variant': 'Windy and cloudy'
+        }
+      },
+      es: {
+        loading: 'Cargando el clima…',
+        feelsLike: 'Sensación',
+        humidity: 'Humedad',
+        wind: 'Viento',
+        airQuality: 'Calidad del aire',
+        aqi: ['Buena', 'Aceptable', 'Moderada', 'Mala', 'Muy mala'],
+        sunrise: 'Amanecer',
+        sunset: 'Atardecer',
+        forecast: 'Pronóstico',
+        forecastDays: 'Pronóstico de {n} días',
+        today: 'Hoy',
+        nextHours: 'Próximas horas',
+        temperature: 'Temperatura',
+        precipitation: 'Precipitación',
+        close: 'Cerrar',
+        details: 'Toca para ver detalles',
+        updated: 'Actualizado {t}',
+        unavailable: 'El clima no está disponible ahora.',
+        setLocation: 'Configura una ubicación para este complemento en Panel de administración → Widgets → Complementos.',
+        noHours: 'Este proveedor del clima no da un pronóstico por horas.',
+        dry: 'No se espera precipitación en las próximas horas.',
+        conditions: {
+          'clear-night': 'Noche despejada', cloudy: 'Nublado', exceptional: 'Clima inusual', fog: 'Niebla',
+          hail: 'Granizo', lightning: 'Relámpagos', 'lightning-rainy': 'Tormentas', partlycloudy: 'Parcialmente nublado',
+          pouring: 'Lluvia intensa', rainy: 'Lluvia', snowy: 'Nieve', 'snowy-rainy': 'Aguanieve', sunny: 'Soleado',
+          windy: 'Ventoso', 'windy-variant': 'Ventoso y nublado'
+        }
+      }
+    };
+    var S = STRINGS[lang] || STRINGS.en;
+    var fill = function (text, values) {
+      return text.replace(/\{(\w+)\}/g, function (_, k) { return values[k]; });
+    };
+
+    var ICONS = {
+      'clear-night': '🌙', cloudy: '☁️', exceptional: '🌤️', fog: '🌫️', hail: '🌨️',
+      lightning: '🌩️', 'lightning-rainy': '⛈️', partlycloudy: '⛅', pouring: '🌧️', rainy: '🌦️',
+      snowy: '❄️', 'snowy-rainy': '🌨️', sunny: '☀️', windy: '💨', 'windy-variant': '💨'
+    };
+    var icon = function (condition) { return ICONS[condition] || '🌤️'; };
+    var describe = function (entry) {
+      return (entry && entry.description) || (entry && S.conditions[entry.condition]) || '';
+    };
+
+    // --- formatting ---------------------------------------------------------
+    var fmt = function (options) {
+      try { return new Intl.DateTimeFormat(lang, options); } catch (e) { return new Intl.DateTimeFormat('en', options); }
+    };
+    var weekdayFmt = fmt({ weekday: 'short' });
+    var dayNumFmt = fmt({ day: 'numeric' });
+    var hourFmt = fmt({ hour: 'numeric', minute: '2-digit' });
+    var shortHourFmt = fmt({ hour: 'numeric' });
+    // A forecast date (YYYY-MM-DD) at local noon, so no zone shift moves it a day.
+    var dateOf = function (key) {
+      var p = key.split('-').map(Number);
+      return new Date(p[0], p[1] - 1, p[2], 12);
+    };
+    var todayKey = function () {
+      var d = new Date();
+      return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    };
+    var round = function (n) { return n === null || n === undefined ? '—' : String(Math.round(n)); };
+    var esc = function (text) {
+      return String(text).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+      });
+    };
+
+    // --- state ----------------------------------------------------------------
+    var settings = { location: '', units: 'Fahrenheit', layout: 'Automatic' };
+    var weather = null;
+    var updatedAt = null;
+    var chart = 'temperature';
+    var app = document.getElementById('app');
+    var details = document.getElementById('details');
+    document.getElementById('loading').textContent = S.loading;
+
+    var metric = function () { return settings.units === 'Celsius'; };
+    var deg = function () { return metric() ? '°C' : '°F'; };
+    var windUnit = function () { return metric() ? 'm/s' : 'mph'; };
+    // Providers disagree on precipitation units: OpenWeatherMap reports mm
+    // whatever units it was asked for, the demo data inches, and Home Assistant
+    // whatever it is configured with. Label only what is known.
+    var wetUnit = function () {
+      if (!weather) return '';
+      if (weather.provider === 'openweathermap') return ' mm';
+      if (weather.provider === 'demo') return ' in';
+      return '';
+    };
+    var wet = function (amount) {
+      if (!(amount > 0)) return '';
+      var shown = amount < 1 ? amount.toFixed(2).replace(/0$/, '') : amount.toFixed(1);
+      return '💧 ' + shown + wetUnit();
+    };
+
+    // --- where to ask about ---------------------------------------------------
+    // The plugin's own Location setting first. Without one, the location of a
+    // core weather widget on this display, so the two agree. Without that, no
+    // location at all: Home Assistant and the demo provider answer from their
+    // own configuration, and OpenWeatherMap asks for one.
+    var parseConfig = function (raw) {
+      if (!raw) return {};
+      if (typeof raw === 'object') return raw;
+      try { var parsed = JSON.parse(raw); return parsed && typeof parsed === 'object' ? parsed : {}; } catch (e) { return {}; }
+    };
+    var widgetLocation = function () {
+      if (!device) return Promise.resolve(null);
+      return fetch('/api/devices/' + encodeURIComponent(device) + '/tabs')
+        .then(function (res) { return res.ok ? res.json() : []; })
+        .then(function (tabs) {
+          var ordered = (Array.isArray(tabs) ? tabs : []).slice().sort(function (a, b) { return (a.number || 0) - (b.number || 0); });
+          for (var i = 0; i < ordered.length; i += 1) {
+            var w = parseConfig(ordered[i].config_json).weather;
+            if (!w || typeof w !== 'object') continue;
+            if (Number.isFinite(w.lat) && Number.isFinite(w.lon)) return { lat: w.lat, lon: w.lon };
+            var q = String(w.locationQuery || w.zipCode || '').trim();
+            if (q) return { location: q };
+          }
+          return null;
+        })
+        .catch(function () { return null; });
+    };
+    var resolveLocation = function () {
+      var own = String(settings.location || '').trim();
+      var coords = own.match(/^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/);
+      if (coords) return Promise.resolve({ lat: Number(coords[1]), lon: Number(coords[2]) });
+      if (own) return Promise.resolve({ location: own });
+      return widgetLocation();
+    };
+
+    var load = function () {
+      return resolveLocation().then(function (where) {
+        var query = new URLSearchParams({ units: metric() ? 'metric' : 'imperial', lang: lang });
+        if (where && where.location) query.set('location', where.location);
+        if (where && Number.isFinite(where.lat)) { query.set('lat', where.lat); query.set('lon', where.lon); }
+        return fetch('/api/weather?' + query.toString()).then(function (res) {
+          return res.json().catch(function () { return {}; }).then(function (body) {
+            if (!res.ok) {
+              var err = new Error(body.error || S.unavailable);
+              err.status = res.status;
+              err.noLocation = !where && (res.status === 400 || res.status === 404);
+              throw err;
+            }
+            return body;
+          });
+        });
+      }).then(function (payload) {
+        weather = payload;
+        updatedAt = new Date();
+        render();
+        if (!details.hidden) renderDetails();
+      }).catch(function (err) {
+        // Keep showing the last good reading through a passing failure.
+        if (weather) return;
+        app.className = 'state';
+        app.innerHTML = '<div style="font-size:2rem">🌤️</div>'
+          + '<div class="error">' + esc(err.noLocation ? S.setLocation : (err.message || S.unavailable)) + '</div>';
+      });
+    };
+
+    // --- the tile -------------------------------------------------------------
+    var layout = function () {
+      var choice = settings.layout;
+      if (choice === 'Compact' || choice === 'Medium' || choice === 'Full') return choice.toLowerCase();
+      var w = window.innerWidth;
+      var h = window.innerHeight;
+      if (w < 300 || h < 200) return 'compact';
+      if (w >= 620 && h >= 300) return 'full';
+      return 'medium';
+    };
+
+    var nowBlock = function (withFeels) {
+      var c = weather.current;
+      return '<div class="now"><div class="icon" aria-hidden="true">' + icon(c.condition) + '</div>'
+        + '<div class="text"><div class="temp">' + round(c.temp) + deg() + '</div>'
+        + '<div class="where">' + esc(weather.resolvedName || '') + '</div>'
+        + '<div class="cap">' + esc(describe(c)) + '</div>'
+        + (withFeels && c.feelsLike !== null ? '<div class="muted">' + S.feelsLike + ' ' + round(c.feelsLike) + deg() + '</div>' : '')
+        + '</div></div>';
+    };
+
+    var dayLabel = function (day) {
+      return day.date === todayKey() ? S.today : weekdayFmt.format(dateOf(day.date));
+    };
+
+    var dayRows = function () {
+      return '<div class="days">' + weather.forecast.map(function (day) {
+        return '<div class="day-row"><span class="name">' + esc(dayLabel(day)) + '</span>'
+          + '<span class="emoji" aria-hidden="true">' + icon(day.condition) + '</span>'
+          + '<span class="cond cap">' + esc(describe(day)) + '</span>'
+          + '<span><span class="hot">' + round(day.high) + '°</span> <span class="cold">' + round(day.low) + '°</span></span></div>';
+      }).join('') + '</div>';
+    };
+
+    var forecastTitle = function () {
+      var n = weather.forecast.length;
+      return n > 1 ? fill(S.forecastDays, { n: n }) : S.forecast;
+    };
+
+    var facts = function () {
+      var c = weather.current;
+      var rows = [];
+      if (c.feelsLike !== null) rows.push([S.feelsLike, round(c.feelsLike) + deg()]);
+      if (c.humidity !== null) rows.push([S.humidity, round(c.humidity) + '%']);
+      if (c.windSpeed !== null) rows.push([S.wind, round(c.windSpeed) + ' ' + windUnit()]);
+      if (weather.airQuality && weather.airQuality.aqi >= 1) rows.push([S.airQuality, S.aqi[Math.min(weather.airQuality.aqi, 5) - 1]]);
+      if (weather.sun && weather.sun.sunrise) {
+        rows.push([S.sunrise, hourFmt.format(new Date(weather.sun.sunrise * 1000))]);
+        rows.push([S.sunset, hourFmt.format(new Date(weather.sun.sunset * 1000))]);
+      }
+      return '<dl class="facts">' + rows.map(function (r) { return '<dt>' + esc(r[0]) + '</dt><dd>' + esc(r[1]) + '</dd>'; }).join('') + '</dl>';
+    };
+
+    var render = function () {
+      if (!weather) return;
+      var kind = layout();
+      app.className = 'tile ' + kind;
+      app.setAttribute('role', 'button');
+      app.setAttribute('tabindex', '0');
+      app.setAttribute('aria-label', S.details);
+      if (kind === 'compact') {
+        var c = weather.current;
+        app.innerHTML = '<div class="icon" aria-hidden="true">' + icon(c.condition) + '</div>'
+          + '<div class="temp">' + round(c.temp) + deg() + '</div>'
+          + '<div class="where">' + esc(weather.resolvedName || '') + '</div>'
+          + '<div class="cap muted">' + esc(describe(c)) + '</div>';
+      } else if (kind === 'medium') {
+        app.innerHTML = nowBlock(true)
+          + '<div class="section-title">' + esc(forecastTitle()) + '</div>' + dayRows()
+          + '<div class="hint">' + esc(S.details) + '</div>';
+      } else {
+        app.innerHTML = '<div class="full-grid">'
+          + '<section>' + nowBlock(false) + facts() + '</section>'
+          + '<section><div class="section-title">' + esc(forecastTitle()) + '</div>' + dayRows() + '</section>'
+          + '<section><div class="toggles">'
+          + '<button type="button" class="chip" data-chart="temperature" aria-pressed="' + (chart === 'temperature') + '">🌡️ ' + S.temperature + '</button>'
+          + '<button type="button" class="chip" data-chart="precipitation" aria-pressed="' + (chart === 'precipitation') + '">🌧️ ' + S.precipitation + '</button>'
+          + '</div><div class="chart-wrap" id="chart"></div></section>'
+          + '</div>';
+        drawChart(document.getElementById('chart'));
+      }
+    };
+
+    // --- chart: plain SVG, sized to its box -----------------------------------
+    var drawChart = function (box) {
+      if (!box) return;
+      var points = (weather.hourly || []).filter(function (p) { return Number.isFinite(p.timestamp); });
+      if (!points.length) { box.innerHTML = '<div class="muted">' + esc(S.noHours) + '</div>'; return; }
+      var W = box.clientWidth || 300;
+      var H = box.clientHeight || 160;
+      var padL = 30, padR = 6, padT = 10, padB = 20;
+      var key = chart === 'temperature' ? 'temp' : 'precipitation';
+      var values = points.map(function (p) { return p[key] === null || p[key] === undefined ? null : p[key]; });
+      var known = values.filter(function (v) { return v !== null; });
+      // An all-zero bar chart is an empty frame; say what it means instead.
+      if (chart === 'precipitation' && !known.some(function (v) { return v > 0; })) {
+        box.innerHTML = '<div class="muted">💧 ' + esc(S.dry) + '</div>';
+        return;
+      }
+      var min = chart === 'temperature' ? Math.floor(Math.min.apply(null, known.length ? known : [0])) - 1 : 0;
+      var max = Math.ceil(Math.max.apply(null, known.length ? known : [1])) + (chart === 'temperature' ? 1 : 0);
+      if (max <= min) max = min + 1;
+      var x = function (i) { return padL + (points.length === 1 ? 0 : i * (W - padL - padR) / (points.length - 1)); };
+      var y = function (v) { return padT + (H - padT - padB) * (1 - (v - min) / (max - min)); };
+      var parts = [];
+      parts.push('<line x1="' + padL + '" x2="' + (W - padR) + '" y1="' + y(min) + '" y2="' + y(min) + '" stroke="currentColor" stroke-opacity="0.2"/>');
+      parts.push('<text x="' + (padL - 6) + '" y="' + (y(max) + 4) + '" text-anchor="end" font-size="10" fill="currentColor" fill-opacity="0.6">' + max + '</text>');
+      parts.push('<text x="' + (padL - 6) + '" y="' + (y(min) + 4) + '" text-anchor="end" font-size="10" fill="currentColor" fill-opacity="0.6">' + min + '</text>');
+      var step = Math.max(1, Math.ceil(points.length / Math.max(2, Math.floor((W - padL) / 48))));
+      points.forEach(function (p, i) {
+        if (i % step === 0) {
+          parts.push('<text x="' + x(i) + '" y="' + (H - 4) + '" text-anchor="middle" font-size="10" fill="currentColor" fill-opacity="0.6">'
+            + esc(shortHourFmt.format(new Date(p.timestamp * 1000))) + '</text>');
+        }
+      });
+      if (chart === 'temperature') {
+        var path = values.map(function (v, i) { return v === null ? null : x(i) + ',' + y(v); }).filter(Boolean).join(' ');
+        parts.push('<polyline points="' + path + '" fill="none" stroke="var(--accent, #00ddeb)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>');
+        values.forEach(function (v, i) {
+          if (v !== null) parts.push('<circle cx="' + x(i) + '" cy="' + y(v) + '" r="3" fill="var(--accent, #00ddeb)"/>');
+        });
+      } else {
+        var bw = Math.max(4, Math.min(22, (W - padL - padR) / points.length * 0.6));
+        values.forEach(function (v, i) {
+          var val = v || 0;
+          var top = y(val);
+          parts.push('<rect x="' + (x(i) - bw / 2) + '" y="' + top + '" width="' + bw + '" height="' + Math.max(0, y(0) - top)
+            + '" rx="2" fill="var(--accent, #00ddeb)"/>');
+        });
+      }
+      box.innerHTML = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + esc(chart === 'temperature' ? S.temperature : S.precipitation) + '">' + parts.join('') + '</svg>';
+    };
+
+    // --- details sheet ----------------------------------------------------------
+    var renderDetails = function () {
+      var c = weather.current;
+      var highs = weather.forecast.map(function (d) { return d.high; }).filter(Number.isFinite);
+      var lows = weather.forecast.map(function (d) { return d.low; }).filter(Number.isFinite);
+      var top = Math.max.apply(null, highs.length ? highs : [1]);
+      var bottom = Math.min.apply(null, lows.length ? lows : [0]);
+      var span = Math.max(1, top - bottom);
+
+      var cards = weather.forecast.map(function (day) {
+        var hasRange = Number.isFinite(day.high) && Number.isFinite(day.low);
+        var bar = hasRange
+          ? '<div class="range" aria-hidden="true"><span style="top:' + ((top - day.high) / span * 100) + '%;bottom:' + ((day.low - bottom) / span * 100) + '%"></span></div>'
+          : '';
+        return '<div class="card"><div class="wd">' + esc(dayLabel(day)) + '</div>'
+          + '<div class="dn">' + esc(dayNumFmt.format(dateOf(day.date))) + '</div>'
+          + '<div class="emoji" aria-hidden="true">' + icon(day.condition) + '</div>'
+          + '<div class="hot">' + round(day.high) + '°</div>' + bar
+          + '<div class="cold">' + round(day.low) + '°</div>'
+          + (wet(day.precipitation) ? '<div class="wet">' + wet(day.precipitation) + '</div>' : '')
+          + '</div>';
+      }).join('');
+
+      var hours = (weather.hourly || []).map(function (p) {
+        return '<div class="hour"><span class="t">' + esc(hourFmt.format(new Date(p.timestamp * 1000))) + '</span>'
+          + '<span class="temp">' + round(p.temp) + deg() + '</span>'
+          + '<span class="wet">' + wet(p.precipitation) + '</span></div>';
+      }).join('');
+
+      details.innerHTML = '<header><div><h2 id="details-title">' + esc(weather.resolvedName || S.forecast) + '</h2>'
+        + '<div class="muted cap">' + icon(c.condition) + ' ' + esc(describe(c)) + ' · ' + round(c.temp) + deg() + '</div></div>'
+        + '<button type="button" class="close" data-close aria-label="' + esc(S.close) + '">✕</button></header>'
+        + '<div class="body">'
+        + facts()
+        + '<div><div class="section-title">' + esc(forecastTitle()) + '</div><div class="cards">' + cards + '</div></div>'
+        + '<div><div class="section-title">' + esc(S.nextHours) + '</div>'
+        + (hours ? '<div class="hours">' + hours + '</div>' : '<div class="muted">' + esc(S.noHours) + '</div>') + '</div>'
+        + (updatedAt ? '<footer>' + esc(fill(S.updated, { t: hourFmt.format(updatedAt) })) + '</footer>' : '')
+        + '</div>';
+    };
+
+    var openDetails = function () {
+      if (!weather) return;
+      renderDetails();
+      details.hidden = false;
+      var close = details.querySelector('[data-close]');
+      if (close) close.focus();
+    };
+    var closeDetails = function () {
+      details.hidden = true;
+      app.focus();
+    };
+
+    // --- input ------------------------------------------------------------------
+    // The chart toggles switch the chart; a tap anywhere else opens the details.
+    app.addEventListener('click', function (event) {
+      var toggle = event.target.closest('[data-chart]');
+      if (toggle) {
+        chart = toggle.getAttribute('data-chart');
+        render();
+        return;
+      }
+      openDetails();
+    });
+    app.addEventListener('keydown', function (event) {
+      if ((event.key === 'Enter' || event.key === ' ') && event.target === app) {
+        event.preventDefault();
+        openDetails();
+      }
+    });
+    details.addEventListener('click', function (event) {
+      if (event.target.closest('[data-close]')) closeDetails();
+    });
+    document.addEventListener('keydown', function (event) {
+      if (event.key === 'Escape' && !details.hidden) closeDetails();
+    });
+
+    var resizeTimer = null;
+    window.addEventListener('resize', function () {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(render, 120);
+    });
+
+    // --- start --------------------------------------------------------------------
+    var readSettings = function () {
+      if (!window.HomeGlow || !window.HomeGlow.settings) return Promise.resolve();
+      return window.HomeGlow.settings.get().then(function (values) {
+        if (values && typeof values === 'object') {
+          Object.keys(settings).forEach(function (k) { if (values[k] !== undefined && values[k] !== null) settings[k] = values[k]; });
+        }
+      }).catch(function () {
+        // Opened outside the dashboard (no plugin context): use the defaults.
+      });
+    };
+
+    readSettings().then(load);
+    // Weather changes slowly and the server caches it; a quarter hour is plenty.
+    setInterval(function () { readSettings().then(load); }, 15 * 60 * 1000);
+  })();
+  </script>
+</body>
+</html>

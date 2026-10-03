@@ -42,12 +42,7 @@
       padding: 0.75rem;
       box-sizing: border-box;
       font-size: 0.85rem;
-      color: #333;
-    }
-
-    [data-theme="dark"] body {
-      color: #a6a6d1;
-      background: transparent !important;
+      color: var(--text, #FFFFFF);
     }
 
     .widget-container {
@@ -81,8 +76,8 @@
       margin: 0 0 0.75rem 0;
       padding: 0.5rem;
       border-radius: 8px;
-      border: 1px solid rgba(255, 107, 107, 0.35);
-      background: rgba(255, 107, 107, 0.1) !important;
+      border: 1px solid rgba(245, 158, 11, 0.5);
+      background: rgba(245, 158, 11, 0.12) !important;
       color: inherit;
       font-size: 0.75rem;
       line-height: 1.4;
@@ -90,8 +85,10 @@
     }
 
     .custom-button {
-      background: linear-gradient(45deg, #00ddeb, #ff6b6b) !important;
-      color: #333 !important;
+      /* Secondary to accent, the two interface colors the household picks;
+         the dashboard passes them in, the fallbacks are the stylesheet's. */
+      background: linear-gradient(45deg, var(--secondary, #38bdf8), var(--accent, #757575)) !important;
+      color: var(--text, #333) !important;
       border: none;
       border-radius: 8px;
       padding: 6px 12px;
@@ -99,11 +96,6 @@
       font-size: 0.75rem;
       font-weight: 600;
       transition: all 0.3s ease;
-    }
-
-    [data-theme="dark"] .custom-button {
-      background: linear-gradient(45deg, #2e2767, #620808) !important;
-      color: #a6a6d1 !important;
     }
 
     .custom-button:hover {
@@ -119,13 +111,8 @@
     }
 
     .day-container.current-day {
-      border: 2px solid #00ddeb;
-      background: rgba(0, 221, 235, 0.1) !important;
-    }
-
-    [data-theme="dark"] .day-container.current-day {
-      border-color: #00ddeb;
-      background: rgba(0, 221, 235, 0.15) !important;
+      border: 2px solid var(--accent, #757575);
+      background: rgba(var(--accent-rgb, 158, 127, 255), 0.12) !important;
     }
 
     .day-header {
@@ -186,13 +173,8 @@
     }
 
     .small-button:hover {
-      border-color: #00ddeb;
-      background: rgba(0, 221, 235, 0.1) !important;
-    }
-
-    [data-theme="dark"] .small-button:hover {
-      border-color: #00ddeb;
-      background: rgba(0, 221, 235, 0.15) !important;
+      border-color: var(--accent, #757575);
+      background: rgba(var(--accent-rgb, 158, 127, 255), 0.12) !important;
     }
 
     .add-item-container {
@@ -217,7 +199,7 @@
 
     .add-item-input:focus {
       outline: none;
-      border-color: #00ddeb;
+      border-color: var(--accent, #757575);
     }
 
     .add-item-actions {
@@ -227,7 +209,7 @@
     }
 
     .empty-day {
-      color: rgba(128, 128, 128, 0.6);
+      color: var(--text-secondary, #A3A3A3);
       font-style: italic;
       font-size: 0.8rem;
       text-align: center;
