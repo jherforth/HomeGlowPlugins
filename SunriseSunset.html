@@ -2,672 +2,371 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Sunrise & Sunset</title>
-  <script type="application/json" id="homeglow-manifest">
-  {
-    "manifestVersion": 1,
-    "id": "sunrise-sunset",
-    "name": "Sunrise and Sunset",
-    "description": "Today's sunrise and sunset times for your location. Enter coordinates or use auto-detect. Times are calculated on the device rather than fetched, so it needs no internet access, and it says so when a latitude has no true sunrise or sunset that day."
-  }
-  </script>
+  <title>Sunrise and Sunset</title>
+  <script type="application/json" id="homeglow-manifest">{
+  "manifestVersion": 1,
+  "id": "sunrise-sunset",
+  "name": "Sunrise and Sunset",
+  "description": "Today sunrise and sunset times, golden hours, and daylight duration. Coordinates are configured in the Admin Panel; on first run the widget offers one-tap auto-detect.",
+  "version": "1.2.0",
+  "apiVersion": "v1",
+  "settings": [
+    {
+      "key": "lat",
+      "label": "Latitude",
+      "type": "number",
+      "scope": "household"
+    },
+    {
+      "key": "lon",
+      "label": "Longitude",
+      "type": "number",
+      "scope": "household"
+    }
+  ]
+}</script>
   <link rel="stylesheet" href="/index.css">
   <style>
-    * {
-      background: transparent !important;
-      background-color: transparent !important;
-      background-image: none !important;
-    }
-
     body {
       background: transparent !important;
       font-family: 'Inter', sans-serif;
       margin: 0;
-      padding: 0.75rem;
+      padding: 0.5rem;
       box-sizing: border-box;
       font-size: 0.85rem;
-      color: #333;
+      color: var(--text, #333);
+      user-select: none;
     }
-
-    [data-theme="dark"] body {
-      color: #a6a6d1;
-      background: transparent !important;
-    }
-
     .widget-container {
-      background: transparent !important;
-      border: none !important;
-      box-shadow: none !important;
-      backdrop-filter: none !important;
+      background: var(--card-bg, #ffffff) !important;
+      border: 1px solid var(--card-border, #e5e5e5) !important;
       border-radius: 12px;
-      padding: 0.5rem;
+      padding: 0.75rem;
       text-align: center;
       width: 100%;
+      height: 100%;
       box-sizing: border-box;
-      overflow: hidden;
+      overflow-y: auto;
     }
-
     .widget-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: 1rem;
-      padding-bottom: 0.5rem;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+      margin-bottom: 0.4rem;
     }
-
-    [data-theme="dark"] .widget-header {
-      border-bottom-color: rgba(100, 100, 150, 0.3);
-    }
-
     .widget-title {
-      font-size: 1.2rem;
+      font-size: 1.05rem;
       font-weight: 700;
       margin: 0;
-      color: inherit;
       display: flex;
       align-items: center;
-      gap: 0.5rem;
+      gap: 0.4rem;
     }
-
-    .refresh-btn {
-      background: linear-gradient(45deg, #00ddeb, #ff6b6b) !important;
-      color: #333 !important;
-      border: none;
-      border-radius: 8px;
-      padding: 8px 14px;
-      cursor: pointer;
-      font-size: 0.8rem;
-      font-weight: 600;
-      transition: all 0.3s ease;
-    }
-
-    [data-theme="dark"] .refresh-btn {
-      background: linear-gradient(45deg, #2e2767, #620808) !important;
-      color: #a6a6d1 !important;
-    }
-
-    .refresh-btn:hover {
-      filter: brightness(1.1);
-      transform: translateY(-1px);
-    }
-
-    .location-section {
-      background: rgba(255, 255, 255, 0.05) !important;
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 8px;
-      padding: 0.75rem;
-      margin-bottom: 1rem;
-      text-align: left;
-    }
-
-    [data-theme="dark"] .location-section {
-      background: rgba(30, 30, 50, 0.2) !important;
-      border-color: rgba(100, 100, 150, 0.2);
-    }
-
-    .section-title {
-      font-size: 0.9rem;
-      font-weight: 600;
-      margin: 0 0 0.5rem 0;
-      color: inherit;
-    }
-
-    .location-row {
-      display: flex;
-      gap: 0.5rem;
-      align-items: center;
-    }
-
-    .location-input {
-      flex: 1;
-      min-width: 0;
-      padding: 0.5rem;
-      border: 1px solid rgba(255, 255, 255, 0.2);
-      border-radius: 4px;
-      background: rgba(255, 255, 255, 0.1) !important;
-      color: inherit;
-      font-size: 0.8rem;
-      font-family: inherit;
-      box-sizing: border-box;
-    }
-
-    [data-theme="dark"] .location-input {
-      background: rgba(30, 30, 50, 0.3) !important;
-      border-color: rgba(100, 100, 150, 0.3);
-    }
-
-    .location-input::placeholder {
-      color: rgba(150, 150, 150, 0.7);
-    }
-
-    .location-input:focus {
-      outline: none;
-      border-color: #00ddeb;
-      box-shadow: 0 0 0 2px rgba(0, 221, 235, 0.2);
-    }
-
-    .locate-btn {
-      background: linear-gradient(45deg, #00ddeb, #ff6b6b) !important;
-      color: #333 !important;
-      border: none;
-      border-radius: 6px;
-      padding: 0.5rem 0.6rem;
-      cursor: pointer;
+    .date-display {
       font-size: 0.75rem;
-      font-weight: 600;
-      transition: all 0.3s ease;
-      white-space: nowrap;
-      flex-shrink: 0;
+      opacity: 0.7;
+      margin-bottom: 0.5rem;
+      text-align: center;
     }
-
-    [data-theme="dark"] .locate-btn {
-      background: linear-gradient(45deg, #2e2767, #620808) !important;
-      color: #a6a6d1 !important;
+    .status-row {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.4rem;
+      font-size: 0.72rem;
+      font-weight: 700;
+      padding: 0.2rem 0.6rem;
+      border-radius: 20px;
+      margin-bottom: 0.5rem;
     }
-
-    .locate-btn:hover {
-      filter: brightness(1.1);
-      transform: translateY(-1px);
+    .status-row.is-day {
+      background: rgba(245, 166, 35, 0.15) !important;
+      color: #f5a623;
+      border: 1px solid rgba(245, 166, 35, 0.3);
     }
-
-    .locate-btn:disabled {
-      opacity: 0.6;
-      cursor: not-allowed;
-      transform: none;
+    .status-row.is-night {
+      background: rgba(100, 100, 150, 0.15) !important;
+      color: #a6a6d1;
+      border: 1px solid rgba(100, 100, 150, 0.3);
     }
-
     .sun-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 0.75rem;
-      margin-bottom: 1rem;
+      gap: 0.5rem;
+      margin-bottom: 0.6rem;
     }
-
     .sun-card {
-      background: rgba(255, 255, 255, 0.05) !important;
-      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: rgba(var(--accent-rgb, 128,128,128), 0.05) !important;
+      border: 1px solid var(--card-border, #eee);
       border-radius: 8px;
-      padding: 1rem 0.75rem;
+      padding: 0.5rem 0.4rem;
       text-align: center;
     }
-
-    [data-theme="dark"] .sun-card {
-      background: rgba(30, 30, 50, 0.2) !important;
-      border-color: rgba(100, 100, 150, 0.2);
-    }
-
-    .sun-card.sunrise {
-      border-left: 3px solid #f5a623;
-    }
-
-    .sun-card.sunset {
-      border-left: 3px solid #e87040;
-    }
-
-    .sun-card.golden-morning {
-      border-left: 3px solid #ffd700;
-    }
-
-    .sun-card.golden-evening {
-      border-left: 3px solid #ff8c00;
-    }
-
+    .sun-card.sunrise { border-left: 3px solid #f5a623; }
+    .sun-card.sunset { border-left: 3px solid #e87040; }
+    .sun-card.golden-morning { border-left: 3px solid #ffd700; }
+    .sun-card.golden-evening { border-left: 3px solid #ff8c00; }
     .sun-icon {
-      font-size: 1.8rem;
-      margin-bottom: 0.25rem;
+      font-size: 1.4rem;
+      margin-bottom: 0.15rem;
       display: block;
     }
-
     .sun-label {
-      font-size: 0.7rem;
+      font-size: 0.65rem;
       font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 0.05em;
       opacity: 0.7;
-      margin-bottom: 0.25rem;
     }
-
     .sun-time {
-      font-size: 1.3rem;
-      font-weight: 700;
+      font-size: 1.15rem;
+      font-weight: 800;
       color: #00ddeb;
+      margin: 0.1rem 0;
     }
-
-    [data-theme="dark"] .sun-time {
-      color: #00ddeb;
-    }
-
     .sun-sub {
-      font-size: 0.7rem;
+      font-size: 0.65rem;
       opacity: 0.7;
-      margin-top: 0.2rem;
     }
-
     .daylight-bar-section {
-      background: rgba(255, 255, 255, 0.05) !important;
-      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: rgba(var(--accent-rgb, 128,128,128), 0.05) !important;
+      border: 1px solid var(--card-border, #eee);
       border-radius: 8px;
-      padding: 0.75rem;
-      margin-bottom: 1rem;
+      padding: 0.5rem 0.6rem;
     }
-
-    [data-theme="dark"] .daylight-bar-section {
-      background: rgba(30, 30, 50, 0.2) !important;
-      border-color: rgba(100, 100, 150, 0.2);
-    }
-
     .daylight-label {
-      font-size: 0.8rem;
+      font-size: 0.72rem;
       font-weight: 600;
-      margin-bottom: 0.5rem;
+      margin-bottom: 0.3rem;
       display: flex;
       justify-content: space-between;
       align-items: center;
     }
-
     .daylight-hours {
       color: #00ddeb;
-      font-size: 0.9rem;
+      font-weight: 700;
     }
-
     .daylight-bar-track {
-      height: 12px;
-      background: rgba(255, 255, 255, 0.1) !important;
-      border-radius: 6px;
+      height: 8px;
+      background: rgba(128, 128, 128, 0.2) !important;
+      border-radius: 4px;
       overflow: hidden;
       position: relative;
     }
-
-    [data-theme="dark"] .daylight-bar-track {
-      background: rgba(30, 30, 50, 0.4) !important;
-    }
-
     .daylight-bar-fill {
       height: 100%;
       background: linear-gradient(90deg, #f5a623, #ffd700, #e87040) !important;
-      border-radius: 6px;
+      border-radius: 4px;
       transition: width 1s ease;
-      position: relative;
     }
-
-    .daylight-bar-cursor {
-      position: absolute;
-      top: -3px;
-      width: 6px;
-      height: 18px;
-      background: #fff !important;
-      border-radius: 3px;
-      transform: translateX(-50%);
-      box-shadow: 0 0 4px rgba(0,0,0,0.3);
-    }
-
-    [data-theme="dark"] .daylight-bar-cursor {
-      background: #a6a6d1 !important;
-    }
-
-    .date-display {
-      font-size: 0.8rem;
-      opacity: 0.7;
-      margin-bottom: 1rem;
-      text-align: center;
-    }
-
-    .status-row {
-      display: flex;
+    .setup-panel {
+      display: none;
+      flex-direction: column;
       align-items: center;
       justify-content: center;
-      gap: 0.5rem;
+      gap: 0.6rem;
+      padding: 1.2rem 0.5rem;
+      height: 100%;
+      box-sizing: border-box;
+    }
+    .widget-container.needs-setup .setup-panel { display: flex; }
+    .widget-container.needs-setup .sun-grid,
+    .widget-container.needs-setup .daylight-bar-section,
+    .widget-container.needs-setup .date-display { display: none; }
+    .setup-text {
+      font-size: 0.9rem;
+      color: var(--text-secondary, #666);
+    }
+    .detect-btn {
+      font-size: 1rem;
+      padding: 0.55rem 1.2rem;
+      border-radius: 10px;
+      border: 1px solid var(--card-border, #e5e5e5);
+      background: var(--accent, #f5a623);
+      color: #fff;
+      cursor: pointer;
+    }
+    .detect-btn:disabled { opacity: 0.6; cursor: wait; }
+    .setup-error {
       font-size: 0.8rem;
-      padding: 0.5rem;
-      border-radius: 6px;
-      margin-bottom: 1rem;
-    }
-
-    .status-row.is-day {
-      background: rgba(245, 166, 35, 0.1) !important;
-      color: #f5a623;
-      border: 1px solid rgba(245, 166, 35, 0.2);
-    }
-
-    .status-row.is-night {
-      background: rgba(100, 100, 150, 0.1) !important;
-      color: #a6a6d1;
-      border: 1px solid rgba(100, 100, 150, 0.2);
-    }
-
-    .status-row.is-golden {
-      background: rgba(255, 215, 0, 0.1) !important;
-      color: #ffd700;
-      border: 1px solid rgba(255, 215, 0, 0.2);
-      animation: glow 2s ease-in-out infinite;
-    }
-
-    @keyframes glow {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.7; }
-    }
-
-    .error-message {
-      color: #dc3545;
-      background: rgba(220, 53, 69, 0.1) !important;
-      padding: 0.5rem;
-      border-radius: 6px;
-      margin: 0.5rem 0;
-      font-size: 0.8rem;
-      text-align: center;
-    }
-
-    [data-theme="dark"] .error-message {
-      color: #ff6b6b;
-      background: rgba(255, 107, 107, 0.1) !important;
-    }
-
-    .loading-text {
-      opacity: 0.6;
-      font-style: italic;
-      text-align: center;
-      padding: 1.5rem;
-    }
-
-    .coord-display {
-      font-size: 0.7rem;
-      opacity: 0.5;
-      text-align: center;
-      margin-top: 0.25rem;
+      color: #c0392b;
+      min-height: 1.2em;
     }
   </style>
+  <script src="/plugin-sdk/v1.js"></script>
 </head>
 <body>
   <div class="widget-container">
     <div class="widget-header">
-      <h1 class="widget-title">🌅 Sunrise &amp; Sunset</h1>
-      <button id="refreshBtn" class="refresh-btn">Refresh</button>
+      <div class="widget-title">🌅 Sunrise & Sunset</div>
+      <div class="status-row is-day" id="statusBadge">☀️ Daytime</div>
+    </div>
+    <div class="date-display" id="dateDisplay">--</div>
+
+    <div class="setup-panel" id="setupPanel">
+      <div class="setup-text">No location configured yet.</div>
+      <button class="detect-btn" id="detectBtn">📍 Auto-Detect Location</button>
+      <div class="setup-text" style="font-size: 0.78rem;">…or set coordinates in the Admin Panel.</div>
+      <div class="setup-error" id="setupError"></div>
     </div>
 
-    <div class="location-section">
-      <div class="section-title">Location</div>
-      <div class="location-row">
-        <input
-          type="text"
-          id="locationInput"
-          class="location-input"
-          placeholder="Lat, Lon (e.g. 40.7128, -74.0060)"
-          maxlength="40"
-        >
-        <button id="locateBtn" class="locate-btn">📍 Auto-Detect</button>
+    <div class="sun-grid">
+      <div class="sun-card sunrise">
+        <span class="sun-icon">🌅</span>
+        <div class="sun-label">Sunrise</div>
+        <div class="sun-time" id="sunriseTime">--:--</div>
+        <div class="sun-sub" id="dawnTime">Dawn: --:--</div>
+      </div>
+      <div class="sun-card sunset">
+        <span class="sun-icon">🌇</span>
+        <div class="sun-label">Sunset</div>
+        <div class="sun-time" id="sunsetTime">--:--</div>
+        <div class="sun-sub" id="duskTime">Dusk: --:--</div>
+      </div>
+      <div class="sun-card golden-morning">
+        <span class="sun-icon">☀️</span>
+        <div class="sun-label">Golden Hour AM</div>
+        <div class="sun-time" id="goldenMorning">--:--</div>
+      </div>
+      <div class="sun-card golden-evening">
+        <span class="sun-icon">🌆</span>
+        <div class="sun-label">Golden Hour PM</div>
+        <div class="sun-time" id="goldenEvening">--:--</div>
       </div>
     </div>
 
-    <div id="errorMessage" class="error-message" style="display:none;"></div>
-    <div id="mainContent">
-      <div class="loading-text">Enter a location or use auto-detect to get started.</div>
+    <div class="daylight-bar-section">
+      <div class="daylight-label">
+        <span>Daylight</span>
+        <span class="daylight-hours" id="daylightHours">-- hrs</span>
+      </div>
+      <div class="daylight-bar-track">
+        <div class="daylight-bar-fill" id="daylightFill" style="width: 50%;"></div>
+      </div>
     </div>
   </div>
 
   <script>
-    document.addEventListener('DOMContentLoaded', () => {
-      const params = new URLSearchParams(window.location.search);
-      const theme = params.get('theme');
-      if (theme === 'dark' || theme === 'light') {
-        document.documentElement.setAttribute('data-theme', theme);
-      }
+    function applyTheme() {
+      const p = new URLSearchParams(window.location.search);
+      const theme = p.get('theme') || 'dark';
+      document.documentElement.setAttribute('data-theme', theme);
+    }
 
-      const locationInput = document.getElementById('locationInput');
-      const locateBtn = document.getElementById('locateBtn');
-      const refreshBtn = document.getElementById('refreshBtn');
-      const errorMessage = document.getElementById('errorMessage');
-      const mainContent = document.getElementById('mainContent');
-
-      let lat = null;
-      let lon = null;
-
-      function showError(msg) {
-        errorMessage.textContent = msg;
-        errorMessage.style.display = 'block';
-        setTimeout(() => { errorMessage.style.display = 'none'; }, 4000);
-      }
-
-      function loadSavedLocation() {
-        try {
-          const saved = localStorage.getItem('sunriseSunset_location');
-          if (saved) {
-            const loc = JSON.parse(saved);
-            lat = loc.lat;
-            lon = loc.lon;
-            locationInput.value = `${lat}, ${lon}`;
-            fetchSunData();
+    async function getCoordinates() {
+      try {
+        if (window.HomeGlow && window.HomeGlow.settings) {
+          const cfg = await window.HomeGlow.settings.get();
+          if (cfg && typeof cfg.lat === 'number' && typeof cfg.lon === 'number') {
+            return { lat: cfg.lat, lon: cfg.lon };
           }
-        } catch (e) {
-          console.error('Error loading location:', e);
         }
+      } catch (_) {}
+      return null;
+    }
+
+    async function updateSunData() {
+      const coords = await getCoordinates();
+      const container = document.querySelector('.widget-container');
+      if (!coords) {
+        // First run: no coordinates yet — show the one-tap auto-detect.
+        // Ongoing configuration lives in the Admin Panel.
+        container.classList.add('needs-setup');
+        return;
       }
-
-      function saveLocation(la, lo) {
-        try {
-          localStorage.setItem('sunriseSunset_location', JSON.stringify({ lat: la, lon: lo }));
-        } catch (e) {
-          console.error('Error saving location:', e);
-        }
-      }
-
-      function parseManualInput() {
-        const val = locationInput.value.trim();
-        if (!val) return false;
-        const parts = val.split(',');
-        if (parts.length !== 2) return false;
-        const la = parseFloat(parts[0].trim());
-        const lo = parseFloat(parts[1].trim());
-        if (isNaN(la) || isNaN(lo)) return false;
-        if (la < -90 || la > 90 || lo < -180 || lo > 180) return false;
-        lat = la;
-        lon = lo;
-        return true;
-      }
-
-      function toMinutes(dateObj) {
-        return dateObj.getHours() * 60 + dateObj.getMinutes() + dateObj.getSeconds() / 60;
-      }
-
-      function formatTime12(dateObj) {
-        let h = dateObj.getHours();
-        const m = String(dateObj.getMinutes()).padStart(2, '0');
-        const ampm = h >= 12 ? 'PM' : 'AM';
-        h = h % 12 || 12;
-        return `${h}:${m} ${ampm}`;
-      }
-
-      function calcSunTimes(la, lo, dateObj) {
-        const rad = Math.PI / 180;
-        const deg = 180 / Math.PI;
-
-        const dayOfYear = Math.floor((dateObj - new Date(dateObj.getFullYear(), 0, 0)) / 86400000);
-        const B = (360 / 365) * (dayOfYear - 81) * rad;
-        const eqTime = 9.87 * Math.sin(2 * B) - 7.53 * Math.cos(B) - 1.5 * Math.sin(B);
-        const declination = 23.45 * Math.sin(B) * rad;
-        const timezone = -dateObj.getTimezoneOffset() / 60;
-        const solarNoon = 12 - (lo / 15 - timezone) - eqTime / 60;
-        const cosH = (Math.cos(90.833 * rad) - Math.sin(la * rad) * Math.sin(declination))
-          / (Math.cos(la * rad) * Math.cos(declination));
-
-        if (cosH < -1) return { alwaysDay: true };
-        if (cosH > 1) return { alwaysNight: true };
-
-        const H = Math.acos(cosH) * deg / 15;
-        const sunriseDecimal = solarNoon - H;
-        const sunsetDecimal = solarNoon + H;
-
-        function decimalToDate(d) {
-          const h = Math.floor(d);
-          const m = Math.floor((d - h) * 60);
-          const s = Math.floor(((d - h) * 60 - m) * 60);
-          const result = new Date(dateObj);
-          result.setHours(h, m, s, 0);
-          return result;
-        }
-
-        const sunrise = decimalToDate(sunriseDecimal);
-        const sunset = decimalToDate(sunsetDecimal);
-        const goldenDuration = 45;
-        const goldenMorningEnd = new Date(sunrise.getTime() + goldenDuration * 60000);
-        const goldenEveningStart = new Date(sunset.getTime() - goldenDuration * 60000);
-
-        return { sunrise, sunset, goldenMorningEnd, goldenEveningStart };
-      }
-
-      function getCurrentStatus(now, data) {
-        if (data.alwaysDay) return { label: '☀️ Midnight Sun — Daylight all day', cls: 'is-day' };
-        if (data.alwaysNight) return { label: '🌑 Polar Night — No sunrise today', cls: 'is-night' };
-
-        const nowMs = now.getTime();
-        const srMs = data.sunrise.getTime();
-        const ssMs = data.sunset.getTime();
-        const gmEnd = data.goldenMorningEnd.getTime();
-        const geStart = data.goldenEveningStart.getTime();
-
-        if (nowMs >= srMs && nowMs <= gmEnd) return { label: '✨ Golden Hour — Morning light', cls: 'is-golden' };
-        if (nowMs >= geStart && nowMs <= ssMs) return { label: '✨ Golden Hour — Evening light', cls: 'is-golden' };
-        if (nowMs >= srMs && nowMs <= ssMs) return { label: '☀️ Daytime', cls: 'is-day' };
-        return { label: '🌙 Nighttime', cls: 'is-night' };
-      }
-
-      function fetchSunData() {
-        if (lat === null || lon === null) return;
+      container.classList.remove('needs-setup');
+      try {
+        const res = await fetch(`/api/sun?lat=${coords.lat}&lon=${coords.lon}`);
+        const data = await res.json();
         const now = new Date();
-        const data = calcSunTimes(lat, lon, now);
-        renderContent(data, now);
-      }
+        document.getElementById('dateDisplay').textContent = now.toLocaleDateString(undefined, {
+          weekday: 'long', month: 'long', day: 'numeric', year: 'numeric'
+        });
 
-      function renderContent(data, now) {
-        if (data.alwaysDay || data.alwaysNight) {
-          const status = getCurrentStatus(now, data);
-          mainContent.innerHTML = `
-            <div class="status-row ${status.cls}">${status.label}</div>
-            <div class="loading-text">Unusual solar conditions at this latitude today.</div>
-            <div class="coord-display">${lat.toFixed(4)}°, ${lon.toFixed(4)}°</div>
-          `;
-          return;
+        if (data.sunrise && data.sunset) {
+          const sr = new Date(data.sunrise * 1000);
+          const ss = new Date(data.sunset * 1000);
+
+          const fmt = (d) => d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+          document.getElementById('sunriseTime').textContent = fmt(sr);
+          document.getElementById('sunsetTime').textContent = fmt(ss);
+
+          const dawn = new Date(sr.getTime() - 30 * 60000);
+          const dusk = new Date(ss.getTime() + 30 * 60000);
+          document.getElementById('dawnTime').textContent = 'Dawn: ' + fmt(dawn);
+          document.getElementById('duskTime').textContent = 'Dusk: ' + fmt(dusk);
+
+          const goldenAM = new Date(sr.getTime() + 45 * 60000);
+          const goldenPM = new Date(ss.getTime() - 45 * 60000);
+          document.getElementById('goldenMorning').textContent = fmt(goldenAM);
+          document.getElementById('goldenEvening').textContent = fmt(goldenPM);
+
+          const diffMs = ss - sr;
+          const hrs = Math.floor(diffMs / 3600000);
+          const mins = Math.round((diffMs % 3600000) / 60000);
+          document.getElementById('daylightHours').textContent = `${hrs}h ${mins}m`;
+
+          const nowMs = now.getTime();
+          const badge = document.getElementById('statusBadge');
+          if (nowMs >= sr.getTime() && nowMs < ss.getTime()) {
+            badge.className = 'status-row is-day';
+            badge.textContent = '☀️ Daytime';
+            const progress = Math.min(100, Math.max(0, ((nowMs - sr.getTime()) / diffMs) * 100));
+            document.getElementById('daylightFill').style.width = progress + '%';
+          } else {
+            badge.className = 'status-row is-night';
+            badge.textContent = '🌙 Nighttime';
+            document.getElementById('daylightFill').style.width = '0%';
+          }
         }
-
-        const status = getCurrentStatus(now, data);
-        const nowMin = toMinutes(now);
-        const srMin = toMinutes(data.sunrise);
-        const ssMin = toMinutes(data.sunset);
-        const totalDayMin = ssMin - srMin;
-        const daylightH = Math.floor(totalDayMin / 60);
-        const daylightM = Math.round(totalDayMin % 60);
-
-        let progressPct = 0;
-        let cursorPct = 0;
-        if (nowMin >= srMin && nowMin <= ssMin) {
-          progressPct = ((nowMin - srMin) / totalDayMin) * 100;
-          cursorPct = progressPct;
-        } else if (nowMin > ssMin) {
-          progressPct = 100;
-          cursorPct = 100;
-        }
-
-        const dateStr = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
-
-        mainContent.innerHTML = `
-          <div class="date-display">${dateStr}</div>
-          <div class="status-row ${status.cls}">${status.label}</div>
-          <div class="sun-grid">
-            <div class="sun-card sunrise">
-              <span class="sun-icon">🌄</span>
-              <div class="sun-label">Sunrise</div>
-              <div class="sun-time">${formatTime12(data.sunrise)}</div>
-            </div>
-            <div class="sun-card sunset">
-              <span class="sun-icon">🌇</span>
-              <div class="sun-label">Sunset</div>
-              <div class="sun-time">${formatTime12(data.sunset)}</div>
-            </div>
-            <div class="sun-card golden-morning">
-              <span class="sun-icon">🌤️</span>
-              <div class="sun-label">Golden Hour AM</div>
-              <div class="sun-time">${formatTime12(data.sunrise)}</div>
-              <div class="sun-sub">until ${formatTime12(data.goldenMorningEnd)}</div>
-            </div>
-            <div class="sun-card golden-evening">
-              <span class="sun-icon">🌆</span>
-              <div class="sun-label">Golden Hour PM</div>
-              <div class="sun-time">${formatTime12(data.goldenEveningStart)}</div>
-              <div class="sun-sub">until ${formatTime12(data.sunset)}</div>
-            </div>
-          </div>
-          <div class="daylight-bar-section">
-            <div class="daylight-label">
-              <span>Daylight Progress</span>
-              <span class="daylight-hours">${daylightH}h ${daylightM}m of daylight</span>
-            </div>
-            <div class="daylight-bar-track">
-              <div class="daylight-bar-fill" style="width: ${progressPct.toFixed(1)}%">
-                <div class="daylight-bar-cursor" style="left: 100%;"></div>
-              </div>
-            </div>
-            <div style="display:flex; justify-content:space-between; font-size:0.7rem; opacity:0.6; margin-top:0.3rem;">
-              <span>${formatTime12(data.sunrise)}</span>
-              <span>${formatTime12(data.sunset)}</span>
-            </div>
-          </div>
-          <div class="coord-display">${lat.toFixed(4)}°, ${lon.toFixed(4)}°</div>
-        `;
+      } catch (err) {
+        console.error('Sun calculation error', err);
       }
+    }
 
-      locateBtn.addEventListener('click', () => {
+    document.addEventListener('DOMContentLoaded', () => {
+      applyTheme();
+      wireDetectButton();
+      updateSunData();
+    });
+
+    function wireDetectButton() {
+      const btn = document.getElementById('detectBtn');
+      const errEl = document.getElementById('setupError');
+      btn.addEventListener('click', () => {
+        errEl.textContent = '';
         if (!navigator.geolocation) {
-          showError('Geolocation is not supported by this browser.');
+          errEl.textContent = 'Geolocation is not supported by this browser.';
           return;
         }
-        locateBtn.disabled = true;
-        locateBtn.textContent = 'Locating...';
+        btn.disabled = true;
+        btn.textContent = 'Locating…';
         navigator.geolocation.getCurrentPosition(
-          (pos) => {
-            lat = parseFloat(pos.coords.latitude.toFixed(4));
-            lon = parseFloat(pos.coords.longitude.toFixed(4));
-            locationInput.value = `${lat}, ${lon}`;
-            saveLocation(lat, lon);
-            fetchSunData();
-            locateBtn.disabled = false;
-            locateBtn.textContent = '📍 Auto-Detect';
+          async (pos) => {
+            const lat = parseFloat(pos.coords.latitude.toFixed(4));
+            const lon = parseFloat(pos.coords.longitude.toFixed(4));
+            try {
+              if (window.HomeGlow && window.HomeGlow.settings) {
+                await window.HomeGlow.settings.set({ lat, lon });
+              }
+            } catch (_) {
+              errEl.textContent = 'Could not save location.';
+              btn.disabled = false;
+              btn.textContent = '📍 Auto-Detect Location';
+              return;
+            }
+            btn.disabled = false;
+            btn.textContent = '📍 Auto-Detect Location';
+            updateSunData();
           },
-          (err) => {
-            showError('Could not get location. Please enter coordinates manually.');
-            locateBtn.disabled = false;
-            locateBtn.textContent = '📍 Auto-Detect';
+          () => {
+            errEl.textContent = 'Could not get location. Set coordinates in the Admin Panel.';
+            btn.disabled = false;
+            btn.textContent = '📍 Auto-Detect Location';
           }
         );
       });
-
-      locationInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') {
-          if (parseManualInput()) {
-            saveLocation(lat, lon);
-            fetchSunData();
-          } else {
-            showError('Invalid format. Use: Latitude, Longitude (e.g. 40.7128, -74.0060)');
-          }
-        }
-      });
-
-      refreshBtn.addEventListener('click', () => {
-        if (parseManualInput()) {
-          saveLocation(lat, lon);
-          fetchSunData();
-        } else if (lat !== null) {
-          fetchSunData();
-        } else {
-          showError('Enter a location first.');
-        }
-      });
-
-      loadSavedLocation();
-
-      setInterval(() => {
-        if (lat !== null && lon !== null) fetchSunData();
-      }, 60000);
-    });
+    }
   </script>
 </body>
 </html>
