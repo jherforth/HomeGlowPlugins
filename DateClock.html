@@ -12,12 +12,19 @@
     "apiVersion": "v1",
     "settings": [
       { "key": "style", "label": "Clock style", "type": "select",
-        "options": ["Balanced", "Classic", "Analog"], "default": "Balanced", "scope": "device" }
+        "options": ["Balanced", "Classic", "Analog"], "default": "Balanced", "scope": "device" },
+      { "key": "accentColor", "label": "Accent color for the time (a hex code like #1565c0, or a color name). Leave empty to follow the dashboard's accent.",
+        "type": "string", "default": "", "scope": "device" }
     ]
   }
   </script>
   <link rel="stylesheet" href="/index.css">
   <style>
+    :root {
+      /* The time's color: the dashboard's accent, unless this display's
+         Accent color setting overrides it (set on the root by the script). */
+      --clock-accent: var(--accent, #00ddeb);
+    }
     html, body {
       margin: 0;
       width: 100%;
@@ -58,7 +65,7 @@
     .classic .yr { font-size: clamp(0.6rem, 3.5cqw, 1.4rem); opacity: 0.55; letter-spacing: 0.08em; line-height: 1.2; }
     .classic .divider { display: none; }
     .classic .time-block { display: flex; flex-direction: column; align-items: center; gap: 0.1em; text-align: center; }
-    .classic .time { font-size: clamp(1.8rem, 14cqw, 8rem); font-weight: 700; letter-spacing: -0.03em; line-height: 1; color: var(--accent, #00ddeb); }
+    .classic .time { font-size: clamp(1.8rem, 14cqw, 8rem); font-weight: 700; letter-spacing: -0.03em; line-height: 1; color: var(--clock-accent); }
     .classic .ampm { font-size: clamp(0.6rem, 3.5cqw, 1.4rem); font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; opacity: 0.7; line-height: 1.2; }
     .classic .secs { font-size: clamp(0.55rem, 3cqw, 1.2rem); opacity: 0.5; letter-spacing: 0.05em; line-height: 1.2; }
     @container face (min-aspect-ratio: 1.6/1) {
@@ -103,19 +110,19 @@
       line-height: 1.05;
       white-space: nowrap;
     }
-    .balanced .b-yr { font-size: clamp(0.55rem, min(2.4cqw, 8cqh), 1.4rem); font-weight: 700; color: var(--text-secondary, #999); opacity: 0.65; line-height: 1.1; }
+    .balanced .b-yr { font-size: clamp(0.55rem, min(2.4cqw, 8cqh), 1.4rem); font-weight: 700; color: var(--text-secondary, #999); line-height: 1.1; }
     .balanced .b-div { flex: 0 0 1px; width: 1px; height: 55cqh; background: var(--card-border, rgba(128, 128, 128, 0.4)); }
     .balanced .b-row { display: flex; align-items: baseline; justify-content: center; gap: 0.18em; }
     .balanced .b-hm {
       font-size: clamp(1.6rem, min(10cqw, 36cqh), 7.5rem);
       font-weight: 900;
-      color: var(--accent, #00ddeb);
+      color: var(--clock-accent);
       line-height: 0.95;
       letter-spacing: -0.035em;
       white-space: nowrap;
     }
-    .balanced .b-ampm { font-size: clamp(0.6rem, min(3.4cqw, 12cqh), 2.4rem); font-weight: 800; color: var(--accent, #00ddeb); letter-spacing: 0.05em; text-transform: uppercase; }
-    .balanced .b-sec { font-size: clamp(0.55rem, min(2.4cqw, 8cqh), 1.3rem); font-weight: 700; color: var(--text-secondary, #999); opacity: 0.65; letter-spacing: 0.08em; }
+    .balanced .b-ampm { font-size: clamp(0.6rem, min(3.4cqw, 12cqh), 2.4rem); font-weight: 800; color: var(--clock-accent); letter-spacing: 0.05em; text-transform: uppercase; }
+    .balanced .b-sec { font-size: clamp(0.55rem, min(2.4cqw, 8cqh), 1.3rem); font-weight: 700; color: var(--text-secondary, #999); letter-spacing: 0.08em; }
     /* Tall tiles stack the halves, a rule between them instead of beside. */
     @container face (max-aspect-ratio: 13/10) {
       .balanced { flex-direction: column; gap: 4cqh; }
@@ -138,12 +145,12 @@
     .analog .hand { stroke-linecap: round; }
     .analog .hand.h { stroke: currentColor; stroke-width: 7; }
     .analog .hand.m { stroke: currentColor; stroke-width: 4.5; }
-    .analog .hand.s { stroke: var(--accent, #00ddeb); stroke-width: 2; }
-    .analog .hub { fill: var(--accent, #00ddeb); }
+    .analog .hand.s { stroke: var(--clock-accent); stroke-width: 2; }
+    .analog .hub { fill: var(--clock-accent); }
     .analog .a-date { min-width: 0; display: flex; flex-direction: column; gap: 0.25em; }
     .analog .a-dow { font-size: clamp(0.6rem, min(2.8cqw, 8cqh), 1.5rem); font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-secondary, #999); }
     .analog .a-md { font-size: clamp(1rem, min(6cqw, 18cqh), 4rem); font-weight: 800; letter-spacing: -0.02em; line-height: 1.05; }
-    .analog .a-time { font-size: clamp(0.7rem, min(3.4cqw, 10cqh), 2rem); font-weight: 700; color: var(--accent, #00ddeb); }
+    .analog .a-time { font-size: clamp(0.7rem, min(3.4cqw, 10cqh), 2rem); font-weight: 700; color: var(--clock-accent); }
     @container face (max-aspect-ratio: 13/10) {
       .analog { flex-direction: column; gap: 3cqh; }
       .analog .dial { width: min(66cqh, 86cqw); height: min(66cqh, 86cqw); }
@@ -294,22 +301,34 @@
         .then(function (tz) { return tz || Intl.DateTimeFormat().resolvedOptions().timeZone; });
     };
 
-    var readStyle = function () {
-      if (!window.HomeGlow || !window.HomeGlow.settings) return Promise.resolve(DEFAULT_STYLE);
+    var readSettings = function () {
+      if (!window.HomeGlow || !window.HomeGlow.settings) return Promise.resolve({});
       return window.HomeGlow.settings.get()
-        .then(function (values) { return values && values.style; })
-        .catch(function () { return null; })
-        .then(function (name) { return STYLES[name] ? name : DEFAULT_STYLE; });
+        .then(function (values) { return values && typeof values === 'object' ? values : {}; })
+        .catch(function () { return {}; });
+    };
+
+    // Any CSS color is accepted; a bare hex code ("1565c0") gets its "#".
+    // Anything the browser can't read as a color falls back to the dashboard's.
+    var applyAccent = function (raw) {
+      var value = String(raw || '').trim();
+      if (/^[0-9a-f]{3}([0-9a-f]{3})?([0-9a-f]{2})?$/i.test(value)) value = '#' + value;
+      var root = document.documentElement.style;
+      if (value && window.CSS && CSS.supports('color', value)) root.setProperty('--clock-accent', value);
+      else root.removeProperty('--clock-accent');
     };
 
     // Settings and the household timezone can change while a display runs;
     // look again now and then, and redraw only what moved.
     var refresh = function () {
-      return Promise.all([readStyle(), readTimezone()]).then(function (result) {
+      return Promise.all([readSettings(), readTimezone()]).then(function (result) {
+        var values = result[0];
+        var next = STYLES[values.style] ? values.style : DEFAULT_STYLE;
         var tzChanged = result[1] !== timezone || !formats;
         timezone = result[1];
+        applyAccent(values.accentColor);
         if (tzChanged) buildFormats();
-        if (result[0] !== style) render(result[0]);
+        if (next !== style) render(next);
         else if (tzChanged) update();
       });
     };
