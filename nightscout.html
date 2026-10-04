@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Nightscout CGM</title>
+  <script type="application/json" id="homeglow-manifest">{
+  "manifestVersion": 1,
+  "id": "nightscout-cgm",
+  "name": "Nightscout CGM",
+  "description": "Real-time CGM monitor showing Blood Glucose, Trend Arrow, Delta, Reading Age, IOB, and COB.",
+  "version": "1.8.0",
+  "apiVersion": "v1",
+  "settings": [
+    {
+      "key": "nightscoutUrl",
+      "label": "Nightscout Server URL",
+      "type": "string",
+      "default": "",
+      "scope": "household"
+    },
+    {
+      "key": "patientName",
+      "label": "Patient / Display Label",
+      "type": "string",
+      "default": "",
+      "scope": "household"
+    },
+    {
+      "key": "token",
+      "label": "API Secret / Token (optional)",
+      "type": "string",
+      "default": "",
+      "scope": "household"
+    }
+  ]
+}</script>
+  <link rel="stylesheet" href="/index.css">
+  <style>
+    :root {
+      --bg-color: var(--card-bg, #1a1a1a);
+      --text-main: var(--text, #f0f0f0);
+      --text-muted: var(--text-secondary, #999999);
+      --border-color: var(--card-border, #333333);
+    }
+    body {
+      margin: 0;
+      padding: 0;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background: transparent !important;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      color: var(--text-main);
+      display: flex;
+      flex-direction: column;
+      box-sizing: border-box;
+      user-select: none;
+      /* Establish the container context so cqw/cqh units below scale with the
+         widget's own size (not the viewport) when the widget is resized. */
+      container-type: size;
+    }
+    .cgm-container {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      height: 100%;
+      padding: 8px 12px;
+      box-sizing: border-box;
+      background: var(--bg-color);
+      border-radius: 12px;
+      border: 1px solid var(--border-color);
+    }
+    .cgm-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: clamp(0.7rem, 3.2cqw, 1.5rem);
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+    }
+    .cgm-main {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      flex: 1;
+      min-height: 0;
+      line-height: 1;
+    }
+    .sgv-group {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-shrink: 0;
+    }
+    .sgv-value {
+      font-size: clamp(5rem, min(32cqw, 55cqh), 22rem);
+      font-weight: 900;
+      line-height: 1;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: -0.05em;
+    }
+    .direction-arrow {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: clamp(3rem, min(16cqw, 28cqh), 12rem);
+      font-weight: 900;
+      line-height: 1;
+      transform: translateY(-2px);
+    }
+    .cgm-sub {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 6px;
+      font-size: clamp(0.8rem, 3.5cqw, 1.8rem);
+      font-weight: 800;
+      color: var(--text-main);
+      border-left: 1px solid var(--border-color);
+      padding-left: 12px;
+      min-width: 0;
+      overflow: hidden;
+    }
+    .sub-item {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      min-width: 0;
+    }
+    .sub-item > span:last-child {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 100%;
+    }
+    .sub-label {
+      line-height: 1.2;
+    }
+    .sub-label {
+      font-size: clamp(0.6rem, 2.8cqw, 1.2rem);
+      text-transform: uppercase;
+      font-weight: 800;
+      color: var(--text-muted);
+      letter-spacing: 0.05em;
+      margin-bottom: 2px;
+    }
+    .status-in-range { color: #10b981 !important; }
+    .status-low { color: #ef4444 !important; }
+    .status-high { color: #f59e0b !important; }
+    .status-urgent-low { color: #dc2626 !important; }
+  </style>
+  <script src="/plugin-sdk/v1.js"></script>
+</head>
+<body>
+  <div class="cgm-container">
+    <div class="cgm-header">
+      <span id="patient-name"></span>
+      <span id="time-ago">-- MIN AGO</span>
+    </div>
+    <div class="cgm-main">
+      <div class="sgv-group">
+        <span class="sgv-value status-in-range" id="sgv">---</span>
+        <span class="direction-arrow" id="arrow"></span>
+      </div>
+    </div>
+    <div class="cgm-sub">
+      <div class="sub-item">
+        <span class="sub-label">Delta</span>
+        <span id="delta">--</span>
+      </div>
+      <div class="sub-item">
+        <span class="sub-label">IOB</span>
+        <span id="iob">-- u</span>
+      </div>
+      <div class="sub-item">
+        <span class="sub-label">COB</span>
+        <span id="cob">-- g</span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const ARROWS = {
+      'DoubleUp': '⇈', 'SingleUp': '↑', 'FortyFiveUp': '↗',
+      'Flat': '→', 'FortyFiveDown': '↘', 'SingleDown': '↓',
+      'DoubleDown': '⇊', 'NOT COMPUTABLE': '-', 'RATE OUT OF RANGE': '⚠'
+    };
+
+    function applyTheme() {
+      const p = new URLSearchParams(window.location.search);
+      document.documentElement.setAttribute('data-theme', p.get('theme') || 'dark');
+      if (p.get('transparent') === 'true') {
+        const c = document.querySelector('.cgm-container');
+        if (c) { c.style.background = 'transparent'; c.style.border = 'none'; }
+      }
+    }
+
+    async function getSettings() {
+      let base = '', name = '', token = '';
+      if (window.HomeGlow && window.HomeGlow.settings) {
+        try {
+          const cfg = await window.HomeGlow.settings.get();
+          if (cfg.nightscoutUrl) base = cfg.nightscoutUrl.trim().replace(/\/+$/, '');
+          if (cfg.patientName) name = cfg.patientName;
+          if (cfg.token) token = cfg.token;
+        } catch (_) {}
+      }
+      return { base, name, token };
+    }
+
+    async function fetchCGM() {
+      const { base, name, token } = await getSettings();
+      document.getElementById('patient-name').textContent = name || '';
+      if (!base) return;
+
+      const tokenParam = token ? `token=${encodeURIComponent(token)}` : '';
+      let pebSuccess = false;
+
+      try {
+        const pebUrl = `${base}/pebble?${tokenParam}`;
+        let res = null;
+        try { res = await fetch(pebUrl, { mode: 'cors' }); } catch (_) {}
+        if (!res || !res.ok) {
+          res = await fetch(`/api/proxy?targetUrl=${encodeURIComponent(pebUrl)}`);
+        }
+
+        if (res && res.ok) {
+          const data = await res.json();
+          if (data && data.bgs && data.bgs.length > 0) {
+            const b = data.bgs[0];
+            const sgv = parseInt(b.sgv, 10);
+            const sgvEl = document.getElementById('sgv');
+            sgvEl.textContent = sgv;
+
+            sgvEl.className = 'sgv-value ' + (
+              sgv < 55 ? 'status-urgent-low' :
+              sgv < 70 ? 'status-low' :
+              sgv > 180 ? 'status-high' : 'status-in-range'
+            );
+
+            document.getElementById('arrow').textContent = ARROWS[b.direction] || b.direction || '→';
+
+            if (b.bgdelta !== undefined) {
+              const d = parseInt(b.bgdelta, 10);
+              document.getElementById('delta').textContent = (d >= 0 ? '+' : '') + d + ' mg/dL';
+            }
+
+            const minAgo = Math.round((Date.now() - b.datetime) / 60000);
+            document.getElementById('time-ago').textContent = `${Math.max(0, minAgo)}M AGO`;
+
+            if (b.iob !== undefined && b.iob !== null) {
+              document.getElementById('iob').textContent = `${parseFloat(b.iob).toFixed(1)} u`;
+            }
+            if (b.cob !== undefined && b.cob !== null) {
+              document.getElementById('cob').textContent = `${parseFloat(b.cob).toFixed(1)} g`;
+            } else {
+              document.getElementById('cob').textContent = `0.0 g`;
+            }
+            pebSuccess = true;
+          }
+        }
+      } catch (err) {
+        console.warn('Pebble error:', err);
+      }
+
+      if (!pebSuccess) {
+        try {
+          const entriesUrl = `${base}/api/v1/entries.json?count=2${tokenParam ? '&' + tokenParam : ''}`;
+          let eRes = await fetch(entriesUrl, { mode: 'cors' }).catch(() => null);
+          if (!eRes || !eRes.ok) {
+            eRes = await fetch(`/api/proxy?targetUrl=${encodeURIComponent(entriesUrl)}`);
+          }
+          if (eRes && eRes.ok) {
+            const entries = await eRes.json();
+            if (entries && entries.length) {
+              const latest = entries[0];
+              const prev = entries[1];
+              const sgv = latest.sgv;
+              const sgvEl = document.getElementById('sgv');
+              sgvEl.textContent = sgv;
+              sgvEl.className = 'sgv-value ' + (
+                sgv < 55 ? 'status-urgent-low' :
+                sgv < 70 ? 'status-low' :
+                sgv > 180 ? 'status-high' : 'status-in-range'
+              );
+              document.getElementById('arrow').textContent = ARROWS[latest.direction] || '→';
+              if (prev && prev.sgv) {
+                const diff = sgv - prev.sgv;
+                document.getElementById('delta').textContent = (diff >= 0 ? '+' : '') + diff + ' mg/dL';
+              }
+              const minAgo = Math.round((Date.now() - new Date(latest.dateString || latest.date).getTime()) / 60000);
+              document.getElementById('time-ago').textContent = `${Math.max(0, minAgo)}M AGO`;
+            }
+          }
+        } catch (_) {}
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      applyTheme();
+      fetchCGM();
+      setInterval(fetchCGM, 30000);
+    });
+  </script>
+</body>
+</html>
