@@ -3,214 +3,323 @@
 <head>
   <meta charset="UTF-8">
   <title>Date &amp; Clock</title>
-  <link rel="stylesheet" href="/index.css">
-  <style>
-    :root {
-      --text-main: var(--text, #f0f0f0);
-      --text-muted: var(--text-secondary, #999999);
-      --border-color: var(--border, rgba(128,128,128,0.25));
-    }
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
-    html, body {
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
-      background: transparent !important;
-    }
-    .widget-container {
-      position: absolute;
-      top: 50%;
-      left: 0;
-      right: 0;
-      transform: translateY(-50%);
-      display: flex;
-      align-items: center;
-      justify-content: space-around;
-      padding: 0 16px;
-    }
-    .date-col {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      text-align: center;
-      gap: 5px;
-      flex: 1.1;
-    }
-    .day-name {
-      font-size: 0.95rem;
-      font-weight: 800;
-      text-transform: uppercase;
-      letter-spacing: 0.14em;
-      color: var(--text-muted);
-      line-height: 1.1;
-    }
-    .full-date {
-      font-size: 2.35rem;
-      font-weight: 900;
-      letter-spacing: -0.025em;
-      line-height: 1.05;
-      white-space: nowrap;
-      color: var(--text-main);
-    }
-    .year-val {
-      font-size: 0.9rem;
-      font-weight: 700;
-      color: var(--text-muted);
-      opacity: 0.65;
-      line-height: 1.1;
-    }
-    .divider {
-      width: 1px;
-      height: 72px;
-      background: var(--border-color);
-      opacity: 0.35;
-      margin: 0 10px;
-    }
-    .time-col {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      text-align: center;
-      gap: 3px;
-      flex: 1.1;
-    }
-    .time-row {
-      display: flex;
-      align-items: baseline;
-      justify-content: center;
-      gap: 6px;
-    }
-    .digits {
-      font-size: 3.85rem;
-      font-weight: 900;
-      color: #00ddeb;
-      line-height: 0.95;
-      letter-spacing: -0.035em;
-      font-variant-numeric: tabular-nums;
-    }
-    .ampm-badge {
-      font-size: 1.35rem;
-      font-weight: 800;
-      color: #00ddeb;
-      letter-spacing: 0.05em;
-      text-transform: uppercase;
-    }
-    .seconds-val {
-      font-size: 0.85rem;
-      font-weight: 700;
-      color: var(--text-muted);
-      opacity: 0.65;
-      letter-spacing: 0.08em;
-      font-variant-numeric: tabular-nums;
-    }
-  </style>
   <script type="application/json" id="homeglow-manifest">
   {
     "manifestVersion": 1,
     "id": "date-clock",
     "name": "Date & Clock",
-    "description": "Clean, balanced date and digital clock card with responsive scaling. Timezone is configured in the Admin Panel; leave it blank to use the household timezone.",
+    "description": "A large date and clock face in one of three styles: Classic, Balanced or Analog. It follows the household timezone from HomeGlow settings, and scales to any tile size.",
     "apiVersion": "v1",
     "settings": [
-      {
-        "key": "timezone",
-        "label": "Timezone (IANA name, e.g. America/Chicago — blank for household)",
-        "type": "string",
-        "default": "",
-        "scope": "household"
-      }
+      { "key": "style", "label": "Clock style", "type": "select",
+        "options": ["Balanced", "Classic", "Analog"], "default": "Balanced", "scope": "device" }
     ]
   }
   </script>
+  <link rel="stylesheet" href="/index.css">
+  <style>
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: transparent !important;
+    }
+    body {
+      /* /index.css pads the body's bottom to clear the dashboard's dock; in a
+         widget frame that padding just cuts the tile short. */
+      padding: 0;
+      font-family: 'Inter', system-ui, sans-serif;
+      color: var(--text, #333);
+    }
+    [data-theme="dark"] body { color: var(--text, #e8e8f0); }
+    *, *::before, *::after { box-sizing: border-box; }
+
+    /* Every style sizes itself against this box, so the clock fills whatever
+       tile it is given: cqw and cqh are hundredths of its width and height. */
+    .face {
+      position: absolute;
+      inset: 0;
+      padding: 0.75rem;
+      container-type: size;
+      container-name: face;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .face > * { width: 100%; }
+    .tabular { font-variant-numeric: tabular-nums; }
+
+    /* --- Classic: the original stacked face --------------------------------- */
+    .classic { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: clamp(0.25rem, 2cqh, 1.5rem); }
+    .classic .date-block { display: flex; flex-direction: column; gap: 0.1em; text-align: center; }
+    .classic .dow { font-size: clamp(0.6rem, 3.5cqw, 1.4rem); font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.65; line-height: 1.2; }
+    .classic .md { font-size: clamp(1.2rem, 9cqw, 5rem); font-weight: 700; letter-spacing: -0.02em; line-height: 1; }
+    .classic .yr { font-size: clamp(0.6rem, 3.5cqw, 1.4rem); opacity: 0.55; letter-spacing: 0.08em; line-height: 1.2; }
+    .classic .divider { display: none; }
+    .classic .time-block { display: flex; flex-direction: column; align-items: center; gap: 0.1em; text-align: center; }
+    .classic .time { font-size: clamp(1.8rem, 14cqw, 8rem); font-weight: 700; letter-spacing: -0.03em; line-height: 1; color: var(--accent, #00ddeb); }
+    .classic .ampm { font-size: clamp(0.6rem, 3.5cqw, 1.4rem); font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; opacity: 0.7; line-height: 1.2; }
+    .classic .secs { font-size: clamp(0.55rem, 3cqw, 1.2rem); opacity: 0.5; letter-spacing: 0.05em; line-height: 1.2; }
+    @container face (min-aspect-ratio: 1.6/1) {
+      .classic { flex-direction: row; gap: clamp(1rem, 4cqw, 3rem); }
+      .classic .date-block { text-align: right; }
+      .classic .divider {
+        display: block;
+        width: 2px;
+        height: clamp(40px, 40cqh, 160px);
+        background: linear-gradient(180deg, transparent, currentColor, transparent);
+        opacity: 0.25;
+        flex-shrink: 0;
+      }
+      .classic .dow, .classic .yr, .classic .ampm, .classic .secs { font-size: clamp(0.55rem, 2cqw, 1.1rem); }
+      .classic .md { font-size: clamp(1rem, 5.5cqw, 3.5rem); }
+      .classic .time { font-size: clamp(1.5rem, 8cqw, 6rem); }
+    }
+    @keyframes tick {
+      0%   { opacity: 1; }
+      10%  { opacity: 0.6; }
+      20%  { opacity: 1; }
+    }
+    .classic .time.tick { animation: tick 0.3s ease; }
+
+    /* --- Balanced: date and time side by side, weighted alike --------------- */
+    .balanced { display: flex; align-items: center; justify-content: space-around; gap: 3cqw; }
+    .balanced .b-date, .balanced .b-time { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; text-align: center; }
+    .balanced .b-date { gap: 0.3em; }
+    .balanced .b-time { gap: 0.2em; }
+    .balanced .b-dow {
+      font-size: clamp(0.6rem, min(2.6cqw, 9cqh), 1.6rem);
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      color: var(--text-secondary, #999);
+      line-height: 1.1;
+    }
+    .balanced .b-md {
+      font-size: clamp(1rem, min(6.4cqw, 22cqh), 4.6rem);
+      font-weight: 900;
+      letter-spacing: -0.025em;
+      line-height: 1.05;
+      white-space: nowrap;
+    }
+    .balanced .b-yr { font-size: clamp(0.55rem, min(2.4cqw, 8cqh), 1.4rem); font-weight: 700; color: var(--text-secondary, #999); opacity: 0.65; line-height: 1.1; }
+    .balanced .b-div { flex: 0 0 1px; width: 1px; height: 55cqh; background: var(--card-border, rgba(128, 128, 128, 0.4)); }
+    .balanced .b-row { display: flex; align-items: baseline; justify-content: center; gap: 0.18em; }
+    .balanced .b-hm {
+      font-size: clamp(1.6rem, min(10cqw, 36cqh), 7.5rem);
+      font-weight: 900;
+      color: var(--accent, #00ddeb);
+      line-height: 0.95;
+      letter-spacing: -0.035em;
+      white-space: nowrap;
+    }
+    .balanced .b-ampm { font-size: clamp(0.6rem, min(3.4cqw, 12cqh), 2.4rem); font-weight: 800; color: var(--accent, #00ddeb); letter-spacing: 0.05em; text-transform: uppercase; }
+    .balanced .b-sec { font-size: clamp(0.55rem, min(2.4cqw, 8cqh), 1.3rem); font-weight: 700; color: var(--text-secondary, #999); opacity: 0.65; letter-spacing: 0.08em; }
+    /* Tall tiles stack the halves, a rule between them instead of beside. */
+    @container face (max-aspect-ratio: 13/10) {
+      .balanced { flex-direction: column; gap: 4cqh; }
+      .balanced .b-date, .balanced .b-time { flex: 0 0 auto; }
+      .balanced .b-div { flex-basis: 1px; width: 50cqw; height: 1px; }
+      .balanced .b-dow { font-size: clamp(0.6rem, min(5cqw, 5cqh), 1.6rem); }
+      .balanced .b-md { font-size: clamp(1rem, min(12cqw, 12cqh), 4.6rem); }
+      .balanced .b-yr, .balanced .b-sec { font-size: clamp(0.55rem, min(4.4cqw, 4.4cqh), 1.4rem); }
+      .balanced .b-hm { font-size: clamp(1.6rem, min(20cqw, 20cqh), 7.5rem); }
+      .balanced .b-ampm { font-size: clamp(0.6rem, min(6.5cqw, 6.5cqh), 2.4rem); }
+    }
+
+    /* --- Analog: a dial, with the date alongside ---------------------------- */
+    .analog { display: flex; align-items: center; justify-content: center; gap: 5cqw; height: 100%; }
+    .analog .dial { flex: 0 0 auto; width: min(92cqh, 48cqw); height: min(92cqh, 48cqw); overflow: visible; }
+    .analog .rim { fill: rgba(128, 128, 128, 0.08); stroke: var(--card-border, rgba(128, 128, 128, 0.35)); stroke-width: 1.5; }
+    .analog .mark { stroke: currentColor; stroke-linecap: round; }
+    .analog .mark.min { stroke-width: 1.5; opacity: 0.3; }
+    .analog .mark.hour { stroke-width: 4; opacity: 0.75; }
+    .analog .hand { stroke-linecap: round; }
+    .analog .hand.h { stroke: currentColor; stroke-width: 7; }
+    .analog .hand.m { stroke: currentColor; stroke-width: 4.5; }
+    .analog .hand.s { stroke: var(--accent, #00ddeb); stroke-width: 2; }
+    .analog .hub { fill: var(--accent, #00ddeb); }
+    .analog .a-date { min-width: 0; display: flex; flex-direction: column; gap: 0.25em; }
+    .analog .a-dow { font-size: clamp(0.6rem, min(2.8cqw, 8cqh), 1.5rem); font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-secondary, #999); }
+    .analog .a-md { font-size: clamp(1rem, min(6cqw, 18cqh), 4rem); font-weight: 800; letter-spacing: -0.02em; line-height: 1.05; }
+    .analog .a-time { font-size: clamp(0.7rem, min(3.4cqw, 10cqh), 2rem); font-weight: 700; color: var(--accent, #00ddeb); }
+    @container face (max-aspect-ratio: 13/10) {
+      .analog { flex-direction: column; gap: 3cqh; }
+      .analog .dial { width: min(66cqh, 86cqw); height: min(66cqh, 86cqw); }
+      .analog .a-date { align-items: center; text-align: center; gap: 0.1em; }
+      .analog .a-dow { font-size: clamp(0.55rem, min(4.4cqw, 4.4cqh), 1.3rem); }
+      .analog .a-md { font-size: clamp(0.9rem, min(9cqw, 9cqh), 3rem); }
+      .analog .a-time { display: none; }
+    }
+  </style>
 </head>
 <body>
-  <div class="widget-container">
-    <div class="date-col">
-      <span class="day-name" id="dayName">--</span>
-      <span class="full-date" id="fullDate">--</span>
-      <span class="year-val" id="yearVal">----</span>
-    </div>
-    <div class="divider"></div>
-    <div class="time-col">
-      <div class="time-row">
-        <span class="digits" id="timeDigits">--:--</span>
-        <span class="ampm-badge" id="ampmVal">--</span>
-      </div>
-      <span class="seconds-val" id="secVal">--</span>
-    </div>
-  </div>
+  <div class="face" id="face"></div>
 
+  <script src="/plugin-sdk/v1.js"></script>
   <script>
-    // Timezone resolution: ?tz= param > Admin Panel setting > household
-    // timezone from /api/timezone > device system timezone. There is no
-    // on-widget configuration UI; the timezone lives in the Admin Panel.
-    let resolvedTz = null;
+  (function () {
+    'use strict';
 
-    function isValidTimezone(tz) {
-      try {
-        Intl.DateTimeFormat(undefined, { timeZone: tz });
-        return true;
-      } catch (_) {
-        return false;
-      }
-    }
+    var params = new URLSearchParams(window.location.search);
+    var theme = params.get('theme');
+    if (theme === 'dark' || theme === 'light') document.documentElement.setAttribute('data-theme', theme);
+    var lang = (params.get('lang') || navigator.language || 'en').split('-')[0];
 
-    async function resolveTimezone() {
-      const p = new URLSearchParams(window.location.search);
-      const paramTz = p.get('tz');
-      if (paramTz && isValidTimezone(paramTz)) return paramTz;
-      try {
-        if (window.HomeGlow && window.HomeGlow.settings) {
-          const cfg = await window.HomeGlow.settings.get();
-          if (cfg && cfg.timezone && isValidTimezone(cfg.timezone)) return cfg.timezone;
+    // Each style is markup whose [data-f] slots update() fills; the Analog
+    // dial's hands are turned by update() too.
+    var STYLES = {
+      Classic: function () {
+        return '<div class="classic">'
+          + '<div class="date-block"><div class="dow" data-f="weekday"></div><div class="md" data-f="monthDay"></div><div class="yr" data-f="year"></div></div>'
+          + '<div class="divider"></div>'
+          + '<div class="time-block"><div class="time tabular" data-f="hm"></div><div class="ampm" data-f="period"></div><div class="secs tabular" data-f="secS"></div></div>'
+          + '</div>';
+      },
+      Balanced: function () {
+        return '<div class="balanced">'
+          + '<div class="b-date"><span class="b-dow" data-f="weekday"></span><span class="b-md" data-f="monthDay"></span><span class="b-yr" data-f="year"></span></div>'
+          + '<div class="b-div"></div>'
+          + '<div class="b-time"><div class="b-row"><span class="b-hm tabular" data-f="hm"></span><span class="b-ampm" data-f="period"></span></div>'
+          + '<span class="b-sec tabular" data-f="secColon"></span></div>'
+          + '</div>';
+      },
+      Analog: function () {
+        var marks = '';
+        for (var i = 0; i < 60; i += 1) {
+          var hour = i % 5 === 0;
+          marks += '<line class="mark ' + (hour ? 'hour' : 'min') + '" x1="100" y1="' + (hour ? 12 : 10) + '" x2="100" y2="' + (hour ? 26 : 16) + '" transform="rotate(' + (i * 6) + ' 100 100)"/>';
         }
-      } catch (_) {}
-      try {
-        const res = await fetch('/api/timezone');
-        if (res.ok) {
-          const data = await res.json();
-          const tz = data.timezone || data.tz;
-          if (typeof tz === 'string' && isValidTimezone(tz)) return tz;
-        }
-      } catch (_) {}
-      return Intl.DateTimeFormat().resolvedOptions().timeZone;
-    }
-
-    function update() {
-      const now = new Date();
-      const tzOpt = resolvedTz ? { timeZone: resolvedTz } : {};
-      document.getElementById('dayName').textContent = now.toLocaleDateString(undefined, { weekday: 'long', ...tzOpt });
-      document.getElementById('fullDate').textContent = now.toLocaleDateString(undefined, { month: 'long', day: 'numeric', ...tzOpt });
-      document.getElementById('yearVal').textContent = now.toLocaleDateString(undefined, { year: 'numeric', ...tzOpt });
-
-      const parts = new Intl.DateTimeFormat('en-US', {
-        hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true, ...tzOpt
-      }).formatToParts(now);
-      const get = (t) => (parts.find((x) => x.type === t) || {}).value || '';
-      document.getElementById('timeDigits').textContent = `${get('hour')}:${get('minute')}`;
-      document.getElementById('ampmVal').textContent = get('dayPeriod').toUpperCase();
-      document.getElementById('secVal').textContent = `:${get('second')}`;
-    }
-
-    function applyTheme() {
-      const p = new URLSearchParams(window.location.search);
-      document.documentElement.setAttribute('data-theme', p.get('theme') || 'dark');
-      if (p.get('transparent') === 'true') {
-        const c = document.querySelector('.widget-container');
-        if (c) { c.style.background = 'transparent'; c.style.border = 'none'; }
+        return '<div class="analog">'
+          + '<svg class="dial" viewBox="0 0 200 200" aria-hidden="true">'
+          + '<circle class="rim" cx="100" cy="100" r="96"/>' + marks
+          + '<line class="hand h" data-hand="h" x1="100" y1="112" x2="100" y2="54"/>'
+          + '<line class="hand m" data-hand="m" x1="100" y1="114" x2="100" y2="30"/>'
+          + '<line class="hand s" data-hand="s" x1="100" y1="122" x2="100" y2="22"/>'
+          + '<circle class="hub" cx="100" cy="100" r="5.5"/>'
+          + '</svg>'
+          + '<div class="a-date"><div class="a-dow" data-f="weekday"></div><div class="a-md" data-f="monthDay"></div>'
+          + '<div class="a-time tabular"><span data-f="hm"></span> <span data-f="period"></span></div></div>'
+          + '</div>';
       }
-    }
+    };
+    var DEFAULT_STYLE = 'Balanced';
 
-    document.addEventListener('DOMContentLoaded', async () => {
-      applyTheme();
-      resolvedTz = await resolveTimezone();
+    var face = document.getElementById('face');
+    var style = null;
+    var timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    var slots = [];
+    var hands = {};
+    var formats = null;
+    var lastSecond = -1;
+
+    var isValidTimezone = function (tz) {
+      try { new Intl.DateTimeFormat(undefined, { timeZone: tz }); return true; } catch (e) { return false; }
+    };
+
+    // Formatters are costly to build and only change with the timezone.
+    var buildFormats = function () {
+      var make = function (locale, options) {
+        options.timeZone = timezone;
+        try { return new Intl.DateTimeFormat(locale, options); } catch (e) { return new Intl.DateTimeFormat('en', options); }
+      };
+      formats = {
+        weekday: make(lang, { weekday: 'long' }),
+        monthDay: make(lang, { month: 'long', day: 'numeric' }),
+        year: make(lang, { year: 'numeric' }),
+        clock: make(lang, { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true }),
+        // Plain numbers for the dial's hands, whatever the language.
+        h24: make('en-US', { hour: 'numeric', minute: 'numeric', second: 'numeric', hourCycle: 'h23' })
+      };
+    };
+
+    var render = function (name) {
+      style = STYLES[name] ? name : DEFAULT_STYLE;
+      face.innerHTML = STYLES[style]();
+      slots = Array.prototype.slice.call(face.querySelectorAll('[data-f]'));
+      hands = {};
+      Array.prototype.forEach.call(face.querySelectorAll('[data-hand]'), function (el) { hands[el.getAttribute('data-hand')] = el; });
+      lastSecond = -1;
       update();
-      setInterval(update, 1000);
-    });
+    };
+
+    var update = function () {
+      var now = new Date();
+      var parts = {};
+      formats.clock.formatToParts(now).forEach(function (p) { parts[p.type] = p.value; });
+      var values = {
+        weekday: formats.weekday.format(now),
+        monthDay: formats.monthDay.format(now),
+        year: formats.year.format(now),
+        hm: parts.hour + ':' + parts.minute,
+        period: (parts.dayPeriod || '').toUpperCase(),
+        secS: parts.second + 's',
+        secColon: ':' + parts.second
+      };
+      slots.forEach(function (el) {
+        var v = values[el.getAttribute('data-f')];
+        if (el.textContent !== v) el.textContent = v;
+      });
+
+      var n = {};
+      formats.h24.formatToParts(now).forEach(function (p) { n[p.type] = Number(p.value); });
+      if (hands.h) {
+        hands.h.setAttribute('transform', 'rotate(' + ((n.hour % 12) * 30 + n.minute * 0.5) + ' 100 100)');
+        hands.m.setAttribute('transform', 'rotate(' + (n.minute * 6 + n.second * 0.1) + ' 100 100)');
+        hands.s.setAttribute('transform', 'rotate(' + (n.second * 6) + ' 100 100)');
+      }
+
+      if (style === 'Classic' && n.second !== lastSecond) {
+        var time = face.querySelector('.time');
+        if (time && lastSecond !== -1) {
+          time.classList.remove('tick');
+          void time.offsetWidth;
+          time.classList.add('tick');
+        }
+      }
+      lastSecond = n.second;
+    };
+
+    // The timezone is the household's, from HomeGlow settings; without one,
+    // this device's own.
+    var readTimezone = function () {
+      return fetch('/api/timezone')
+        .then(function (res) { return res.ok ? res.json() : null; })
+        .then(function (data) {
+          var tz = data && (typeof data === 'string' ? data : data.timezone || data.tz);
+          return typeof tz === 'string' && isValidTimezone(tz) ? tz : null;
+        })
+        .catch(function () { return null; })
+        .then(function (tz) { return tz || Intl.DateTimeFormat().resolvedOptions().timeZone; });
+    };
+
+    var readStyle = function () {
+      if (!window.HomeGlow || !window.HomeGlow.settings) return Promise.resolve(DEFAULT_STYLE);
+      return window.HomeGlow.settings.get()
+        .then(function (values) { return values && values.style; })
+        .catch(function () { return null; })
+        .then(function (name) { return STYLES[name] ? name : DEFAULT_STYLE; });
+    };
+
+    // Settings and the household timezone can change while a display runs;
+    // look again now and then, and redraw only what moved.
+    var refresh = function () {
+      return Promise.all([readStyle(), readTimezone()]).then(function (result) {
+        var tzChanged = result[1] !== timezone || !formats;
+        timezone = result[1];
+        if (tzChanged) buildFormats();
+        if (result[0] !== style) render(result[0]);
+        else if (tzChanged) update();
+      });
+    };
+
+    // The first draw waits for the style setting, so a display set to another
+    // style never flashes the default first.
+    buildFormats();
+    refresh().then(function () { setInterval(update, 250); });
+    setInterval(refresh, 10 * 60 * 1000);
+  })();
   </script>
 </body>
 </html>
