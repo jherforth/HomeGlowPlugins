@@ -1129,7 +1129,7 @@
               Total votes: ${total} | Created by: ${escapeHtml(poll.createdBy)} | ${new Date(poll.createdAt).toLocaleDateString()}
               ${HIDE_MANAGE_POLLS ? '' : `
               <button type="button" class="custom-button" onclick="editPoll('${pollId}')" style="margin-left: 1rem; font-size: 0.7rem; padding: 4px 8px;">Edit</button>
-              <button type="button" class="custom-button" onclick="deletePoll('${pollId}')" style="margin-left: 0.5rem; font-size: 0.7rem; padding: 4px 8px;${armed ? ' background: #ff6b6b !important;' : ''}">${armed ? 'Confirm delete' : 'Delete'}</button>`}
+              <button type="button" class="custom-button" onclick="deletePoll('${pollId}')" style="margin-left: 0.5rem; font-size: 0.7rem; padding: 4px 8px;${armed ? ' background: var(--error, #ef4444) !important;' : ''}">${armed ? 'Confirm delete' : 'Delete'}</button>`}
 
             </div>
           </div>
