@@ -60,7 +60,16 @@
       font-family: inherit;
     }
     .btn:hover { border-color: var(--accent, #757575); }
-    .btn.primary { background: var(--accent, #757575); color: #fff; border-color: var(--accent, #757575); }
+    .btn.primary { background: var(--accent, #757575); color: #fff; border-color: var(--accent, #757575); font-weight: 600; }
+    /* The header's "+ Add": green, so the way in stands out; it becomes a
+       plain "Close" while setting up. */
+    .btn.add {
+      background: var(--success, #2e7d32);
+      border-color: var(--success, #2e7d32);
+      color: #fff;
+      font-weight: 700;
+    }
+    .btn.add:hover { border-color: var(--success, #2e7d32); filter: brightness(1.08); }
     .btn:disabled { opacity: 0.5; cursor: default; }
 
     .note {
@@ -184,16 +193,27 @@
       z-index: 40;
     }
 
-    /* --- setup --- */
-    h2 {
-      font-size: 0.68rem;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      opacity: 0.5;
-      margin: 14px 0 6px;
-      font-weight: 700;
+    /* --- setup ---
+       Three sections, each a bordered panel with a full-strength heading.
+       Every field has its label above it and its help text below it, so the
+       directions read as part of the field instead of floating between them. */
+    .section {
+      border: 1px solid var(--card-border, rgba(128,128,128,0.3));
+      border-radius: 10px;
+      padding: 12px 14px 14px;
+      margin-bottom: 12px;
     }
-    .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 7px; }
+    .section h2 { font-size: 0.95rem; font-weight: 700; margin: 0; }
+    .section > .help:first-of-type { margin-top: 3px; }
+    .field { margin-top: 14px; }
+    .label { font-size: 0.8rem; font-weight: 700; margin-bottom: 6px; }
+    .help { font-size: 0.75rem; opacity: 0.75; margin: 6px 0 0; line-height: 1.45; }
+    .muted { font-size: 0.8rem; opacity: 0.6; margin: 8px 0 0; }
+    .inline { font-size: 0.8rem; }
+    .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+    .grow { flex: 1 1 160px; }
+    .actions { display: flex; gap: 8px; margin-top: 18px; }
+    .actions .btn { font-size: 0.85rem; padding: 7px 14px; }
     input[type="text"], input[type="time"], input[type="number"], select {
       background: transparent;
       color: inherit;
@@ -202,11 +222,34 @@
       padding: 6px 8px;
       font-size: 0.82rem;
       font-family: inherit;
+      height: 34px;
     }
     input[type="text"] { min-width: 130px; }
+    input[type="number"] { width: 64px; }
     select option { color: initial; }
+    label.check { display: inline-flex; align-items: center; gap: 5px; font-size: 0.8rem; cursor: pointer; }
 
-    /* Emoji picker: tap a picture, never type one. */
+    /* The icon is a small button showing the chosen picture; the grid opens
+       under it on tap and closes again once one is picked. */
+    .iconbtn {
+      height: 34px;
+      min-width: 46px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+      padding: 0 6px;
+      border: 1px solid var(--card-border, rgba(128,128,128,0.35));
+      border-radius: 8px;
+      background: transparent;
+      color: inherit;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .iconbtn:hover { border-color: var(--accent, #757575); }
+    .iconbtn .glyph { font-size: 1.1rem; line-height: 1; }
+    .iconbtn .glyph.none { font-size: 0.75rem; opacity: 0.7; }
+    .iconbtn .caret { font-size: 0.6rem; opacity: 0.6; }
     .picker {
       display: flex;
       flex-wrap: wrap;
@@ -214,12 +257,11 @@
       border: 1px solid var(--card-border, rgba(128,128,128,0.3));
       border-radius: 8px;
       padding: 6px;
-      margin-bottom: 7px;
-      /* Exactly three 32px rows (+4px gaps, +6px padding), so the grid never
-         cuts a row in half. */
+      margin-top: 6px;
       max-height: 116px;
       overflow-y: auto;
     }
+    .picker[hidden] { display: none; }
     .ic {
       width: 32px;
       height: 32px;
@@ -240,29 +282,34 @@
     .pill {
       border: 1px solid var(--card-border, rgba(128,128,128,0.35));
       border-radius: 999px;
-      padding: 4px 10px;
-      font-size: 0.78rem;
+      padding: 5px 11px;
+      font-size: 0.8rem;
       cursor: pointer;
       user-select: none;
     }
-    .pill.on { border-color: var(--accent, #757575); background: rgba(var(--accent-rgb, 158,127,255), 0.18); }
+    .pill.on {
+      border-color: var(--accent, #757575);
+      background: rgba(var(--accent-rgb, 158,127,255), 0.18);
+      font-weight: 600;
+    }
 
     .line {
       display: flex;
       align-items: center;
       gap: 8px;
-      padding: 6px 0;
+      padding: 8px 0;
       border-bottom: 1px solid var(--card-border, rgba(128,128,128,0.18));
-      font-size: 0.82rem;
+      font-size: 0.85rem;
     }
-    .hint { font-size: 0.72rem; opacity: 0.55; margin: 2px 0 8px; line-height: 1.45; }
+    .line:last-of-type { border-bottom: none; }
+    .line .name { font-weight: 600; }
   </style>
 </head>
 <body>
   <div class="head">
     <h1>Routines</h1>
     <span class="today" id="today"></span>
-    <button class="btn" id="gear">Set up</button>
+    <button class="btn add" id="gear">+ Add</button>
   </div>
 
   <div id="notes"></div>
@@ -1041,7 +1088,7 @@
       if (!state.routines.length) {
         view.innerHTML = HIDE_SET_UP
           ? '<div class="empty">No routines yet.</div>'
-          : '<div class="empty">No routines yet. Choose <strong>Set up</strong> to build one.</div>';
+          : '<div class="empty">No routines yet. Choose <strong>+ Add</strong> to build one.</div>';
         return;
       }
 
@@ -1088,100 +1135,126 @@
     }
     var draft = newDraft();
 
-    function pickerHtml(attr, selected) {
-      var h = '<div class="picker">';
+    // Shown on the icon button until a picture is chosen.
+    var NO_ICON = 'Icon';
+
+    // The grid of pictures, closed until its icon button is tapped.
+    function pickerHtml(id, attr, selected) {
+      var h = '<div class="picker" id="' + id + '" hidden>';
       ICONS.forEach(function (e) {
         h += '<button class="ic ' + (selected === e ? 'on' : '') + '" ' + attr + '="' + esc(e) + '">' + e + '</button>';
       });
       return h + '</div>';
+    }
+    function iconButton2(pickerId, selected) {
+      return '<button type="button" class="iconbtn" data-iconbtn="' + pickerId + '" title="Choose an icon">' +
+             '<span class="glyph' + (selected ? '' : ' none') + '">' + (selected || NO_ICON) + '</span>' +
+             '<span class="caret">\u25BE</span></button>';
+    }
+    function field(label, body, help) {
+      return '<div class="field"><div class="label">' + label + '</div>' + body +
+             (help ? '<p class="help">' + help + '</p>' : '') + '</div>';
     }
 
     function renderSetup() {
       var view = document.getElementById('view');
       var h = '';
 
-      h += '<h2>Steps</h2>';
-      h += '<div class="hint">Build a step once and reuse it in any routine.</div>';
+      // Steps
+      h += '<div class="section"><h2>Steps</h2>';
+      h += '<p class="help">Build a step once, then reuse it in any routine.</p>';
+      if (!state.library.length) h += '<p class="muted">No steps yet.</p>';
       state.library.forEach(function (s) {
         h += '<div class="line"><span style="font-size:1.15rem">' + (s.icon || '') + '</span>' +
-             '<span>' + esc(s.label) + '</span><span class="spacer"></span>' +
+             '<span class="name">' + esc(s.label) + '</span><span class="spacer"></span>' +
              '<button class="btn" data-delstep="' + esc(s.id) + '">Remove</button></div>';
       });
-      h += '<div class="row" style="margin-top:8px"><input type="text" id="stepLabel" placeholder="Brush teeth">' +
-           '<button class="btn primary" id="addStep">Add step</button></div>';
-      h += pickerHtml('data-stepicon', draft.stepIcon);
-
-      h += '<h2>Routines</h2>';
-      if (!state.routines.length) h += '<div class="hint">None yet.</div>';
-      state.routines.forEach(function (r) {
-        var u = userById(r.userId);
-        h += '<div class="line"><span style="font-size:1.15rem">' + (r.icon || '') + '</span>' +
-             '<span>' + esc(r.name) + '</span>' +
-             '<span class="chip">' + (u ? esc(u.username) : '?') + '</span>' +
-             '<span class="chip">' + r.steps.length + ' steps</span>' +
-             (isCalendarRoutine(r) ? '<span class="chip">\u{1F4C5} ' + esc(r.match) + '</span>' : '') +
-             '<span class="spacer"></span>' +
-             '<button class="btn" data-retire="' + esc(r.id) + '">Retire</button></div>';
-      });
-
-      h += '<h2>New routine</h2>';
-      h += '<div class="row"><input type="text" id="rName" placeholder="Morning routine">';
-      h += '<select id="rUser">';
-      state.users.forEach(function (u) { h += '<option value="' + u.id + '">' + esc(u.username) + '</option>'; });
-      h += '</select></div>';
-      h += pickerHtml('data-routineicon', draft.routineIcon);
-
-      var byCalendar = draft.trigger === 'calendar';
-      h += '<div class="row"><span class="hint" style="margin:0">When:</span>' +
-           '<span class="pill ' + (byCalendar ? '' : 'on') + '" data-trigger="days">On these days</span>' +
-           '<span class="pill ' + (byCalendar ? 'on' : '') + '" data-trigger="calendar">\u{1F4C5} On calendar events</span></div>';
-
-      h += '<div class="row" id="daysRow"' + (byCalendar ? ' style="display:none"' : '') + '>';
-      DAY_NAMES.forEach(function (d, i) {
-        h += '<span class="pill ' + (draft.days.indexOf(i) !== -1 ? 'on' : '') + '" data-day="' + i + '">' + d + '</span>';
-      });
+      h += field('New step',
+        '<div class="row">' + iconButton2('stepPicker', draft.stepIcon) +
+        '<input type="text" id="stepLabel" class="grow" placeholder="Brush teeth">' +
+        '<button class="btn primary" id="addStep">Add step</button></div>' +
+        pickerHtml('stepPicker', 'data-stepicon', draft.stepIcon));
       h += '</div>';
 
-      h += '<div id="calendarRows"' + (byCalendar ? '' : ' style="display:none"') + '>';
-      h += '<div class="row"><input type="text" id="rMatch" placeholder="Event title contains, e.g. Soccer" value="' + esc(draft.match) + '">' +
-           '<label class="hint" style="margin:0"><input type="checkbox" id="rWhole"' + (draft.wholeWord ? ' checked' : '') + '> Whole words</label></div>';
-      h += '<div class="row"><span class="hint" style="margin:0">Due</span>' +
-           '<input type="number" id="rLead" min="0" max="720" value="' + esc(draft.lead) + '" style="width:64px">' +
-           '<span class="hint" style="margin:0">minutes before the event starts</span></div>';
-      if (state.sources.length > 1) {
-        h += '<div class="row"><span class="hint" style="margin:0">Calendars (none picked = all):</span>';
-        state.sources.forEach(function (src) {
-          h += '<span class="pill ' + (draft.sources.indexOf(src.id) !== -1 ? 'on' : '') + '" data-source="' + src.id + '">' + esc(src.name) + '</span>';
+      // Existing routines
+      if (state.routines.length) {
+        h += '<div class="section"><h2>Your routines</h2>';
+        state.routines.forEach(function (r) {
+          var u = userById(r.userId);
+          h += '<div class="line"><span style="font-size:1.15rem">' + (r.icon || '') + '</span>' +
+               '<span class="name">' + esc(r.name) + '</span>' +
+               '<span class="chip">' + (u ? esc(u.username) : '?') + '</span>' +
+               '<span class="chip">' + r.steps.length + (r.steps.length === 1 ? ' step' : ' steps') + '</span>' +
+               (isCalendarRoutine(r) ? '<span class="chip">\u{1F4C5} ' + esc(r.match) + '</span>' : '') +
+               '<span class="spacer"></span>' +
+               '<button class="btn" data-retire="' + esc(r.id) + '">Retire</button></div>';
         });
         h += '</div>';
       }
-      h += '<div class="hint">Shows on days with a matching event, due at its start (all-day events use the time below). ' +
-           'Looks ' + CAL_LOOKAHEAD_DAYS + ' days ahead; a display showing Routines picks up new events within minutes.</div>';
-      h += '</div>';
 
-      h += '<div class="row"><span class="hint" style="margin:0">Steps:</span>';
-      if (!state.library.length) h += '<span class="hint" style="margin:0">add some above first</span>';
-      state.library.forEach(function (s) {
-        h += '<span class="pill ' + (draft.steps.indexOf(s.id) !== -1 ? 'on' : '') +
-             '" data-pick="' + esc(s.id) + '">' + (s.icon || '') + ' ' + esc(s.label) + '</span>';
+      // New routine
+      h += '<div class="section"><h2>New routine</h2>';
+      h += field('Name',
+        '<div class="row">' + iconButton2('routinePicker', draft.routineIcon) +
+        '<input type="text" id="rName" class="grow" placeholder="Morning routine"></div>' +
+        pickerHtml('routinePicker', 'data-routineicon', draft.routineIcon));
+
+      var people = '<select id="rUser">';
+      state.users.forEach(function (u) { people += '<option value="' + u.id + '">' + esc(u.username) + '</option>'; });
+      h += field('For', people + '</select>');
+
+      var byCalendar = draft.trigger === 'calendar';
+      var when = '<div class="row">' +
+        '<span class="pill ' + (byCalendar ? '' : 'on') + '" data-trigger="days">On these days</span>' +
+        '<span class="pill ' + (byCalendar ? 'on' : '') + '" data-trigger="calendar">\u{1F4C5} On calendar events</span></div>';
+      when += '<div class="row" id="daysRow" style="margin-top:8px' + (byCalendar ? ';display:none' : '') + '">';
+      DAY_NAMES.forEach(function (d, i) {
+        when += '<span class="pill ' + (draft.days.indexOf(i) !== -1 ? 'on' : '') + '" data-day="' + i + '">' + d + '</span>';
       });
+      when += '</div>';
+      when += '<div id="calendarRows"' + (byCalendar ? '' : ' style="display:none"') + '>';
+      when += field('Event title contains',
+        '<div class="row"><input type="text" id="rMatch" class="grow" placeholder="Soccer" value="' + esc(draft.match) + '">' +
+        '<label class="check"><input type="checkbox" id="rWhole"' + (draft.wholeWord ? ' checked' : '') + '> Whole words</label></div>',
+        'Whole words keeps "France" from matching "Francesca".');
+      when += field('Due',
+        '<div class="row"><input type="number" id="rLead" min="0" max="720" value="' + esc(draft.lead) + '">' +
+        '<span class="inline">minutes before the event starts</span></div>',
+        'All-day events use the time below instead.');
+      if (state.sources.length > 1) {
+        var cals = '<div class="row">';
+        state.sources.forEach(function (src) {
+          cals += '<span class="pill ' + (draft.sources.indexOf(src.id) !== -1 ? 'on' : '') + '" data-source="' + src.id + '">' + esc(src.name) + '</span>';
+        });
+        when += field('Calendars', cals + '</div>', 'None picked means every calendar.');
+      }
+      when += '<p class="help">Looks ' + CAL_LOOKAHEAD_DAYS + ' days ahead. A display showing Routines picks up new events within minutes.</p>';
+      when += '</div>';
+      h += field('When', when);
+
+      var stepPills = '<div class="row">';
+      state.library.forEach(function (s) {
+        stepPills += '<span class="pill ' + (draft.steps.indexOf(s.id) !== -1 ? 'on' : '') +
+                     '" data-pick="' + esc(s.id) + '">' + (s.icon || '') + ' ' + esc(s.label) + '</span>';
+      });
+      stepPills += '</div>';
+      h += field('Steps', state.library.length ? stepPills : '<p class="muted" style="margin:0">Add a step above first.</p>',
+        state.library.length ? 'Tap to include, in the order they should be done.' : '');
+
+      h += field('Time <span style="font-weight:400;opacity:0.7">(optional)</span>',
+        '<div class="row"><input type="time" id="rStart"><span class="inline">to</span><input type="time" id="rEnd"></div>',
+        'The start time orders the list; nothing fires at it. The end time decides whether a finish counts as on time.');
+
+      h += field('Reward',
+        '<div class="row"><span class="inline">Every</span>' +
+        '<input type="number" id="rThreshold" min="0" max="365" value="5">' +
+        '<span class="inline">days in a row, worth</span>' +
+        '<input type="number" id="rClams" min="0" max="999" value="10">' +
+        '<span class="inline">clams</span></div>',
+        'Steps never pay out on their own. Set either to 0 for no reward.');
+
+      h += '<div class="actions"><button class="btn primary" id="createRoutine">Create routine</button></div>';
       h += '</div>';
-
-      h += '<div class="row"><span class="hint" style="margin:0">Optional time</span>' +
-           '<input type="time" id="rStart"><span class="hint" style="margin:0">to</span>' +
-           '<input type="time" id="rEnd"></div>';
-      h += '<div class="hint">Chores are day-granular, so nothing fires at the start time - it orders ' +
-           'the list. The end time only decides whether a finish reads as on time.</div>';
-
-      h += '<div class="row"><span class="hint" style="margin:0">Reward every</span>' +
-           '<input type="number" id="rThreshold" min="0" max="365" value="5" style="width:64px">' +
-           '<span class="hint" style="margin:0">days in a row, worth</span>' +
-           '<input type="number" id="rClams" min="0" max="999" value="10" style="width:64px">' +
-           '<span class="hint" style="margin:0">clams</span></div>';
-      h += '<div class="hint">Steps never pay out on their own.</div>';
-
-      h += '<div class="row"><button class="btn primary" id="createRoutine">Create routine</button>' +
-           '<button class="btn" id="closeSetup">Done</button></div>';
 
       view.innerHTML = h;
     }
@@ -1204,6 +1277,11 @@
       }
       // Toggle in place rather than re-rendering: a re-render would wipe
       // whatever has been typed into the label field beside the picker.
+      if ((el = ev.target.closest('[data-iconbtn]'))) {
+        var grid = document.getElementById(el.getAttribute('data-iconbtn'));
+        if (grid) grid.hidden = !grid.hidden;
+        return;
+      }
       if ((el = ev.target.closest('[data-stepicon], [data-routineicon]'))) {
         var isStep = el.hasAttribute('data-stepicon');
         var value = el.getAttribute(isStep ? 'data-stepicon' : 'data-routineicon');
@@ -1215,6 +1293,16 @@
         if (!already) el.classList.add('on');
         if (isStep) draft.stepIcon = already ? '' : value;
         else draft.routineIcon = already ? '' : value;
+        // Show the choice on its button and fold the grid away again.
+        if (picker) {
+          picker.hidden = true;
+          var glyph = document.querySelector('[data-iconbtn="' + picker.id + '"] .glyph');
+          var chosen = isStep ? draft.stepIcon : draft.routineIcon;
+          if (glyph) {
+            glyph.textContent = chosen || NO_ICON;
+            glyph.classList.toggle('none', !chosen);
+          }
+        }
         return;
       }
       // Shown and hidden in place, like the pickers, so switching does not
@@ -1271,7 +1359,9 @@
           // the setup view either.
           if (HIDE_SET_UP) break;
           state.setup = ev.target.id === 'gear' ? !state.setup : false;
-          document.getElementById('gear').textContent = state.setup ? 'Close' : 'Set up';
+          var gear = document.getElementById('gear');
+          gear.textContent = state.setup ? 'Close' : '+ Add';
+          gear.classList.toggle('add', !state.setup);
           render();
           // The calendar filter in the form lists the enabled calendars.
           if (state.setup) {
