@@ -10,7 +10,7 @@
     "manifestVersion": 1,
     "id": "routines",
     "name": "Routines",
-    "description": "Groups everyday steps into a routine - brush teeth, make bed, get dressed - that a child ticks off as a checklist. Each routine is one ordinary chore, so it counts toward the day exactly once. Streaks run over scheduled days, and clams are paid only at milestones you choose.",
+    "description": "Groups everyday steps into a routine - brush teeth, make bed, get dressed - that a child ticks off as a checklist, on chosen weekdays or on days with a matching calendar event. Each routine is one ordinary chore, so it counts toward the day once. Clams are paid at streak milestones you choose.",
     "category": "chores-rewards",
     "author": "HomeGlow",
     "apiVersion": "v1",
@@ -365,9 +365,35 @@
     var DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     var PROGRESS_KEEP_DAYS = 45;
 
+    // ---------------------------------------------------------------------
+    // Calendar routines: on days with a matching calendar event, not on
+    // fixed weekdays ("Get ready for soccer" on practice and game days).
+    //
+    // The core keeps chores and calendars independent, so the bridge lives
+    // here. For each matching event day this plugin gives the routine's chore
+    // an ordinary schedule pinned to that date - crontab "0 0 D M *", which
+    // fires on that day only - due at the event's start. On the day, the core
+    // shows it, counts it toward the daily bonus and logs it if missed, like
+    // any chore; on other days it does not exist.
+    //
+    // Past days are hidden, not deleted: deleting a schedule unlinks its
+    // completions from the ledger, which is where streaks are read. Hiding
+    // also stops the date from firing again next year. They are deleted once
+    // older than the history window this plugin reads.
+    // ---------------------------------------------------------------------
+    var CAL_LOOKAHEAD_DAYS = 14;
+    // The nightly missed-chore job reads the day that just ended, so a day is
+    // left alone until it is safely past.
+    var CAL_HIDE_AFTER_DAYS = 2;
+    var CAL_DELETE_AFTER_DAYS = 120;
+    // One display syncs per window; the others skip it (see claimSyncSlot).
+    var CAL_SYNC_SLOT_MINUTES = 10;
+
     var state = {
       tz: null, today: null, weekday: 0,
       users: [], routines: [], library: [], progress: {}, awards: {},
+      // Calendar routines: routine id -> { 'YYYY-MM-DD': { id, time } }.
+      dates: {}, sources: [],
       history: [], expanded: {}, notes: [],
       settings: { person: '', showDone: true },
       setup: false
@@ -401,6 +427,12 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
       });
+    }
+    // No body, and so no JSON content type: the server rejects a JSON
+    // request whose body is empty. Already gone counts as deleted.
+    function remove(url) {
+      return fetchJson(url, { method: 'DELETE' })
+        .catch(function (e) { if (e.status !== 404) throw e; });
     }
 
     function dateStringIn(tz, date) {
@@ -437,6 +469,33 @@
       if (!days || !days.length || days.length === 7) return '0 0 * * *';
       return '0 0 * * ' + days.slice().sort().join(',');
     }
+    // Fires on that date only (and the same date in later years, which is
+    // why past days are hidden).
+    function crontabForDate(dateStr) {
+      var p = dateStr.split('-');
+      return '0 0 ' + (+p[2]) + ' ' + (+p[1]) + ' *';
+    }
+    function timeIn(tz, date) {
+      return new Intl.DateTimeFormat('en-GB', {
+        timeZone: tz || undefined, hour: '2-digit', minute: '2-digit', hour12: false
+      }).format(date);
+    }
+    // "17:00" minus 30 minutes is "16:30"; never earlier than midnight.
+    function minusMinutes(hhmm, minutes) {
+      var p = hhmm.split(':');
+      var total = Math.max(0, (+p[0]) * 60 + (+p[1]) - (minutes || 0));
+      return String(Math.floor(total / 60)).padStart(2, '0') + ':' + String(total % 60).padStart(2, '0');
+    }
+    // Whole-word by default, so "France" matches "France practice" but not
+    // "Francesca's party". Letters and digits in any script count as a word.
+    function titleMatches(r, title) {
+      var text = String(title || '');
+      var needle = String(r.match || '').trim();
+      if (!needle) return false;
+      if (!r.wholeWord) return text.toLowerCase().indexOf(needle.toLowerCase()) !== -1;
+      var escaped = needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      return new RegExp('(^|[^\\p{L}\\p{N}])' + escaped + '($|[^\\p{L}\\p{N}])', 'iu').test(text);
+    }
 
     // ---------- load ----------
 
@@ -446,8 +505,12 @@
         state.routines = values.routines || [];
         state.awards = values.awards || {};
         state.progress = {};
+        state.dates = {};
         Object.keys(values).forEach(function (k) {
           if (k.indexOf('progress:') === 0) state.progress[k.slice(9)] = values[k] || {};
+          // Separate keys per routine, so two displays syncing different
+          // routines never overwrite each other's work.
+          if (k.indexOf('dates:') === 0) state.dates[k.slice(6)] = values[k] || {};
         });
       });
     }
@@ -505,7 +568,25 @@
 
     // ---------- status ----------
 
+    function isCalendarRoutine(r) { return r.trigger === 'calendar'; }
+    function datesOf(r) { return state.dates[r.id] || {}; }
+    // The schedule a routine's chore is completed against on a date: its one
+    // weekday schedule, or that day's pinned schedule for a calendar routine.
+    function scheduleIdOn(r, date) {
+      if (!isCalendarRoutine(r)) return r.scheduleId;
+      var entry = datesOf(r)[date];
+      return entry ? entry.id : null;
+    }
+    // When the routine starts today: the matching event's time for a
+    // calendar routine, otherwise the routine's own optional start time.
+    function startTimeToday(r) {
+      if (!isCalendarRoutine(r)) return r.startTime || '';
+      var entry = datesOf(r)[state.today];
+      return (entry && entry.time) || r.startTime || '';
+    }
+
     function scheduledToday(r) {
+      if (isCalendarRoutine(r)) return !!scheduleIdOn(r, state.today);
       return !r.days || !r.days.length || r.days.indexOf(state.weekday) !== -1;
     }
     function dayProgress(r, date) {
@@ -521,9 +602,11 @@
     // Completion of record is the chore ledger: a parent may tick the routine
     // straight off the main chore widget.
     function completedInLedger(r, date) {
+      var scheduleId = scheduleIdOn(r, date);
+      if (!scheduleId) return false;
       for (var i = 0; i < state.history.length; i++) {
         var row = state.history[i];
-        if (row.chore_schedule_id === r.scheduleId && row.date === date &&
+        if (row.chore_schedule_id === scheduleId && row.date === date &&
             (row.kind === 'completion' || !row.kind)) return true;
       }
       return false;
@@ -535,6 +618,17 @@
     // Streak = consecutive SCHEDULED days, back from today, carrying a
     // completion. Read from the ledger, so it survives a storage reset.
     function streakFor(r) {
+      // A calendar routine's scheduled days are its event days.
+      if (isCalendarRoutine(r)) {
+        var eventDays = Object.keys(datesOf(r)).filter(function (d) { return d <= state.today; }).sort().reverse();
+        if (eventDays[0] === state.today && !completedInLedger(r, state.today)) eventDays.shift();
+        var run = 0;
+        for (var k = 0; k < eventDays.length; k++) {
+          if (!completedInLedger(r, eventDays[k])) break;
+          run++;
+        }
+        return run;
+      }
       var done = {};
       state.history.forEach(function (row) {
         if (row.chore_schedule_id === r.scheduleId && (row.kind === 'completion' || !row.kind)) {
@@ -586,7 +680,7 @@
 
     function complete(r) {
       return send('POST', API + '/api/chores/complete', {
-        chore_schedule_id: r.scheduleId, user_id: r.userId, date: state.today
+        chore_schedule_id: scheduleIdOn(r, state.today), user_id: r.userId, date: state.today
       })
         .catch(function (e) {
           // 409 = already recorded today, which is success for our purposes.
@@ -600,7 +694,7 @@
 
     function uncomplete(r) {
       return send('POST', API + '/api/chores/uncomplete', {
-        chore_schedule_id: r.scheduleId, user_id: r.userId, date: state.today
+        chore_schedule_id: scheduleIdOn(r, state.today), user_id: r.userId, date: state.today
       })
         .catch(function (e) { note('Could not undo: ' + e.message); })
         .then(refreshHistory)
@@ -650,6 +744,7 @@
     }
 
     function createRoutine(f) {
+      if (f.trigger === 'calendar') return createCalendarRoutine(f);
       return send('POST', API + '/api/chores', {
         title: f.name, description: 'Routine', clam_value: 0, icon: f.icon || null
       })
@@ -678,15 +773,195 @@
         .then(announceChoreChange);
     }
 
+    // A calendar routine starts as just its chore; its schedules are made by
+    // syncCalendarRoutine, one per matching event day.
+    function createCalendarRoutine(f) {
+      return send('POST', API + '/api/chores', {
+        title: f.name, description: 'Routine', clam_value: 0, icon: f.icon || null
+      })
+        .then(function (chore) {
+          var r = {
+            id: uid(), name: f.name, icon: f.icon || '', userId: f.userId,
+            choreId: chore.id, trigger: 'calendar',
+            match: f.match, wholeWord: f.wholeWord !== false, sources: f.sources || [],
+            lead: f.lead || 0, startTime: f.startTime || '', endTime: f.endTime || '',
+            steps: f.steps, threshold: f.threshold, milestoneClams: f.milestoneClams
+          };
+          state.routines.push(r);
+          return store.write('routines', state.routines).then(function () { return r; });
+        })
+        // Straight away, not on the next sync window: the person setting it
+        // up wants to see it on today's board if today has an event.
+        .then(function (r) { return syncCalendarRoutine(r); })
+        .then(refreshHistory)
+        .then(announceChoreChange);
+    }
+
     // Retire, not delete: the schedule is hidden so the chore leaves the
     // widget, but chore_history keeps every completion it earned.
     function retire(r) {
       state.routines = state.routines.filter(function (x) { return x.id !== r.id; });
-      return send('PATCH', API + '/api/chore-schedules/' + r.scheduleId, { visible: 0 })
+      var ids = isCalendarRoutine(r)
+        ? Object.keys(datesOf(r)).map(function (d) { return datesOf(r)[d].id; })
+        : [r.scheduleId];
+      return Promise.all(ids.map(function (id) {
+        return send('PATCH', API + '/api/chore-schedules/' + id, { visible: 0 })
+          // Already gone is retired enough.
+          .catch(function (e) { if (e.status !== 404) throw e; });
+      }))
         .catch(function (e) { note('Removed here, but its chore is still visible: ' + e.message); })
         .then(function () { return store.write('routines', state.routines); })
         .then(function () { return store.drop('progress:' + r.id); })
+        .then(function () { return isCalendarRoutine(r) ? store.drop('dates:' + r.id) : null; })
         .then(announceChoreChange);
+    }
+
+    // ---------- calendar sync ----------
+
+    // One display syncs per window. The storage increment is atomic on the
+    // server, so exactly one caller sees 1 for a slot; the rest skip it.
+    // Without shared storage there is nothing to coordinate with.
+    function claimSyncSlot() {
+      if (!SDK) return Promise.resolve(true);
+      var minutes = (function () {
+        var hm = nowHHMM().split(':');
+        return (+hm[0]) * 60 + (+hm[1]);
+      })();
+      var slot = 'b' + Math.floor(minutes / CAL_SYNC_SLOT_MINUTES);
+      return SDK.storage.increment('calsync:' + state.today, slot, 1)
+        .then(function (res) {
+          // Yesterday's lock document is no longer needed.
+          store.drop('calsync:' + shiftDate(state.today, -1));
+          return res && res.result === 1;
+        })
+        .catch(function () { return false; });
+    }
+
+    // Matching events in the next CAL_LOOKAHEAD_DAYS, as date -> due time
+    // ('' for an all-day event, which then uses the routine's own time).
+    // The earliest matching event decides a day's time.
+    function matchingDays(r, events) {
+      var last = shiftDate(state.today, CAL_LOOKAHEAD_DAYS);
+      var days = {};
+      events.forEach(function (ev) {
+        if (!titleMatches(r, ev.title)) return;
+        if (r.sources && r.sources.length && r.sources.indexOf(ev.source_id) === -1) return;
+        var start = new Date(ev.start);
+        var date = dateStringIn(state.tz, start);
+        if (date < state.today || date > last) return;
+        var time = ev.all_day ? '' : minusMinutes(timeIn(state.tz, start), r.lead);
+        if (!(date in days) || (time && (!days[date] || time < days[date]))) days[date] = time;
+      });
+      return days;
+    }
+
+    function fetchEvents() {
+      // A day either side of the window, so every event in it is returned
+      // whatever the host's offset; matchingDays trims to the local dates.
+      var from = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+      var to = new Date(Date.now() + (CAL_LOOKAHEAD_DAYS + 2) * 24 * 3600 * 1000).toISOString();
+      return fetchJson(API + '/api/calendar-events?start=' + encodeURIComponent(from) + '&end=' + encodeURIComponent(to));
+    }
+
+    // Make the routine's pinned schedules match the calendar: one for each
+    // matching day ahead, none for days whose event went away, past days
+    // hidden and eventually deleted. Safe to run repeatedly.
+    function syncCalendarRoutine(r, events) {
+      var load = events ? Promise.resolve(events) : fetchEvents();
+      return Promise.all([
+        load,
+        fetchJson(API + '/api/chore-schedules?chore_id=' + r.choreId).catch(function () { return []; })
+      ]).then(function (res) {
+        var wanted = matchingDays(r, res[0] || []);
+        var rows = {};
+        (res[1] || []).forEach(function (s) { rows[s.id] = s; });
+        var map = Object.assign({}, datesOf(r));
+        var work = [];
+
+        // A pinned schedule another display made for this chore, which this
+        // display's map does not know yet: adopt it rather than add another.
+        function adoptable(date) {
+          var cron = crontabForDate(date);
+          var mapped = {};
+          Object.keys(map).forEach(function (d) { mapped[map[d].id] = true; });
+          var found = null;
+          Object.keys(rows).forEach(function (id) {
+            var s = rows[id];
+            if (!found && !mapped[s.id] && s.crontab === cron && s.user_id === r.userId && s.visible) found = s;
+          });
+          return found;
+        }
+
+        Object.keys(wanted).forEach(function (date) {
+          var time = wanted[date] || r.startTime || null;
+          var entry = map[date];
+          if (entry && rows[entry.id]) {
+            if ((rows[entry.id].due_time || null) !== time) {
+              work.push(send('PATCH', API + '/api/chore-schedules/' + entry.id, { due_time: time })
+                .then(function () { map[date] = { id: entry.id, time: time || '' }; }));
+            }
+            return;
+          }
+          var existing = adoptable(date);
+          if (existing) { map[date] = { id: existing.id, time: existing.due_time || '' }; return; }
+          work.push(send('POST', API + '/api/chore-schedules', {
+            chore_id: r.choreId,
+            user_id: r.userId,
+            crontab: crontabForDate(date),
+            duration: 'day-of',
+            visible: 1,
+            due_time: time
+          }).then(function (s) { map[date] = { id: s.id, time: time || '' }; }));
+        });
+
+        Object.keys(map).forEach(function (date) {
+          var entry = map[date];
+          var row = rows[entry.id];
+          if (!row) {
+            // Deleted elsewhere (by hand in the Admin Panel, say).
+            delete map[date];
+            return;
+          }
+          if (date >= state.today) {
+            if (date in wanted) return;
+            // The event moved or was cancelled. Today's stays if it has been
+            // done, so the completion keeps its schedule.
+            if (date === state.today && completedInLedger(r, date)) return;
+            work.push(remove(API + '/api/chore-schedules/' + entry.id)
+              .then(function () { delete map[date]; }));
+            return;
+          }
+          if (date < shiftDate(state.today, -CAL_DELETE_AFTER_DAYS)) {
+            work.push(remove(API + '/api/chore-schedules/' + entry.id)
+              .then(function () { delete map[date]; }));
+          } else if (date < shiftDate(state.today, -CAL_HIDE_AFTER_DAYS) && row.visible) {
+            work.push(send('PATCH', API + '/api/chore-schedules/' + entry.id, { visible: 0 }));
+          }
+        });
+
+        return Promise.all(work).then(function () {
+          state.dates[r.id] = map;
+          return store.write('dates:' + r.id, map);
+        });
+      }).catch(function (e) {
+        note('Could not match "' + r.name + '" to the calendar: ' + e.message);
+      });
+    }
+
+    // Every calendar routine, by whichever display claims the slot; `force`
+    // skips the claim (a routine was just created or edited here).
+    function syncCalendarRoutines(force) {
+      var list = state.routines.filter(isCalendarRoutine);
+      if (!list.length) return Promise.resolve(false);
+      return (force ? Promise.resolve(true) : claimSyncSlot()).then(function (mine) {
+        if (!mine) return false;
+        return fetchEvents().then(function (events) {
+          return list.reduce(function (chain, r) {
+            return chain.then(function () { return syncCalendarRoutine(r, events); });
+          }, Promise.resolve());
+        }).then(function () { return true; })
+          .catch(function (e) { note('Could not read the calendar: ' + e.message); return false; });
+      });
     }
 
     // ---------- render ----------
@@ -710,10 +985,12 @@
       html += iconButton(done ? '✓' : (r.icon || ''), !done);
       html += '<div><span class="title">' + esc(r.name) + '</span>';
       if (user) html += ' <span class="chip">' + esc(user.username) + '</span>';
-      if (r.startTime) {
-        html += ' <span class="chip">\u{1F551} ' + esc(r.startTime) +
+      var start = startTimeToday(r);
+      if (start) {
+        html += ' <span class="chip">\u{1F551} ' + esc(start) +
                 (r.endTime ? '–' + esc(r.endTime) : '') + '</span>';
       }
+      if (isCalendarRoutine(r)) html += ' <span class="chip" title="On days with a matching calendar event">\u{1F4C5}</span>';
       html += '</div><span class="spacer"></span>';
       if (done && punctual === true) html += '<span class="chip">on time</span> ';
       if (done && punctual === false) html += '<span class="chip">late</span> ';
@@ -781,15 +1058,16 @@
       var now = nowHHMM();
       var todo = [], later = [], done = [];
       list.forEach(function (r) {
+        var start = startTimeToday(r);
         if (isDone(r)) done.push(r);
-        else if (r.startTime && r.startTime > now) later.push(r);
+        else if (start && start > now) later.push(r);
         else todo.push(r);
       });
 
       var out = '';
       function section(label, arr) {
         if (!arr.length) return;
-        arr.sort(function (a, b) { return (a.startTime || '99:99').localeCompare(b.startTime || '99:99'); });
+        arr.sort(function (a, b) { return (startTimeToday(a) || '99:99').localeCompare(startTimeToday(b) || '99:99'); });
         out += '<div class="group-label">' + label + '</div>';
         arr.forEach(function (r) { out += routineCard(r); });
       }
@@ -802,7 +1080,13 @@
 
     // ---------- setup ----------
 
-    var draft = { days: [0, 1, 2, 3, 4, 5, 6], steps: [], stepIcon: '', routineIcon: '' };
+    function newDraft() {
+      return {
+        days: [0, 1, 2, 3, 4, 5, 6], steps: [], stepIcon: '', routineIcon: '',
+        trigger: 'days', match: '', wholeWord: true, lead: 0, sources: []
+      };
+    }
+    var draft = newDraft();
 
     function pickerHtml(attr, selected) {
       var h = '<div class="picker">';
@@ -835,6 +1119,7 @@
              '<span>' + esc(r.name) + '</span>' +
              '<span class="chip">' + (u ? esc(u.username) : '?') + '</span>' +
              '<span class="chip">' + r.steps.length + ' steps</span>' +
+             (isCalendarRoutine(r) ? '<span class="chip">\u{1F4C5} ' + esc(r.match) + '</span>' : '') +
              '<span class="spacer"></span>' +
              '<button class="btn" data-retire="' + esc(r.id) + '">Retire</button></div>';
       });
@@ -846,10 +1131,32 @@
       h += '</select></div>';
       h += pickerHtml('data-routineicon', draft.routineIcon);
 
-      h += '<div class="row">';
+      var byCalendar = draft.trigger === 'calendar';
+      h += '<div class="row"><span class="hint" style="margin:0">When:</span>' +
+           '<span class="pill ' + (byCalendar ? '' : 'on') + '" data-trigger="days">On these days</span>' +
+           '<span class="pill ' + (byCalendar ? 'on' : '') + '" data-trigger="calendar">\u{1F4C5} On calendar events</span></div>';
+
+      h += '<div class="row" id="daysRow"' + (byCalendar ? ' style="display:none"' : '') + '>';
       DAY_NAMES.forEach(function (d, i) {
         h += '<span class="pill ' + (draft.days.indexOf(i) !== -1 ? 'on' : '') + '" data-day="' + i + '">' + d + '</span>';
       });
+      h += '</div>';
+
+      h += '<div id="calendarRows"' + (byCalendar ? '' : ' style="display:none"') + '>';
+      h += '<div class="row"><input type="text" id="rMatch" placeholder="Event title contains, e.g. Soccer" value="' + esc(draft.match) + '">' +
+           '<label class="hint" style="margin:0"><input type="checkbox" id="rWhole"' + (draft.wholeWord ? ' checked' : '') + '> Whole words</label></div>';
+      h += '<div class="row"><span class="hint" style="margin:0">Due</span>' +
+           '<input type="number" id="rLead" min="0" max="720" value="' + esc(draft.lead) + '" style="width:64px">' +
+           '<span class="hint" style="margin:0">minutes before the event starts</span></div>';
+      if (state.sources.length > 1) {
+        h += '<div class="row"><span class="hint" style="margin:0">Calendars (none picked = all):</span>';
+        state.sources.forEach(function (src) {
+          h += '<span class="pill ' + (draft.sources.indexOf(src.id) !== -1 ? 'on' : '') + '" data-source="' + src.id + '">' + esc(src.name) + '</span>';
+        });
+        h += '</div>';
+      }
+      h += '<div class="hint">Shows on days with a matching event, due at its start (all-day events use the time below). ' +
+           'Looks ' + CAL_LOOKAHEAD_DAYS + ' days ahead; a display showing Routines picks up new events within minutes.</div>';
       h += '</div>';
 
       h += '<div class="row"><span class="hint" style="margin:0">Steps:</span>';
@@ -910,6 +1217,27 @@
         else draft.routineIcon = already ? '' : value;
         return;
       }
+      // Shown and hidden in place, like the pickers, so switching does not
+      // wipe a half-typed name.
+      if ((el = ev.target.closest('[data-trigger]'))) {
+        draft.trigger = el.getAttribute('data-trigger');
+        document.querySelectorAll('[data-trigger]').forEach(function (n) {
+          n.classList.toggle('on', n.getAttribute('data-trigger') === draft.trigger);
+        });
+        var calendar = draft.trigger === 'calendar';
+        var daysRow = document.getElementById('daysRow');
+        var calendarRows = document.getElementById('calendarRows');
+        if (daysRow) daysRow.style.display = calendar ? 'none' : '';
+        if (calendarRows) calendarRows.style.display = calendar ? '' : 'none';
+        return;
+      }
+      if ((el = ev.target.closest('[data-source]'))) {
+        var src = +el.getAttribute('data-source');
+        var si = draft.sources.indexOf(src);
+        if (si === -1) draft.sources.push(src); else draft.sources.splice(si, 1);
+        el.classList.toggle('on');
+        return;
+      }
       if ((el = ev.target.closest('[data-day]'))) {
         var d = +el.getAttribute('data-day');
         var at = draft.days.indexOf(d);
@@ -945,6 +1273,16 @@
           state.setup = ev.target.id === 'gear' ? !state.setup : false;
           document.getElementById('gear').textContent = state.setup ? 'Close' : 'Set up';
           render();
+          // The calendar filter in the form lists the enabled calendars.
+          if (state.setup) {
+            fetchJson(API + '/api/calendar-sources')
+              .then(function (rows) {
+                state.sources = (rows || []).filter(function (s) { return s.enabled; })
+                  .map(function (s) { return { id: s.id, name: s.name }; });
+                if (state.setup) renderSetup();
+              })
+              .catch(function () {});
+          }
           break;
 
         case 'addStep': {
@@ -962,6 +1300,9 @@
           if (!name) { note('Give the routine a name.'); render(); return; }
           if (!draft.steps.length) { note('Pick at least one step.'); render(); return; }
           if (!sel || !sel.value) { note('No family members to assign this to.'); render(); return; }
+          var byCalendar = draft.trigger === 'calendar';
+          var match = byCalendar ? document.getElementById('rMatch').value.trim() : '';
+          if (byCalendar && !match) { note('Say which calendar events this routine is for.'); render(); return; }
 
           var btn = document.getElementById('createRoutine');
           btn.disabled = true;
@@ -969,6 +1310,11 @@
             name: name.slice(0, 80),
             icon: draft.routineIcon,
             userId: parseInt(sel.value, 10),
+            trigger: draft.trigger,
+            match: match.slice(0, 80),
+            wholeWord: byCalendar ? document.getElementById('rWhole').checked : true,
+            lead: byCalendar ? Math.min(720, Math.max(0, parseInt(document.getElementById('rLead').value, 10) || 0)) : 0,
+            sources: draft.sources.slice(),
             days: draft.days.slice(),
             startTime: document.getElementById('rStart').value,
             endTime: document.getElementById('rEnd').value,
@@ -977,7 +1323,7 @@
             milestoneClams: parseInt(document.getElementById('rClams').value, 10) || 0
           })
             .then(function () {
-              draft = { days: [0, 1, 2, 3, 4, 5, 6], steps: [], stepIcon: '', routineIcon: '' };
+              draft = newDraft();
               state.notes = [];
               renderSetup();
             })
@@ -1004,7 +1350,14 @@
             .catch(function () {})
         : Promise.resolve();
 
-      start.then(loadAll).then(render).catch(function (e) {
+      // Calendar routines are matched to the calendar after each load, by
+      // whichever display claims the current sync window. A new event day
+      // then reaches the board within one window.
+      function loadAndSync() {
+        return loadAll().then(function () { return syncCalendarRoutines(false); });
+      }
+
+      start.then(loadAndSync).then(render).catch(function (e) {
         note('Could not load: ' + e.message);
         render();
       });
@@ -1015,7 +1368,7 @@
       setInterval(function () {
         if (state.setup || document.hidden) return;
         var was = state.today;
-        loadAll().then(function () {
+        loadAndSync().then(function () {
           if (was !== state.today) state.expanded = {};
           render();
         }).catch(function () {});
