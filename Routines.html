@@ -22,7 +22,7 @@
         "default": true, "scope": "device" }
     ],
     "hideableControls": [
-      { "id": "setUp", "label": "Set up routines (create, retire, remove, add steps)" }
+      { "id": "setUp", "label": "Set up routines (add, edit, delete, manage steps)" }
     ]
   }
   </script>
@@ -71,6 +71,13 @@
     }
     .btn.add:hover { border-color: var(--success, #2e7d32); filter: brightness(1.08); }
     .btn:disabled { opacity: 0.5; cursor: default; }
+    /* An armed Delete: the next tap deletes. */
+    .btn.danger {
+      background: var(--hg-error, #d32f2f);
+      border-color: var(--hg-error, #d32f2f);
+      color: #fff;
+      font-weight: 600;
+    }
 
     .note {
       font-size: 0.72rem;
@@ -443,7 +450,11 @@
       dates: {}, sources: [],
       history: [], expanded: {}, notes: [],
       settings: { person: '', showDone: true },
-      setup: false
+      setup: false,
+      // Id of the routine being edited in the setup form, or null.
+      editing: null,
+      // Id of the routine whose Delete is armed, or null.
+      pendingDelete: null
     };
 
     // ---------- helpers ----------
@@ -649,7 +660,11 @@
     // Completion of record is the chore ledger: a parent may tick the routine
     // straight off the main chore widget.
     function completedInLedger(r, date) {
-      var scheduleId = scheduleIdOn(r, date);
+      return completedOnSchedule(scheduleIdOn(r, date), date);
+    }
+    // By schedule, for the sync: a routine switched off calendar events no
+    // longer looks its event days up through scheduleIdOn.
+    function completedOnSchedule(scheduleId, date) {
       if (!scheduleId) return false;
       for (var i = 0; i < state.history.length; i++) {
         var row = state.history[i];
@@ -844,23 +859,115 @@
         .then(announceChoreChange);
     }
 
-    // Retire, not delete: the schedule is hidden so the chore leaves the
-    // widget, but chore_history keeps every completion it earned.
-    function retire(r) {
-      state.routines = state.routines.filter(function (x) { return x.id !== r.id; });
-      var ids = isCalendarRoutine(r)
-        ? Object.keys(datesOf(r)).map(function (d) { return datesOf(r)[d].id; })
-        : [r.scheduleId];
-      return Promise.all(ids.map(function (id) {
-        return send('PATCH', API + '/api/chore-schedules/' + id, { visible: 0 })
-          // Already gone is retired enough.
-          .catch(function (e) { if (e.status !== 404) throw e; });
-      }))
-        .catch(function (e) { note('Removed here, but its chore is still visible: ' + e.message); })
-        .then(function () { return store.write('routines', state.routines); })
-        .then(function () { return store.drop('progress:' + r.id); })
-        .then(function () { return isCalendarRoutine(r) ? store.drop('dates:' + r.id) : null; })
+    // Change a routine in place. Only what changed is written, and the chore
+    // and its schedules are updated rather than replaced, so its history and
+    // streak carry on. Switching between weekdays and calendar events swaps
+    // the kind of schedule: the old one is hidden or removed, and a new one
+    // made, as creating the routine would.
+    function updateRoutine(r, f) {
+      var wasCalendar = isCalendarRoutine(r);
+      var toCalendar = f.trigger === 'calendar';
+      var work = Promise.resolve();
+
+      if (f.name !== r.name || (f.icon || '') !== (r.icon || '')) {
+        // The chore endpoint replaces every field, so send them all.
+        work = work.then(function () {
+          return send('PATCH', API + '/api/chores/' + r.choreId, {
+            title: f.name, description: 'Routine', clam_value: 0, icon: f.icon || null
+          });
+        });
+      }
+
+      if (!wasCalendar && !toCalendar) {
+        var patch = {};
+        if (crontabForDays(f.days) !== crontabForDays(r.days)) patch.crontab = crontabForDays(f.days);
+        if ((f.startTime || '') !== (r.startTime || '')) patch.due_time = f.startTime || null;
+        if (f.userId !== r.userId) patch.user_id = f.userId;
+        if (Object.keys(patch).length) {
+          work = work.then(function () { return send('PATCH', API + '/api/chore-schedules/' + r.scheduleId, patch); });
+        }
+      } else if (wasCalendar && toCalendar) {
+        // The sync below reworks the days and times; a new person is moved
+        // onto the days still to come first, so they are kept, not remade.
+        if (f.userId !== r.userId) {
+          work = work.then(function () {
+            var map = datesOf(r);
+            return Promise.all(Object.keys(map).filter(function (d) { return d >= state.today; }).map(function (d) {
+              return send('PATCH', API + '/api/chore-schedules/' + map[d].id, { user_id: f.userId });
+            }));
+          });
+        }
+      } else if (!wasCalendar && toCalendar) {
+        // The weekday schedule is retired; event days are made by the sync.
+        work = work.then(function () {
+          return send('PATCH', API + '/api/chore-schedules/' + r.scheduleId, { visible: 0 })
+            .catch(function (e) { if (e.status !== 404) throw e; });
+        });
+      } else {
+        // Calendar to weekdays: one weekday schedule takes over. The event
+        // days are left to the sync below, which removes those still to
+        // come (today's stays if it has been done) and hides past ones.
+        work = work.then(function () {
+          return send('POST', API + '/api/chore-schedules', {
+            chore_id: r.choreId, user_id: f.userId, crontab: crontabForDays(f.days),
+            duration: 'day-of', visible: 1, due_time: f.startTime || null
+          });
+        }).then(function (sched) { r.scheduleId = sched.id; });
+      }
+
+      return work.then(function () {
+        r.name = f.name;
+        r.icon = f.icon || '';
+        r.userId = f.userId;
+        r.steps = f.steps;
+        r.startTime = f.startTime || '';
+        r.endTime = f.endTime || '';
+        r.threshold = f.threshold;
+        r.milestoneClams = f.milestoneClams;
+        if (toCalendar) {
+          r.trigger = 'calendar';
+          r.match = f.match;
+          r.wholeWord = f.wholeWord !== false;
+          r.lead = f.lead || 0;
+          r.sources = f.sources || [];
+          delete r.days;
+          if (!wasCalendar) delete r.scheduleId;
+        } else {
+          delete r.trigger; delete r.match; delete r.wholeWord; delete r.lead; delete r.sources;
+          r.days = f.days;
+        }
+        return store.write('routines', state.routines);
+      })
+        .then(function () {
+          return toCalendar || wasCalendar ? syncCalendarRoutine(r) : null;
+        })
+        .then(refreshHistory)
         .then(announceChoreChange);
+    }
+
+    // Delete a routine and everything it made in the core. The chore delete
+    // also removes every schedule linked to it - the weekday one or each
+    // event day - so nothing is left to manage in the Admin Panel. History is
+    // kept: completions stay in the ledger and clams already earned stay
+    // earned, as when a chore is deleted there.
+    function deleteRoutine(r) {
+      return remove(API + '/api/chores/' + r.choreId)
+        .then(function () {
+          state.routines = state.routines.filter(function (x) { return x.id !== r.id; });
+          delete state.dates[r.id];
+          delete state.progress[r.id];
+          var hadAward = Object.prototype.hasOwnProperty.call(state.awards, r.id);
+          delete state.awards[r.id];
+          if (state.editing === r.id) { state.editing = null; draft = newDraft(); }
+          return Promise.all([
+            store.write('routines', state.routines),
+            store.drop('progress:' + r.id),
+            store.drop('dates:' + r.id),
+            hadAward ? store.write('awards', state.awards) : null
+          ]);
+        })
+        .then(announceChoreChange)
+        .catch(function (e) { note('Could not delete "' + r.name + '": ' + e.message); });
     }
 
     // ---------- calendar sync ----------
@@ -919,7 +1026,7 @@
         load,
         fetchJson(API + '/api/chore-schedules?chore_id=' + r.choreId).catch(function () { return []; })
       ]).then(function (res) {
-        var wanted = matchingDays(r, res[0] || []);
+        var wanted = isCalendarRoutine(r) ? matchingDays(r, res[0] || []) : {};
         var rows = {};
         (res[1] || []).forEach(function (s) { rows[s.id] = s; });
         var map = Object.assign({}, datesOf(r));
@@ -973,7 +1080,7 @@
             if (date in wanted) return;
             // The event moved or was cancelled. Today's stays if it has been
             // done, so the completion keeps its schedule.
-            if (date === state.today && completedInLedger(r, date)) return;
+            if (date === state.today && completedOnSchedule(entry.id, date)) return;
             work.push(remove(API + '/api/chore-schedules/' + entry.id)
               .then(function () { delete map[date]; }));
             return;
@@ -987,6 +1094,10 @@
         });
 
         return Promise.all(work).then(function () {
+          if (!isCalendarRoutine(r) && !Object.keys(map).length) {
+            delete state.dates[r.id];
+            return store.drop('dates:' + r.id);
+          }
           state.dates[r.id] = map;
           return store.write('dates:' + r.id, map);
         });
@@ -998,7 +1109,11 @@
     // Every calendar routine, by whichever display claims the slot; `force`
     // skips the claim (a routine was just created or edited here).
     function syncCalendarRoutines(force) {
-      var list = state.routines.filter(isCalendarRoutine);
+      // Calendar routines, and any routine switched off calendar events
+      // that still has event days to tidy.
+      var list = state.routines.filter(function (r) {
+        return isCalendarRoutine(r) || Object.keys(datesOf(r)).length > 0;
+      });
       if (!list.length) return Promise.resolve(false);
       return (force ? Promise.resolve(true) : claimSyncSlot()).then(function (mine) {
         if (!mine) return false;
@@ -1130,10 +1245,40 @@
     function newDraft() {
       return {
         days: [0, 1, 2, 3, 4, 5, 6], steps: [], stepIcon: '', routineIcon: '',
-        trigger: 'days', match: '', wholeWord: true, lead: 0, sources: []
+        trigger: 'days', match: '', wholeWord: true, lead: 0, sources: [],
+        name: '', userId: null, startTime: '', endTime: '', threshold: 5, milestoneClams: 10
       };
     }
     var draft = newDraft();
+
+    // What has been typed into the routine form, kept in the draft before
+    // anything re-renders it (adding or removing a step does).
+    function captureForm() {
+      var val = function (id) { var n = document.getElementById(id); return n ? n.value : null; };
+      if (val('rName') !== null) draft.name = val('rName');
+      if (val('rUser') !== null && val('rUser') !== '') draft.userId = parseInt(val('rUser'), 10);
+      if (val('rStart') !== null) draft.startTime = val('rStart');
+      if (val('rEnd') !== null) draft.endTime = val('rEnd');
+      if (val('rThreshold') !== null) draft.threshold = val('rThreshold');
+      if (val('rClams') !== null) draft.milestoneClams = val('rClams');
+      if (val('rMatch') !== null) draft.match = val('rMatch');
+      if (val('rLead') !== null) draft.lead = val('rLead');
+      var whole = document.getElementById('rWhole');
+      if (whole) draft.wholeWord = whole.checked;
+    }
+
+    // The form, filled from an existing routine for editing.
+    function draftFromRoutine(r) {
+      return {
+        days: (r.days && r.days.length ? r.days : [0, 1, 2, 3, 4, 5, 6]).slice(),
+        steps: r.steps.slice(), stepIcon: '', routineIcon: r.icon || '',
+        trigger: isCalendarRoutine(r) ? 'calendar' : 'days',
+        match: r.match || '', wholeWord: r.wholeWord !== false, lead: r.lead || 0,
+        sources: (r.sources || []).slice(),
+        name: r.name, userId: r.userId, startTime: r.startTime || '', endTime: r.endTime || '',
+        threshold: r.threshold || 0, milestoneClams: r.milestoneClams || 0
+      };
+    }
 
     // Shown on the icon button until a picture is chosen.
     var NO_ICON = 'Icon';
@@ -1179,6 +1324,7 @@
       // Existing routines
       if (state.routines.length) {
         h += '<div class="section"><h2>Your routines</h2>';
+        h += '<p class="help">Deleting a routine removes its chore too. Clams already earned and the completion history stay.</p>';
         state.routines.forEach(function (r) {
           var u = userById(r.userId);
           h += '<div class="line"><span style="font-size:1.15rem">' + (r.icon || '') + '</span>' +
@@ -1187,20 +1333,28 @@
                '<span class="chip">' + r.steps.length + (r.steps.length === 1 ? ' step' : ' steps') + '</span>' +
                (isCalendarRoutine(r) ? '<span class="chip">\u{1F4C5} ' + esc(r.match) + '</span>' : '') +
                '<span class="spacer"></span>' +
-               '<button class="btn" data-retire="' + esc(r.id) + '">Retire</button></div>';
+               '<button class="btn" data-edit="' + esc(r.id) + '">Edit</button>' +
+               '<button class="btn' + (state.pendingDelete === r.id ? ' danger' : '') + '" data-delete="' + esc(r.id) + '">' +
+               (state.pendingDelete === r.id ? 'Confirm delete' : 'Delete') + '</button></div>';
         });
         h += '</div>';
       }
 
       // New routine
-      h += '<div class="section"><h2>New routine</h2>';
+      var editing = state.editing ? findRoutine(state.editing) : null;
+      h += '<div class="section" id="routineForm"><h2>' + (editing ? 'Edit routine' : 'New routine') + '</h2>';
+      if (editing) {
+        h += '<p class="help">Changes apply from today. Its history and streak carry on.</p>';
+      }
       h += field('Name',
         '<div class="row">' + iconButton2('routinePicker', draft.routineIcon) +
-        '<input type="text" id="rName" class="grow" placeholder="Morning routine"></div>' +
+        '<input type="text" id="rName" class="grow" placeholder="Morning routine" value="' + esc(draft.name) + '"></div>' +
         pickerHtml('routinePicker', 'data-routineicon', draft.routineIcon));
 
       var people = '<select id="rUser">';
-      state.users.forEach(function (u) { people += '<option value="' + u.id + '">' + esc(u.username) + '</option>'; });
+      state.users.forEach(function (u) {
+        people += '<option value="' + u.id + '"' + (u.id === draft.userId ? ' selected' : '') + '>' + esc(u.username) + '</option>';
+      });
       h += field('For', people + '</select>');
 
       var byCalendar = draft.trigger === 'calendar';
@@ -1242,18 +1396,20 @@
         state.library.length ? 'Tap to include, in the order they should be done.' : '');
 
       h += field('Time <span style="font-weight:400;opacity:0.7">(optional)</span>',
-        '<div class="row"><input type="time" id="rStart"><span class="inline">to</span><input type="time" id="rEnd"></div>',
+        '<div class="row"><input type="time" id="rStart" value="' + esc(draft.startTime) + '"><span class="inline">to</span>' +
+        '<input type="time" id="rEnd" value="' + esc(draft.endTime) + '"></div>',
         'The start time orders the list; nothing fires at it. The end time decides whether a finish counts as on time.');
 
       h += field('Reward',
         '<div class="row"><span class="inline">Every</span>' +
-        '<input type="number" id="rThreshold" min="0" max="365" value="5">' +
+        '<input type="number" id="rThreshold" min="0" max="365" value="' + esc(draft.threshold) + '">' +
         '<span class="inline">days in a row, worth</span>' +
-        '<input type="number" id="rClams" min="0" max="999" value="10">' +
+        '<input type="number" id="rClams" min="0" max="999" value="' + esc(draft.milestoneClams) + '">' +
         '<span class="inline">clams</span></div>',
         'Steps never pay out on their own. Set either to 0 for no reward.');
 
-      h += '<div class="actions"><button class="btn primary" id="createRoutine">Create routine</button></div>';
+      h += '<div class="actions"><button class="btn primary" id="createRoutine">' + (editing ? 'Save changes' : 'Create routine') + '</button>' +
+           (editing ? '<button class="btn" id="cancelEdit">Cancel</button>' : '') + '</div>';
       h += '</div>';
 
       view.innerHTML = h;
@@ -1261,8 +1417,20 @@
 
     // ---------- events ----------
 
+    // Put an armed Delete back, in place, without re-rendering the form.
+    function disarmDelete() {
+      if (!state.pendingDelete) return;
+      var armed = document.querySelector('[data-delete="' + state.pendingDelete + '"]');
+      if (armed) {
+        armed.textContent = 'Delete';
+        armed.classList.remove('danger');
+      }
+      state.pendingDelete = null;
+    }
+
     document.addEventListener('click', function (ev) {
       var el;
+      if (state.pendingDelete && !ev.target.closest('[data-delete]')) disarmDelete();
 
       if ((el = ev.target.closest('[data-step]'))) {
         var r = findRoutine(el.getAttribute('data-for'));
@@ -1342,13 +1510,38 @@
       }
       if ((el = ev.target.closest('[data-delstep]'))) {
         var sid = el.getAttribute('data-delstep');
+        captureForm();
         state.library = state.library.filter(function (s) { return s.id !== sid; });
         store.write('library', state.library).then(renderSetup);
         return;
       }
-      if ((el = ev.target.closest('[data-retire]'))) {
-        var target = findRoutine(el.getAttribute('data-retire'));
-        if (target) retire(target).then(renderSetup);
+      if ((el = ev.target.closest('[data-edit]'))) {
+        var editTarget = findRoutine(el.getAttribute('data-edit'));
+        if (!editTarget) return;
+        state.editing = editTarget.id;
+        draft = draftFromRoutine(editTarget);
+        state.notes = [];
+        renderSetup();
+        var form = document.getElementById('routineForm');
+        if (form && form.scrollIntoView) form.scrollIntoView({ block: 'start' });
+        return;
+      }
+      // Two taps: the first arms the button, the second deletes. The plugin
+      // sandbox blocks confirm(), as the Polls plugin found.
+      if ((el = ev.target.closest('[data-delete]'))) {
+        var target = findRoutine(el.getAttribute('data-delete'));
+        if (!target) return;
+        if (state.pendingDelete === target.id) {
+          state.pendingDelete = null;
+          el.disabled = true;
+          captureForm();
+          deleteRoutine(target).then(renderSetup);
+        } else {
+          disarmDelete();
+          state.pendingDelete = target.id;
+          el.textContent = 'Confirm delete';
+          el.classList.add('danger');
+        }
         return;
       }
 
@@ -1359,6 +1552,9 @@
           // the setup view either.
           if (HIDE_SET_UP) break;
           state.setup = ev.target.id === 'gear' ? !state.setup : false;
+          // Closing setup abandons an edit in progress.
+          if (!state.setup && state.editing) { state.editing = null; draft = newDraft(); }
+          state.pendingDelete = null;
           var gear = document.getElementById('gear');
           gear.textContent = state.setup ? 'Close' : '+ Add';
           gear.classList.toggle('add', !state.setup);
@@ -1378,11 +1574,19 @@
         case 'addStep': {
           var label = document.getElementById('stepLabel').value.trim();
           if (!label) { note('Give the step a name.'); render(); return; }
+          captureForm();
           state.library.push({ id: uid(), label: label.slice(0, 60), icon: draft.stepIcon });
           draft.stepIcon = '';
           store.write('library', state.library).then(function () { state.notes = []; renderSetup(); });
           break;
         }
+
+        case 'cancelEdit':
+          state.editing = null;
+          draft = newDraft();
+          state.notes = [];
+          renderSetup();
+          break;
 
         case 'createRoutine': {
           var name = document.getElementById('rName').value.trim();
@@ -1396,7 +1600,11 @@
 
           var btn = document.getElementById('createRoutine');
           btn.disabled = true;
-          createRoutine({
+          var editingRoutine = state.editing ? findRoutine(state.editing) : null;
+          var save = editingRoutine
+            ? function (f) { return updateRoutine(editingRoutine, f); }
+            : createRoutine;
+          save({
             name: name.slice(0, 80),
             icon: draft.routineIcon,
             userId: parseInt(sel.value, 10),
@@ -1413,12 +1621,13 @@
             milestoneClams: parseInt(document.getElementById('rClams').value, 10) || 0
           })
             .then(function () {
+              state.editing = null;
               draft = newDraft();
               state.notes = [];
               renderSetup();
             })
             .catch(function (e) {
-              note('Could not create the routine: ' + e.message);
+              note((editingRoutine ? 'Could not save the routine: ' : 'Could not create the routine: ') + e.message);
               btn.disabled = false;
               render();
             });
