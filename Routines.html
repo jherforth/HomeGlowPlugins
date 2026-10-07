@@ -22,7 +22,7 @@
         "default": true, "scope": "device" }
     ],
     "hideableControls": [
-      { "id": "setUp", "label": "Set up routines (create, retire, remove, add steps)" }
+      { "id": "setUp", "label": "Set up routines (add, edit, delete, manage steps)" }
     ]
   }
   </script>
@@ -71,6 +71,13 @@
     }
     .btn.add:hover { border-color: var(--success, #2e7d32); filter: brightness(1.08); }
     .btn:disabled { opacity: 0.5; cursor: default; }
+    /* An armed Delete: the next tap deletes. */
+    .btn.danger {
+      background: var(--hg-error, #d32f2f);
+      border-color: var(--hg-error, #d32f2f);
+      color: #fff;
+      font-weight: 600;
+    }
 
     .note {
       font-size: 0.72rem;
@@ -445,7 +452,9 @@
       settings: { person: '', showDone: true },
       setup: false,
       // Id of the routine being edited in the setup form, or null.
-      editing: null
+      editing: null,
+      // Id of the routine whose Delete is armed, or null.
+      pendingDelete: null
     };
 
     // ---------- helpers ----------
@@ -936,23 +945,29 @@
         .then(announceChoreChange);
     }
 
-    // Retire, not delete: the schedule is hidden so the chore leaves the
-    // widget, but chore_history keeps every completion it earned.
-    function retire(r) {
-      state.routines = state.routines.filter(function (x) { return x.id !== r.id; });
-      var ids = isCalendarRoutine(r)
-        ? Object.keys(datesOf(r)).map(function (d) { return datesOf(r)[d].id; })
-        : [r.scheduleId];
-      return Promise.all(ids.map(function (id) {
-        return send('PATCH', API + '/api/chore-schedules/' + id, { visible: 0 })
-          // Already gone is retired enough.
-          .catch(function (e) { if (e.status !== 404) throw e; });
-      }))
-        .catch(function (e) { note('Removed here, but its chore is still visible: ' + e.message); })
-        .then(function () { return store.write('routines', state.routines); })
-        .then(function () { return store.drop('progress:' + r.id); })
-        .then(function () { return isCalendarRoutine(r) ? store.drop('dates:' + r.id) : null; })
-        .then(announceChoreChange);
+    // Delete a routine and everything it made in the core. The chore delete
+    // also removes every schedule linked to it - the weekday one or each
+    // event day - so nothing is left to manage in the Admin Panel. History is
+    // kept: completions stay in the ledger and clams already earned stay
+    // earned, as when a chore is deleted there.
+    function deleteRoutine(r) {
+      return remove(API + '/api/chores/' + r.choreId)
+        .then(function () {
+          state.routines = state.routines.filter(function (x) { return x.id !== r.id; });
+          delete state.dates[r.id];
+          delete state.progress[r.id];
+          var hadAward = Object.prototype.hasOwnProperty.call(state.awards, r.id);
+          delete state.awards[r.id];
+          if (state.editing === r.id) { state.editing = null; draft = newDraft(); }
+          return Promise.all([
+            store.write('routines', state.routines),
+            store.drop('progress:' + r.id),
+            store.drop('dates:' + r.id),
+            hadAward ? store.write('awards', state.awards) : null
+          ]);
+        })
+        .then(announceChoreChange)
+        .catch(function (e) { note('Could not delete "' + r.name + '": ' + e.message); });
     }
 
     // ---------- calendar sync ----------
@@ -1309,6 +1324,7 @@
       // Existing routines
       if (state.routines.length) {
         h += '<div class="section"><h2>Your routines</h2>';
+        h += '<p class="help">Deleting a routine removes its chore too. Clams already earned and the completion history stay.</p>';
         state.routines.forEach(function (r) {
           var u = userById(r.userId);
           h += '<div class="line"><span style="font-size:1.15rem">' + (r.icon || '') + '</span>' +
@@ -1318,7 +1334,8 @@
                (isCalendarRoutine(r) ? '<span class="chip">\u{1F4C5} ' + esc(r.match) + '</span>' : '') +
                '<span class="spacer"></span>' +
                '<button class="btn" data-edit="' + esc(r.id) + '">Edit</button>' +
-               '<button class="btn" data-retire="' + esc(r.id) + '">Retire</button></div>';
+               '<button class="btn' + (state.pendingDelete === r.id ? ' danger' : '') + '" data-delete="' + esc(r.id) + '">' +
+               (state.pendingDelete === r.id ? 'Confirm delete' : 'Delete') + '</button></div>';
         });
         h += '</div>';
       }
@@ -1400,8 +1417,20 @@
 
     // ---------- events ----------
 
+    // Put an armed Delete back, in place, without re-rendering the form.
+    function disarmDelete() {
+      if (!state.pendingDelete) return;
+      var armed = document.querySelector('[data-delete="' + state.pendingDelete + '"]');
+      if (armed) {
+        armed.textContent = 'Delete';
+        armed.classList.remove('danger');
+      }
+      state.pendingDelete = null;
+    }
+
     document.addEventListener('click', function (ev) {
       var el;
+      if (state.pendingDelete && !ev.target.closest('[data-delete]')) disarmDelete();
 
       if ((el = ev.target.closest('[data-step]'))) {
         var r = findRoutine(el.getAttribute('data-for'));
@@ -1497,11 +1526,22 @@
         if (form && form.scrollIntoView) form.scrollIntoView({ block: 'start' });
         return;
       }
-      if ((el = ev.target.closest('[data-retire]'))) {
-        var target = findRoutine(el.getAttribute('data-retire'));
+      // Two taps: the first arms the button, the second deletes. The plugin
+      // sandbox blocks confirm(), as the Polls plugin found.
+      if ((el = ev.target.closest('[data-delete]'))) {
+        var target = findRoutine(el.getAttribute('data-delete'));
         if (!target) return;
-        if (state.editing === target.id) { state.editing = null; draft = newDraft(); }
-        retire(target).then(renderSetup);
+        if (state.pendingDelete === target.id) {
+          state.pendingDelete = null;
+          el.disabled = true;
+          captureForm();
+          deleteRoutine(target).then(renderSetup);
+        } else {
+          disarmDelete();
+          state.pendingDelete = target.id;
+          el.textContent = 'Confirm delete';
+          el.classList.add('danger');
+        }
         return;
       }
 
@@ -1514,6 +1554,7 @@
           state.setup = ev.target.id === 'gear' ? !state.setup : false;
           // Closing setup abandons an edit in progress.
           if (!state.setup && state.editing) { state.editing = null; draft = newDraft(); }
+          state.pendingDelete = null;
           var gear = document.getElementById('gear');
           gear.textContent = state.setup ? 'Close' : '+ Add';
           gear.classList.toggle('add', !state.setup);
