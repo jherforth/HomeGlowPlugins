@@ -184,6 +184,65 @@
 
     .empty { opacity: 0.6; font-size: 0.82rem; padding: 12px 2px; }
 
+    /* --- the caught-up scene ---
+       A little landscape in place of an empty list: hills, a house and a
+       tree under a sky that follows the time of day. A kite (a shooting star
+       at night) when every routine is done; just the quiet scene when nothing
+       is scheduled. The picture keeps its own colors, like a photo would. */
+    .scene {
+      position: relative;
+      height: 180px;
+      border-radius: 10px;
+      overflow: hidden;
+      border: 1px solid var(--card-border, rgba(128,128,128,0.3));
+      margin-bottom: 10px;
+    }
+    /* Alone in the tile, the scene takes the room the list would have. */
+    .scene.full { height: calc(100vh - 76px); min-height: 180px; }
+    .scene svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+    [data-theme="dark"] .scene.morning svg, [data-theme="dark"] .scene.day svg { filter: brightness(0.86) saturate(0.92); }
+    /* The words sit on a frosted panel, so the sun or the kite passing
+       behind them never costs a letter. */
+    .scene .msg {
+      position: absolute;
+      top: 10%;
+      left: 50%;
+      transform: translateX(-50%);
+      width: max-content;
+      max-width: calc(100% - 24px);
+      padding: 8px 14px;
+      border-radius: 12px;
+      text-align: center;
+      color: #1d2b3a;
+      background: rgba(255, 255, 255, 0.55);
+      -webkit-backdrop-filter: blur(4px);
+      backdrop-filter: blur(4px);
+    }
+    .scene.evening .msg, .scene.night .msg { color: #fff; background: rgba(20, 22, 45, 0.35); }
+    .scene .msg h2 { margin: 0; font-size: clamp(1rem, 4.5vw, 1.6rem); font-weight: 800; letter-spacing: -0.01em; }
+    .scene .msg p { margin: 3px 0 0; font-size: 0.82rem; opacity: 0.85; }
+    .scene:not(.full) .msg { top: 10px; padding: 6px 12px; }
+    .scene:not(.full) .msg h2 { font-size: 1.05rem; }
+
+    .scene .drift { animation: rt-drift linear infinite; }
+    @keyframes rt-drift { from { transform: translateX(-120px); } to { transform: translateX(520px); } }
+    .scene .twinkle { animation: rt-twinkle 3.2s ease-in-out infinite alternate; }
+    @keyframes rt-twinkle { from { opacity: 0.25; } to { opacity: 1; } }
+    .scene .kite { transform-box: fill-box; transform-origin: 50% 100%; animation: rt-kite 4.5s ease-in-out infinite alternate; }
+    @keyframes rt-kite { from { transform: rotate(-7deg) translateY(2px); } to { transform: rotate(6deg) translateY(-4px); } }
+    .scene .shoot { animation: rt-shoot 8s ease-in infinite; opacity: 0; }
+    @keyframes rt-shoot {
+      0%, 82% { transform: translate(0, 0); opacity: 0; }
+      84% { opacity: 1; }
+      100% { transform: translate(-140px, 70px); opacity: 0; }
+    }
+    .scene .glow { animation: rt-glow 5s ease-in-out infinite alternate; }
+    @keyframes rt-glow { from { opacity: 0.55; } to { opacity: 0.9; } }
+    @media (prefers-reduced-motion: reduce) {
+      .scene * { animation: none !important; }
+      .scene .shoot { display: none; }
+    }
+
     .toast {
       position: fixed;
       left: 50%;
@@ -1185,6 +1244,139 @@
       return html + '</div>';
     }
 
+    // ---------- the caught-up scene ----------
+
+    // The part of the day, in the household's timezone, that paints the sky.
+    function dayPart() {
+      var h = parseInt(new Intl.DateTimeFormat('en-GB', {
+        timeZone: state.tz || undefined, hour: '2-digit', hourCycle: 'h23'
+      }).format(new Date()), 10);
+      if (h >= 5 && h < 11) return 'morning';
+      if (h >= 11 && h < 17) return 'day';
+      if (h >= 17 && h < 20) return 'evening';
+      return 'night';
+    }
+
+    var PALETTES = {
+      morning: { sky: ['#ffd8a8', '#a5d8ff'], sun: '#ffd43b', far: '#8ce99a', near: '#51cf66', cloud: '#fff', cloudOp: 0.9,
+                 wall: '#fff4e6', roof: '#e8590c', window: '#a5d8ff', trunk: '#8d5524', leaves: '#2f9e44' },
+      day:     { sky: ['#4dabf7', '#d0ebff'], sun: '#ffe066', far: '#69db7c', near: '#40c057', cloud: '#fff', cloudOp: 0.95,
+                 wall: '#fff4e6', roof: '#e8590c', window: '#a5d8ff', trunk: '#8d5524', leaves: '#2b8a3e' },
+      evening: { sky: ['#5f3dc4', '#ff922b'], sun: '#ff8787', far: '#7a9e7e', near: '#4f7a55', cloud: '#ffc9c9', cloudOp: 0.6,
+                 wall: '#e9d8c4', roof: '#a63d0f', window: '#ffe066', trunk: '#6b4226', leaves: '#2b5f3a' },
+      night:   { sky: ['#141833', '#38407a'], sun: '#f1f3f5', far: '#2b4a45', near: '#1e3532', cloud: '#c5cae9', cloudOp: 0.12,
+                 wall: '#5c5470', roof: '#4a2236', window: '#ffd43b', trunk: '#3d2a1c', leaves: '#173b2c' }
+    };
+
+    function cloud(x, y, s) {
+      return '<g transform="translate(' + x + ' ' + y + ') scale(' + s + ')">' +
+             '<circle cx="0" cy="0" r="12"/><circle cx="14" cy="-6" r="15"/><circle cx="30" cy="0" r="11"/>' +
+             '<rect x="0" y="-2" width="30" height="13" rx="6"/></g>';
+    }
+
+    // kind: 'done' (every routine finished) or 'free' (nothing scheduled).
+    function sceneSvg(kind, part) {
+      var p = PALETTES[part];
+      var s = '<svg viewBox="0 0 400 200" preserveAspectRatio="xMidYMax slice" aria-hidden="true"><defs>' +
+        '<linearGradient id="rt-sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="' + p.sky[0] + '"/><stop offset="1" stop-color="' + p.sky[1] + '"/></linearGradient>' +
+        '<radialGradient id="rt-sun"><stop offset="0" stop-color="' + p.sun + '" stop-opacity="0.6"/><stop offset="1" stop-color="' + p.sun + '" stop-opacity="0"/></radialGradient>' +
+        '<radialGradient id="rt-lamp"><stop offset="0" stop-color="#ffd43b" stop-opacity="0.55"/><stop offset="1" stop-color="#ffd43b" stop-opacity="0"/></radialGradient>' +
+        '<linearGradient id="rt-trail" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fff" stop-opacity="1"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>' +
+        '</defs><rect width="400" height="200" fill="url(#rt-sky)"/>';
+
+      // Sun, or the moon and stars.
+      if (part === 'night') {
+        [[30, 22], [72, 48], [118, 18], [160, 60], [205, 30], [248, 14], [270, 70], [352, 22], [382, 62], [20, 80], [95, 90], [228, 92], [140, 104], [340, 100]]
+          .forEach(function (st, i) {
+            s += '<circle class="twinkle" cx="' + st[0] + '" cy="' + st[1] + '" r="' + (i % 3 === 0 ? 1.5 : 1) + '" fill="#fff" style="animation-delay:-' + (i * 0.7).toFixed(1) + 's"/>';
+          });
+        s += '<circle cx="310" cy="52" r="34" fill="url(#rt-sun)"/>' +
+             '<circle cx="310" cy="52" r="14" fill="' + p.sun + '"/><circle cx="317" cy="46" r="12" fill="' + p.sky[0] + '"/>';
+        if (kind === 'done') {
+          s += '<g class="shoot"><line x1="330" y1="20" x2="370" y2="0" stroke="url(#rt-trail)" stroke-width="1.6" stroke-linecap="round"/><circle cx="330" cy="20" r="1.8" fill="#fff"/></g>';
+        }
+      } else {
+        var sun = { morning: [80, 128, 17], day: [310, 48, 18], evening: [330, 136, 21] }[part];
+        s += '<circle class="glow" cx="' + sun[0] + '" cy="' + sun[1] + '" r="' + (sun[2] * 3) + '" fill="url(#rt-sun)"/>' +
+             '<circle cx="' + sun[0] + '" cy="' + sun[1] + '" r="' + sun[2] + '" fill="' + p.sun + '"/>';
+      }
+
+      // Clouds, drifting across at different speeds.
+      s += '<g fill="' + p.cloud + '" opacity="' + p.cloudOp + '">';
+      [[38, 0.9, 70, -10], [72, 0.6, 95, -55], [24, 0.5, 120, -80]].forEach(function (c) {
+        s += '<g class="drift" style="animation-duration:' + c[2] + 's;animation-delay:' + c[3] + 's">' + cloud(0, c[0], c[1]) + '</g>';
+      });
+      s += '</g>';
+
+      // Birds on a free day, a kite when everything is done.
+      if (kind === 'free' && part !== 'night') {
+        s += '<g class="drift" style="animation-duration:48s;animation-delay:-20s" fill="none" stroke="#343a40" stroke-width="1.4" stroke-linecap="round" opacity="0.55">' +
+             '<path d="M0 70 q4 -4 8 0 q4 -4 8 0"/><path d="M22 62 q3 -3 6 0 q3 -3 6 0"/></g>';
+      }
+      if (kind === 'done' && part !== 'night') {
+        s += '<path d="M206 162 Q178 134 150 104" fill="none" stroke="#495057" stroke-width="0.8" opacity="0.6"/>' +
+             // The offset sits on a wrapper: the sway animation owns the
+             // kite group's own transform.
+             '<g transform="translate(18 26)"><g class="kite"><polygon points="132,58 146,76 132,98 118,76" fill="#ff6b6b"/>' +
+             '<polygon points="132,58 146,76 132,76" fill="#ffa8a8"/><polygon points="118,76 132,76 132,98" fill="#fa5252"/>' +
+             '<path d="M132 98 q-6 8 0 14 q6 6 0 14" fill="none" stroke="#495057" stroke-width="0.8"/>' +
+             '<polygon points="128,106 136,104 132,110" fill="#ffd43b"/><polygon points="128,120 136,118 132,124" fill="#74c0fc"/></g></g>';
+      }
+
+      // Hills, the house and its tree.
+      s += '<path d="M0 150 Q90 105 190 140 T400 128 V200 H0 Z" fill="' + p.far + '"/>' +
+           '<circle cx="96" cy="124" r="9" fill="' + p.leaves + '" opacity="0.8"/><rect x="95" y="130" width="2" height="8" fill="' + p.trunk + '"/>' +
+           '<path d="M0 172 Q120 140 240 162 T400 160 V200 H0 Z" fill="' + p.near + '"/>';
+      if (part === 'evening' || part === 'night') s += '<circle class="glow" cx="262" cy="148" r="24" fill="url(#rt-lamp)"/>';
+      s += '<rect x="282" y="126" width="6" height="12" fill="' + p.roof + '"/>' +
+           '<rect x="246" y="140" width="40" height="26" fill="' + p.wall + '"/>' +
+           '<polygon points="240,141 266,120 292,141" fill="' + p.roof + '"/>' +
+           '<rect x="254" y="146" width="11" height="10" rx="1" fill="' + p.window + '"/>' +
+           '<rect x="271" y="150" width="9" height="16" rx="1" fill="' + p.roof + '"/>' +
+           '<rect x="318" y="140" width="4" height="22" fill="' + p.trunk + '"/>' +
+           '<circle cx="320" cy="130" r="15" fill="' + p.leaves + '"/><circle cx="310" cy="138" r="9" fill="' + p.leaves + '"/><circle cx="331" cy="138" r="10" fill="' + p.leaves + '"/>';
+      return s + '</svg>';
+    }
+
+    var SIGNOFF = {
+      morning: 'Have a great day!',
+      day: 'Enjoy the rest of the day!',
+      evening: 'Enjoy your evening!',
+      night: 'Sweet dreams!'
+    };
+
+    // The scene and its words, plus a key that changes only when what it
+    // shows does, so the minute refresh doesn't restart its animations.
+    function scene(kind, full, doneCount) {
+      var part = dayPart();
+      var who = (state.settings.person || '').trim();
+      var title, line;
+      if (kind === 'done') {
+        title = who ? 'Nice work, ' + who + '!' : 'All caught up!';
+        line = (doneCount === 1 ? 'The routine is done. ' : 'All ' + doneCount + ' routines are done. ') + SIGNOFF[part];
+      } else {
+        title = part === 'night' ? 'A quiet night' : 'A free day';
+        line = 'No routines on the schedule today.';
+      }
+      var key = [kind, part, full ? 'full' : 'top', title, line].join('|');
+      var html = '<div class="scene ' + part + (full ? ' full' : '') + '" data-key="' + esc(key) + '">' +
+                 sceneSvg(kind, part) +
+                 '<div class="msg"><h2>' + esc(title) + '</h2><p>' + esc(line) + '</p></div></div>';
+      return { key: key, html: html };
+    }
+
+    // Fills the view, leaving a scene that is already showing the same thing
+    // in place and replacing only what follows it.
+    function paint(view, sc, rest) {
+      var cur = view.firstElementChild;
+      if (sc && cur && cur.classList.contains('scene') && cur.getAttribute('data-key') === sc.key) {
+        while (cur.nextSibling) view.removeChild(cur.nextSibling);
+        cur.insertAdjacentHTML('afterend', rest);
+        return;
+      }
+      view.innerHTML = (sc ? sc.html : '') + rest;
+    }
+
     function render() {
       document.getElementById('today').textContent = state.today
         ? new Intl.DateTimeFormat(undefined, {
@@ -1218,7 +1410,7 @@
         return u && String(u.username).toLowerCase() === want;
       });
 
-      if (!list.length) { view.innerHTML = '<div class="empty">Nothing scheduled today.</div>'; return; }
+      if (!list.length) { paint(view, scene('free', true), ''); return; }
 
       var now = nowHHMM();
       var todo = [], later = [], done = [];
@@ -1240,7 +1432,10 @@
       section('Later today', later);
       if (state.settings.showDone) section('Done', done);
 
-      view.innerHTML = out || '<div class="empty">All finished for today.</div>';
+      // Everything for today is finished: the scene, with the finished
+      // routines under it when the display shows those.
+      var caughtUp = !todo.length && !later.length;
+      paint(view, caughtUp ? scene('done', !out, done.length) : null, out);
     }
 
     // ---------- setup ----------
