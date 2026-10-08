@@ -1544,14 +1544,14 @@
       });
 
       // The reader, back to the trunk, legs out with the ankles crossed.
-      // Behind first: the far leg and shoe, and the far arm, whose elbow
-      // rests by the lap and whose hand holds the book's right edge.
+      // Behind first: the far leg and shoe, and the far arm, which comes
+      // forward past the body to hold the book's left edge.
       var leg = 'M66 176 C68 169 74 166 80 166 C95 163 108 161 118 163 C124 164 128 167 134 169 C143 172 151 173 158 173 L159 181 C150 181 140 180 130 178 C122 177 116 178 108 180 C94 183 80 185 70 185 C66 184 64 181 66 176 Z';
       var shoe = 'M155 171 C157 166 163 163 168 163.5 C172 164 174.5 167 174 171 L171.5 180 C170 184 166 186 161 185.5 C157.5 185 155 182 155 178 Z';
       var sole = 'M168.5 163.6 C172.6 164.2 175 167.4 174.3 171.2 L171.8 180.4 C170.6 184 167 186 162 185.8';
       s += '<g transform="translate(3 3.5)"><path d="' + leg + '" fill="' + LAND.jeansFar + '"/></g>' +
            '<g transform="translate(2.5 3.5)"><path d="' + shoe + '" fill="#1f2326"/></g>' +
-           '<path d="M86 146 L126 128.5" stroke="' + LAND.skinShade + '" stroke-width="5.2" stroke-linecap="round"/>';
+           '<path d="M84 150 L95 131.5" stroke="' + LAND.skinShade + '" stroke-width="5" stroke-linecap="round"/>';
 
       // The near leg and shoe.
       s += '<path d="' + leg + '" fill="url(#rt-jeans)"/>' +
@@ -1580,31 +1580,33 @@
            '<path d="M63 100 C66 96.5 71 95.6 75 96.4" stroke="#fff" stroke-opacity="0.22" stroke-width="1.4" fill="none" stroke-linecap="round"/>' +
            '<ellipse cx="74.8" cy="111" rx="1.8" ry="2.7" fill="' + LAND.skin + '" stroke="' + LAND.skinShade + '" stroke-width="0.5"/>';
 
-      // The near arm: upper arm down the side in its sleeve, the elbow at
-      // the lap, the forearm up to the book's lower left corner.
-      s += '<path d="M73 132 L84 156.5" stroke="' + LAND.skin + '" stroke-width="6.2" stroke-linecap="round"/>' +
-           circle(84, 156.5, 3.1, LAND.skin) +
-           '<path d="M84 156.5 L96 140.5" stroke="' + LAND.skin + '" stroke-width="5.2" stroke-linecap="round"/>' +
-           '<path d="M71.6 129.2 L77.2 141" stroke="' + LAND.shirt[0] + '" stroke-width="8.6" stroke-linecap="round"/>' +
-           '<path d="M73.6 141.6 L80.6 139" stroke="#a51d1d" stroke-width="0.8" opacity="0.5" stroke-linecap="round"/>';
+      // The near arm, in front of everything: upper arm forward from the
+      // sleeve, the elbow by the waist, the forearm across to the book's
+      // lower right corner.
+      s += '<path d="M73 132 L92 153.5" stroke="' + LAND.skin + '" stroke-width="6.2" stroke-linecap="round"/>' +
+           circle(92, 153.5, 3.1, LAND.skin) +
+           '<path d="M92 153.5 L120.5 136.8" stroke="' + LAND.skin + '" stroke-width="5.2" stroke-linecap="round"/>' +
+           '<path d="M71.4 129.4 L79 137.8" stroke="' + LAND.shirt[0] + '" stroke-width="8.6" stroke-linecap="round"/>' +
+           '<path d="M75.8 140.7 L82.2 134.9" stroke="#a51d1d" stroke-width="0.8" opacity="0.5" stroke-linecap="round"/>';
 
-      // The hands behind the book's lower corners, then the book, open and
-      // tipped toward its reader, then the thumbs over the pages.
+      // The hands behind the book's edges - the far one on the left, the
+      // near one at the lower right - then the book, open and tipped toward
+      // its reader, then the thumbs over the pages.
       var spineTop = [110.4, 115.6], spineBottom = [112, 140];
       var leftTop = [96, 112], leftBottom = [97.8, 136.2];
-      var rightTop = [126.6, 109.4], rightBottom = [127.6, 133.6];
-      s += '<ellipse cx="96.6" cy="139" rx="3.4" ry="2.8" fill="' + LAND.skin + '"/>' +
-           '<ellipse cx="128.6" cy="129" rx="3" ry="3.4" fill="' + LAND.skinShade + '"/>' +
+      var rightTop = [122.6, 110.6], rightBottom = [123.6, 135];
+      s += '<ellipse cx="95.4" cy="129.6" rx="2.9" ry="3.3" fill="' + LAND.skinShade + '"/>' +
+           '<ellipse cx="123.6" cy="136.4" rx="3.4" ry="2.8" fill="' + LAND.skin + '"/>' +
            '<polygon points="94.6,110.8 110.2,114.6 112.4,142 97.4,138" fill="' + LAND.cover + '"/>' +
-           '<polygon points="110.2,114.6 127.6,108 128.8,135.4 112.4,142" fill="' + LAND.cover + '"/>' +
-           '<path d="M97.8 136.4 L112 140.4 L127.8 133.8 L128 135.2 L112.2 141.8 L97.8 137.8 Z" fill="' + LAND.block + '"/>' +
+           '<polygon points="110.2,114.6 123.6,109.2 124.8,136.8 112.4,142" fill="' + LAND.cover + '"/>' +
+           '<path d="M97.8 136.4 L112 140.4 L123.8 135.2 L124 136.6 L112.2 141.8 L97.8 137.8 Z" fill="' + LAND.block + '"/>' +
            '<path d="M' + pt(leftTop) + ' Q103.5 111.2 ' + pt(spineTop) + ' L' + pt(spineBottom) + ' L' + pt(leftBottom) + ' Z" fill="url(#rt-pageL)"/>' +
-           '<path d="M' + pt(spineTop) + ' Q118.5 109.6 ' + pt(rightTop) + ' L' + pt(rightBottom) + ' L' + pt(spineBottom) + ' Z" fill="url(#rt-pageR)"/>' +
+           '<path d="M' + pt(spineTop) + ' Q116.5 110.6 ' + pt(rightTop) + ' L' + pt(rightBottom) + ' L' + pt(spineBottom) + ' Z" fill="url(#rt-pageR)"/>' +
            printLines([spineTop, spineBottom], [leftTop, leftBottom]) +
            printLines([spineTop, spineBottom], [rightTop, rightBottom]) +
            '<path d="M' + pt(spineTop) + ' L' + pt(spineBottom) + '" stroke="#d6c9ae" stroke-width="0.9"/>' +
-           '<path d="M97.4 137.6 Q99.6 136 101.4 133.8" stroke="' + LAND.skin + '" stroke-width="2.5" stroke-linecap="round" fill="none"/>' +
-           '<path d="M128.2 128.6 Q126.6 127 125.2 125.4" stroke="' + LAND.skin + '" stroke-width="2.3" stroke-linecap="round" fill="none"/>';
+           '<path d="M96.2 129.6 Q98.2 128.2 99.4 126.4" stroke="' + LAND.skinShade + '" stroke-width="2.3" stroke-linecap="round" fill="none"/>' +
+           '<path d="M122.8 135.6 Q120.8 134.2 119.4 132.2" stroke="' + LAND.skin + '" stroke-width="2.5" stroke-linecap="round" fill="none"/>';
 
       // Leaves that come down now and then, from the canopy overhead.
       [[132, 26, -2], [88, 34, -10]].forEach(function (lf) {
