@@ -137,6 +137,22 @@
       vertical-align: middle;
     }
     .chip.solid { background: var(--accent, #757575); color: #fff; border-color: var(--accent, #757575); }
+    .chip.needs { border-style: dashed; border-color: var(--accent, #757575); }
+
+    /* Routines found in the chore list after a reinstall. */
+    .found {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border: 1px solid var(--accent, #757575);
+      background: rgba(var(--accent-rgb, 158,127,255), 0.10);
+      border-radius: 8px;
+      padding: 8px 10px;
+      margin-bottom: 8px;
+      font-size: 0.8rem;
+    }
+    .found span { flex: 1; }
+    .hint { font-size: 0.78rem; opacity: 0.75; padding: 8px 12px; }
 
     /* The 32px round action button, exactly as the chore card uses it. */
     .go {
@@ -511,6 +527,8 @@
       // Calendar routines: routine id -> { 'YYYY-MM-DD': { id, time } }.
       dates: {}, sources: [],
       history: [], expanded: {}, notes: [],
+      // Routine chores no routine here claims (see findOrphans).
+      orphans: [],
       settings: { person: '', showDone: true },
       setup: false,
       // Id of the routine being edited in the setup form, or null.
@@ -671,6 +689,136 @@
       return fetchJson(API + '/api/chore-history?date_from=' + shiftDate(state.today, -120))
         .then(function (rows) { state.history = rows || []; })
         .catch(function () {});
+    }
+
+    // ---------- recovering routines ----------
+    //
+    // Deleting the plugin deletes its storage, but not the chores its
+    // routines made. Those chores are recognisable - description "Routine",
+    // worth 0 clams - and still carry the name, icon, person, weekdays and
+    // start time, so a reinstall can take them back on, chore and schedule
+    // and all, and their history and streaks carry on. Steps, rewards and a
+    // calendar routine's event match lived only in storage; a restored
+    // routine asks for them through Edit.
+
+    function isRoutineChore(c) {
+      return c && c.description === 'Routine' && (+c.clam_value || 0) === 0;
+    }
+
+    // Routine chores no routine here claims, each with its schedules.
+    function findOrphans() {
+      return Promise.all([
+        fetchJson(API + '/api/chores'),
+        fetchJson(API + '/api/chore-schedules')
+      ]).then(function (res) {
+        var schedules = res[1] || [];
+        state.orphans = (res[0] || []).filter(isRoutineChore).map(function (c) {
+          return {
+            choreId: c.id, name: c.title, icon: c.icon || '',
+            schedules: schedules.filter(function (s) { return s.chore_id === c.id; })
+          };
+        });
+      }).catch(function () { state.orphans = []; });
+    }
+
+    // Against the routines loaded most recently, so one another display has
+    // just made (or restored) never shows as lost here.
+    function orphans() {
+      var claimed = {};
+      state.routines.forEach(function (r) { claimed[r.choreId] = true; });
+      return (state.orphans || []).filter(function (o) { return !claimed[o.choreId]; });
+    }
+
+    // "0 0 * * 1,3,5" -> [1, 3, 5]; "0 0 * * *" -> every day.
+    function daysFromCrontab(cron) {
+      var m = /^0 0 \* \* (\*|[0-6](,[0-6])*)$/.exec(cron || '');
+      if (!m) return null;
+      if (m[1] === '*') return [0, 1, 2, 3, 4, 5, 6];
+      return m[1].split(',').map(Number);
+    }
+    // "0 0 14 10 *" -> the 14 October nearest today: a pinned event day
+    // carries no year.
+    function dateFromCrontab(cron) {
+      var m = /^0 0 (\d{1,2}) (\d{1,2}) \*$/.exec(cron || '');
+      if (!m) return null;
+      var year = +state.today.slice(0, 4);
+      var best = null;
+      [year - 1, year, year + 1].forEach(function (y) {
+        var d = y + '-' + String(m[2]).padStart(2, '0') + '-' + String(m[1]).padStart(2, '0');
+        var gap = Math.abs(Date.UTC(y, +m[2] - 1, +m[1]) - Date.UTC(year, +state.today.slice(5, 7) - 1, +state.today.slice(8, 10)));
+        if (!best || gap < best.gap) best = { date: d, gap: gap };
+      });
+      return best.date;
+    }
+
+    // The routine a lost chore describes, or null when its schedules say too
+    // little to show it on any day (no schedule left at all).
+    function routineFromOrphan(o) {
+      var weekly = o.schedules.filter(function (s) { return s.visible && daysFromCrontab(s.crontab); });
+      var pinned = o.schedules.filter(function (s) { return dateFromCrontab(s.crontab); });
+      var base = {
+        id: uid(), name: o.name, icon: o.icon, choreId: o.choreId,
+        // No reward until one is set again: better than paying out on a guess.
+        endTime: '', steps: [], threshold: 0, milestoneClams: 0
+      };
+      if (weekly.length) {
+        var s = weekly[0];
+        return Object.assign(base, {
+          userId: s.user_id, scheduleId: s.id, days: daysFromCrontab(s.crontab),
+          startTime: s.due_time || ''
+        });
+      }
+      if (pinned.length) {
+        var dates = {};
+        pinned.forEach(function (p) { dates[dateFromCrontab(p.crontab)] = { id: p.id, time: p.due_time || '' }; });
+        var latest = Object.keys(dates).sort().pop();
+        var owner = pinned.filter(function (p) { return p.id === dates[latest].id; })[0];
+        return Object.assign(base, {
+          userId: owner.user_id, trigger: 'calendar', match: '', wholeWord: true,
+          sources: [], lead: 0, startTime: '', dates: dates
+        });
+      }
+      return null;
+    }
+
+    // Storage is read again first, so two displays restoring at once can't
+    // both add the same routine.
+    function restoreOrphans(choreIds) {
+      return loadStored().then(function () {
+        var claimed = {};
+        state.routines.forEach(function (r) { claimed[r.choreId] = true; });
+        var writes = [];
+        var skipped = [];
+        orphans().forEach(function (o) {
+          if (choreIds && choreIds.indexOf(o.choreId) === -1) return;
+          if (claimed[o.choreId]) return;
+          var r = routineFromOrphan(o);
+          if (!r) { skipped.push(o.name); return; }
+          if (r.dates) {
+            state.dates[r.id] = r.dates;
+            writes.push(store.write('dates:' + r.id, r.dates));
+            delete r.dates;
+          }
+          state.routines.push(r);
+          claimed[o.choreId] = true;
+        });
+        writes.push(store.write('routines', state.routines));
+        return Promise.all(writes).then(function () {
+          if (skipped.length) {
+            note('Could not restore ' + skipped.join(', ') + ': no schedule is left. Delete it in the Admin Panel, or make the routine again.');
+          }
+        });
+      })
+        .then(refreshHistory)
+        .then(announceChoreChange);
+    }
+
+    // What a restored routine still needs before it works as it did.
+    function missing(r) {
+      var out = [];
+      if (!r.steps.length) out.push('steps');
+      if (isCalendarRoutine(r) && !String(r.match || '').trim()) out.push('which events');
+      return out;
     }
 
     function userById(id) {
@@ -1083,6 +1231,9 @@
     // matching day ahead, none for days whose event went away, past days
     // hidden and eventually deleted. Safe to run repeatedly.
     function syncCalendarRoutine(r, events) {
+      // A restored routine without its event match would match nothing, and
+      // the sync would take its days ahead away. It waits for an Edit.
+      if (isCalendarRoutine(r) && !String(r.match || '').trim()) return Promise.resolve();
       var load = events ? Promise.resolve(events) : fetchEvents();
       return Promise.all([
         load,
@@ -1241,6 +1392,17 @@
         html += '</div>';
       }
 
+      // A restored routine without its steps (or event match) yet says so,
+      // instead of showing as a card with nothing to tick.
+      var needs = missing(r);
+      if (needs.length && !done) {
+        html += '<div class="steps"><div class="hint">Restored. ' +
+                (HIDE_SET_UP
+                  ? 'It needs ' + needs.join(' and ') + ' set up again.'
+                  : 'Open <strong>+ Add</strong> and choose Edit to give it ' + needs.join(' and ') + '.') +
+                '</div></div>';
+      }
+
       return html + '</div>';
     }
 
@@ -1390,6 +1552,14 @@
         var bad = /could not|failed/i.test(n);
         html += '<div class="' + (bad ? 'err' : 'note') + '">' + esc(n) + '</div>';
       });
+      // Lost routines are offered on the board too, where a reinstall lands;
+      // setup lists them one by one.
+      var lost = orphans();
+      if (lost.length && !state.setup && !HIDE_SET_UP) {
+        html += '<div class="found"><span>Found ' + lost.length + (lost.length === 1 ? ' routine' : ' routines') +
+                ' from before Routines was reinstalled.</span>' +
+                '<button class="btn primary" id="restoreAll">Restore</button></div>';
+      }
       noteBox.innerHTML = html;
 
       if (state.setup) return renderSetup();
@@ -1519,6 +1689,22 @@
         pickerHtml('stepPicker', 'data-stepicon', draft.stepIcon));
       h += '</div>';
 
+      // Routine chores left from an earlier install
+      var lost = orphans();
+      if (lost.length) {
+        h += '<div class="section"><h2>Found in the chore list</h2>';
+        h += '<p class="help">Routines made before the plugin was reinstalled. Restoring brings back the name, person, days and time, ' +
+             'and their history and streaks carry on. Steps, rewards and calendar-event matching were kept with the plugin, ' +
+             'so add those again with Edit.</p>';
+        lost.forEach(function (o) {
+          h += '<div class="line"><span style="font-size:1.15rem">' + (o.icon || '') + '</span>' +
+               '<span class="name">' + esc(o.name) + '</span><span class="spacer"></span>' +
+               '<button class="btn" data-restore="' + o.choreId + '">Restore</button></div>';
+        });
+        if (lost.length > 1) h += '<div class="actions"><button class="btn primary" id="restoreAll">Restore all</button></div>';
+        h += '</div>';
+      }
+
       // Existing routines
       if (state.routines.length) {
         h += '<div class="section"><h2>Your routines</h2>';
@@ -1528,8 +1714,14 @@
           h += '<div class="line"><span style="font-size:1.15rem">' + (r.icon || '') + '</span>' +
                '<span class="name">' + esc(r.name) + '</span>' +
                '<span class="chip">' + (u ? esc(u.username) : '?') + '</span>' +
-               '<span class="chip">' + r.steps.length + (r.steps.length === 1 ? ' step' : ' steps') + '</span>' +
-               (isCalendarRoutine(r) ? '<span class="chip">\u{1F4C5} ' + esc(r.match) + '</span>' : '') +
+               (r.steps.length
+                 ? '<span class="chip">' + r.steps.length + (r.steps.length === 1 ? ' step' : ' steps') + '</span>'
+                 : '<span class="chip needs">needs steps</span>') +
+               (isCalendarRoutine(r)
+                 ? (String(r.match || '').trim()
+                   ? '<span class="chip">\u{1F4C5} ' + esc(r.match) + '</span>'
+                   : '<span class="chip needs">\u{1F4C5} needs events</span>')
+                 : '') +
                '<span class="spacer"></span>' +
                '<button class="btn" data-edit="' + esc(r.id) + '">Edit</button>' +
                '<button class="btn' + (state.pendingDelete === r.id ? ' danger' : '') + '" data-delete="' + esc(r.id) + '">' +
@@ -1633,6 +1825,14 @@
       if ((el = ev.target.closest('[data-step]'))) {
         var r = findRoutine(el.getAttribute('data-for'));
         if (r) toggleStep(r, el.getAttribute('data-step'));
+        return;
+      }
+      if ((el = ev.target.closest('[data-restore]'))) {
+        if (HIDE_SET_UP) return;
+        el.disabled = true;
+        restoreOrphans([+el.getAttribute('data-restore')])
+          .catch(function (e) { note('Could not restore the routine: ' + e.message); })
+          .then(render);
         return;
       }
       if ((el = ev.target.closest('[data-toggle]'))) {
@@ -1757,8 +1957,10 @@
           gear.textContent = state.setup ? 'Close' : '+ Add';
           gear.classList.toggle('add', !state.setup);
           render();
-          // The calendar filter in the form lists the enabled calendars.
+          // The calendar filter in the form lists the enabled calendars, and
+          // setup looks again for routines left in the chore list.
           if (state.setup) {
+            findOrphans().then(function () { if (state.setup) renderSetup(); });
             fetchJson(API + '/api/calendar-sources')
               .then(function (rows) {
                 state.sources = (rows || []).filter(function (s) { return s.enabled; })
@@ -1778,6 +1980,14 @@
           store.write('library', state.library).then(function () { state.notes = []; renderSetup(); });
           break;
         }
+
+        case 'restoreAll':
+          if (HIDE_SET_UP) break;
+          ev.target.disabled = true;
+          restoreOrphans(null)
+            .catch(function (e) { note('Could not restore routines: ' + e.message); })
+            .then(render);
+          break;
 
         case 'cancelEdit':
           state.editing = null;
@@ -1857,7 +2067,10 @@
       start.then(loadAndSync).then(render).catch(function (e) {
         note('Could not load: ' + e.message);
         render();
-      });
+      })
+        // Once per start, not every minute: lost routines only appear when
+        // the plugin is reinstalled, and that starts this page afresh.
+        .then(function () { return HIDE_SET_UP ? null : findOrphans().then(render); });
 
       // Polled, not event-driven: the plugin event stream does not reach the
       // browser on every deployment, and a routine that silently stops
