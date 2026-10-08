@@ -203,9 +203,8 @@
     /* --- the caught-up scene ---
        In place of an empty list: someone reading against a big tree, legs
        out on the grass, green trees on the hill beyond, under a sky that
-       follows the time of day. All that moves is a page turning now and
-       then and the odd leaf coming down. The picture keeps its own colors,
-       like a photo would. */
+       follows the time of day. All that moves is the odd leaf coming down.
+       The picture keeps its own colors, like a photo would. */
     .scene {
       position: relative;
       height: 180px;
@@ -241,22 +240,6 @@
     .scene:not(.full) .msg { top: 10px; padding: 6px 12px; }
     .scene:not(.full) .msg h2 { font-size: 1.05rem; }
 
-    /* The turning page folds over the spine (x 114 in the picture) from the
-       right-hand page onto the left. It is drawn exactly over the right page
-       and, flipped, exactly over the left, so it can vanish at the end of a
-       turn and reappear on the right without a visible jump. */
-    .scene .page {
-      transform-box: view-box;
-      transform-origin: 114px 136px;
-      animation: rt-page 9s ease-in-out infinite;
-    }
-    @keyframes rt-page {
-      0%, 76% { transform: scaleX(1); opacity: 1; }
-      90%     { transform: scaleX(-1); opacity: 1; }
-      95%     { transform: scaleX(-1); opacity: 0; }
-      96%     { transform: scaleX(1); opacity: 0; }
-      100%    { transform: scaleX(1); opacity: 1; }
-    }
     /* A leaf seesaws down from the canopy to the grass, then rests a while
        before the next. */
     .scene .leaf { opacity: 0; transform-box: fill-box; transform-origin: center; animation: rt-leaf 16s linear infinite; }
@@ -1444,95 +1427,190 @@
       night:   { sky: ['#2a3170', '#4a5296'], sun: '#f1f3f5', wash: 'rgba(10, 14, 40, 0.50)' }
     };
     var LAND = {
-      hills: '#9cc3dd', meadow: '#94d26b', lawn: '#74c04a',
-      bark: '#6b4a35', barkDark: '#4e342e',
-      leaves: ['#3f9142', '#55a84f', '#7cc96a'],
-      skin: '#f1c27d', hair: '#212529', shirt: '#e03131', jeans: '#5b7db1', shoe: '#343a40',
-      cover: '#1c7ed6', paper: '#fffaf0', ink: '#ced4da'
+      hills: '#a9c9df', meadow: ['#a8dc7c', '#86c95c'], lawn: ['#7cc451', '#5aa83a'],
+      bark: ['#4a3022', '#6b4a35', '#8a6443'], groove: '#3b2519',
+      // Leaf clusters, each lit from the upper left: [light, dark].
+      leaves: [['#6fc25e', '#2f7d35'], ['#86d272', '#3f9142'], ['#a4e38f', '#58a94e']],
+      skin: '#f2c48d', skinShade: '#d9a26b', hair: ['#41474e', '#16191c'],
+      shirt: ['#f25555', '#c92a2a'], jeans: ['#7896cb', '#4c679b'], jeansFar: '#435d8f',
+      shoe: '#2f3438', sole: '#f1f3f5', cover: '#1c6fc2', block: '#e6dcc6',
+      paper: ['#fffdf7', '#eee4cf'], ink: '#c4bba9', grass: '#4f9a32'
     };
 
-    // A round green tree on the hill, standing on (x, base).
-    function hillTree(x, base, s) {
-      var c = function (dx, dy, r, fill) {
-        return '<circle cx="' + (x + dx * s).toFixed(1) + '" cy="' + (base + dy * s).toFixed(1) + '" r="' + (r * s).toFixed(1) + '" fill="' + fill + '"/>';
-      };
-      return '<rect x="' + (x - 3 * s).toFixed(1) + '" y="' + (base - 26 * s).toFixed(1) + '" width="' + (6 * s).toFixed(1) +
-             '" height="' + (27 * s).toFixed(1) + '" fill="' + LAND.bark + '"/>' +
-             c(0, -38, 20, LAND.leaves[1]) + c(-16, -30, 15, LAND.leaves[0]) + c(16, -30, 16, LAND.leaves[0]) +
-             c(-8, -52, 14, LAND.leaves[1]) + c(10, -50, 14, LAND.leaves[1]) +
-             c(-6, -48, 7, LAND.leaves[2]) + c(4, -40, 6, LAND.leaves[2]);
+    function lerp(a, b, t) { return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]; }
+    function pt(p) { return p[0].toFixed(1) + ' ' + p[1].toFixed(1); }
+    function circle(cx, cy, r, fill, extra) {
+      return '<circle cx="' + cx.toFixed(1) + '" cy="' + cy.toFixed(1) + '" r="' + r.toFixed(1) + '" fill="' + fill + '"' + (extra || '') + '/>';
     }
 
-    // The book's pages as polygons, and lines of print across a page.
-    // Right page: spine (114,124)-(114,148), outer edge at x 132; the left
-    // page is its mirror, which is what lets the turning page land on it.
-    var PAGE_R = '114,148 132,142 132,118 114,124';
-    var PAGE_L = '114,148 96,142 96,118 114,124';
-    function print(side) {
+    // A round green tree on the hill, standing on (x, base), with its
+    // shadow on the grass.
+    function hillTree(x, base, s) {
+      var c = function (dx, dy, r, shade) { return circle(x + dx * s, base + dy * s, r * s, 'url(#rt-leaf' + shade + ')'); };
+      return '<ellipse cx="' + (x + 6 * s).toFixed(1) + '" cy="' + (base + 1).toFixed(1) + '" rx="' + (22 * s).toFixed(1) + '" ry="' + (3.2 * s).toFixed(1) + '" fill="rgba(0,0,0,0.18)" filter="url(#rt-soft)"/>' +
+             '<path d="M' + (x - 3.4 * s).toFixed(1) + ' ' + (base + 1) + ' L' + (x - 2.2 * s).toFixed(1) + ' ' + (base - 28 * s).toFixed(1) +
+             ' L' + (x + 2.2 * s).toFixed(1) + ' ' + (base - 28 * s).toFixed(1) + ' L' + (x + 3.4 * s).toFixed(1) + ' ' + (base + 1) + ' Z" fill="url(#rt-bark)"/>' +
+             c(-15, -30, 15, 0) + c(16, -31, 16, 0) + c(0, -38, 20, 1) + c(-9, -52, 14, 1) + c(10, -51, 14, 1) +
+             c(-4, -55, 8, 2) + c(-12, -40, 7, 2) + c(8, -44, 6, 2);
+    }
+
+    // Lines of print across a page, foreshortened like the page: spine and
+    // outer edge are each [top, bottom].
+    function printLines(spine, outer) {
       var out = '';
-      for (var k = 1; k <= 5; k += 1) {
-        var y0 = 126 + 3.6 * k, y1 = y0 - 4.7;
-        out += side > 0
-          ? '<line x1="116.5" y1="' + y0.toFixed(1) + '" x2="129.5" y2="' + y1.toFixed(1) + '"/>'
-          : '<line x1="111.5" y1="' + y0.toFixed(1) + '" x2="98.5" y2="' + y1.toFixed(1) + '"/>';
-      }
-      return '<g stroke="' + LAND.ink + '" stroke-width="0.8" stroke-linecap="round">' + out + '</g>';
+      [0.16, 0.25, 0.34, 0.43, 0.58, 0.67, 0.76, 0.85].forEach(function (t, i) {
+        var a = lerp(spine[0], spine[1], t), b = lerp(outer[0], outer[1], t);
+        var end = i === 3 || i === 7 ? 0.55 : 0.86;
+        out += '<path d="M' + pt(lerp(a, b, 0.14)) + ' L' + pt(lerp(a, b, end)) + '"/>';
+      });
+      return '<g stroke="' + LAND.ink + '" stroke-width="0.7" stroke-linecap="round">' + out + '</g>';
     }
 
     function sceneSvg(part) {
       var sky = SKIES[part];
       var night = part === 'night';
+      var grad = function (id, x2, y2, stops) {
+        return '<linearGradient id="' + id + '" x1="0" y1="0" x2="' + x2 + '" y2="' + y2 + '">' +
+          stops.map(function (s, i) { return '<stop offset="' + (i / (stops.length - 1)) + '" stop-color="' + s + '"/>'; }).join('') +
+          '</linearGradient>';
+      };
       // xMin: narrow tiles crop from the right, so the tree and the reader
       // on the left always stay in the picture.
       var s = '<svg viewBox="0 0 400 200" preserveAspectRatio="xMinYMax slice" aria-hidden="true"><defs>' +
-        '<linearGradient id="rt-sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="' + sky.sky[0] + '"/><stop offset="1" stop-color="' + sky.sky[1] + '"/></linearGradient>' +
+        grad('rt-sky', 0, 1, sky.sky) +
+        grad('rt-meadow', 0, 1, LAND.meadow) + grad('rt-lawn', 0, 1, LAND.lawn) +
+        grad('rt-bark', 1, 0, LAND.bark) +
+        grad('rt-shirt', 0.6, 1, LAND.shirt) + grad('rt-jeans', 0, 1, LAND.jeans) + grad('rt-hair', 0.4, 1, LAND.hair) +
+        grad('rt-pageL', 1, 0.2, LAND.paper) + grad('rt-pageR', 1, -0.2, [LAND.paper[1], LAND.paper[0]]) +
+        LAND.leaves.map(function (l, i) {
+          return '<radialGradient id="rt-leaf' + i + '" cx="0.35" cy="0.3" r="0.8"><stop offset="0" stop-color="' + l[0] + '"/><stop offset="1" stop-color="' + l[1] + '"/></radialGradient>';
+        }).join('') +
         '<radialGradient id="rt-sun"><stop offset="0" stop-color="' + sky.sun + '" stop-opacity="0.55"/><stop offset="1" stop-color="' + sky.sun + '" stop-opacity="0"/></radialGradient>' +
         '<radialGradient id="rt-lamp"><stop offset="0" stop-color="#ffd43b" stop-opacity="0.5"/><stop offset="1" stop-color="#ffd43b" stop-opacity="0"/></radialGradient>' +
+        '<filter id="rt-soft" x="-20%" y="-50%" width="140%" height="200%"><feGaussianBlur stdDeviation="2"/></filter>' +
+        '<filter id="rt-cloud" x="-20%" y="-50%" width="140%" height="200%"><feGaussianBlur stdDeviation="1.4"/></filter>' +
         '</defs><rect width="400" height="200" fill="url(#rt-sky)"/>';
 
-      // The sun; at night the moon comes after the wash, below.
+      // The sun and a few soft, still clouds; at night the moon comes after
+      // the wash, below.
       if (!night) {
         var sun = { morning: [340, 104, 15], day: [345, 34, 16], evening: [372, 112, 19] }[part];
-        s += '<circle cx="' + sun[0] + '" cy="' + sun[1] + '" r="' + (sun[2] * 3) + '" fill="url(#rt-sun)"/>' +
-             '<circle cx="' + sun[0] + '" cy="' + sun[1] + '" r="' + sun[2] + '" fill="' + sky.sun + '"/>';
+        s += circle(sun[0], sun[1], sun[2] * 3, 'url(#rt-sun)') + circle(sun[0], sun[1], sun[2], sky.sun);
+        [[284, 62, 1], [214, 86, 0.7], [380, 78, 0.8]].forEach(function (c) {
+          var x = c[0], y = c[1], k = c[2];
+          s += '<g fill="#fff" opacity="' + (part === 'evening' ? 0.45 : 0.75) + '" filter="url(#rt-cloud)">' +
+               '<ellipse cx="' + x + '" cy="' + y + '" rx="' + 18 * k + '" ry="' + 5 * k + '"/>' +
+               '<ellipse cx="' + (x + 8 * k) + '" cy="' + (y - 4 * k) + '" rx="' + 10 * k + '" ry="' + 6 * k + '"/>' +
+               '<ellipse cx="' + (x - 6 * k) + '" cy="' + (y - 2 * k) + '" rx="' + 8 * k + '" ry="' + 4.5 * k + '"/></g>';
+        });
       }
 
-      // Far hills, the meadow, and green trees across it.
+      // Far hills with a little haze, the meadow, and green trees across it.
       s += '<path d="M0 128 Q40 112 85 124 T175 116 T265 122 T345 110 T400 118 V160 H0 Z" fill="' + LAND.hills + '"/>' +
-           '<path d="M0 150 Q120 128 260 136 T400 132 V200 H0 Z" fill="' + LAND.meadow + '"/>' +
+           '<rect y="112" width="400" height="30" fill="#fff" opacity="0.12"/>' +
+           '<path d="M0 150 Q120 128 260 136 T400 132 V200 H0 Z" fill="url(#rt-meadow)"/>' +
            hillTree(212, 140, 0.68) + hillTree(300, 138, 1.05) + hillTree(372, 141, 0.85) +
-           '<path d="M0 178 Q160 164 400 174 V200 H0 Z" fill="' + LAND.lawn + '"/>' +
-           '<ellipse cx="96" cy="188" rx="84" ry="7" fill="rgba(0,0,0,0.12)"/>';
+           '<path d="M0 178 Q160 164 400 174 V200 H0 Z" fill="url(#rt-lawn)"/>';
 
-      // The big tree in front: its trunk down the left edge, roots out
-      // over the grass, and its leaves overhead.
-      s += '<path d="M-5 0 H52 C47 40 44 90 48 130 C51 152 58 166 78 178 C92 186 112 188 124 192 C100 194 80 192 66 188 C70 194 76 198 82 200 H-5 Z" fill="' + LAND.bark + '"/>' +
-           '<path d="M8 0 H20 C16 50 16 110 22 160 C24 176 30 190 34 200 H24 C18 186 12 170 10 150 C6 110 6 50 8 0 Z" fill="' + LAND.barkDark + '" opacity="0.55"/>' +
-           '<circle cx="10" cy="-6" r="48" fill="' + LAND.leaves[0] + '"/><circle cx="64" cy="-14" r="42" fill="' + LAND.leaves[0] + '"/>' +
-           '<circle cx="110" cy="-10" r="34" fill="' + LAND.leaves[1] + '"/><circle cx="146" cy="-22" r="30" fill="' + LAND.leaves[1] + '"/>' +
-           '<circle cx="40" cy="14" r="22" fill="' + LAND.leaves[1] + '"/><circle cx="92" cy="12" r="18" fill="' + LAND.leaves[2] + '" opacity="0.7"/>' +
-           '<circle cx="132" cy="2" r="12" fill="' + LAND.leaves[2] + '" opacity="0.6"/>';
+      // Grass tufts and a few small flowers in front.
+      var tufts = '';
+      [[198, 191], [228, 186], [260, 194], [292, 188], [330, 193], [366, 187], [392, 195], [176, 197]].forEach(function (g) {
+        var x = g[0], y = g[1];
+        tufts += 'M' + (x - 1) + ' ' + y + ' q-0.6 -3.5 -3.2 -5.6 M' + x + ' ' + y + ' q0.4 -4.4 -0.8 -7.8 M' + (x + 1) + ' ' + y + ' q1.2 -3 3.6 -4.6 ';
+      });
+      s += '<path d="' + tufts + '" stroke="' + LAND.grass + '" stroke-width="0.9" stroke-linecap="round" fill="none"/>';
+      [[214, 183], [246, 191], [318, 185], [352, 194], [384, 182]].forEach(function (f) {
+        s += circle(f[0], f[1], 1.5, '#fff') + circle(f[0], f[1], 0.6, '#fcc419');
+      });
 
-      // The reader, back to the trunk, legs out along the grass.
-      s += '<path d="M62 172 C80 168 98 166 112 166 C120 166 124 170 132 172 L162 174 C166 175 166 182 162 183 L128 182 C118 182 112 180 104 180 C90 181 76 184 62 186 Z" fill="' + LAND.jeans + '"/>' +
-           '<path d="M160 170 C166 168 172 172 172 178 L172 184 L160 184 Z" fill="' + LAND.shoe + '"/><rect x="160" y="182" width="12" height="2" fill="#f8f9fa"/>' +
-           '<path d="M50 132 C58 124 74 124 82 132 C88 146 88 162 84 176 L56 180 C52 166 48 148 50 132 Z" fill="' + LAND.shirt + '"/>' +
-           '<rect x="62" y="118" width="8" height="9" fill="' + LAND.skin + '"/>' +
-           '<circle cx="71" cy="111" r="11" fill="' + LAND.skin + '"/>' +
-           '<path d="M55 112 C54 100 62 96 70 97 C76 98 79 101 79 104 C73 104 70 108 68 114 C67 119 68 123 70 126 C62 126 56 120 55 112 Z" fill="' + LAND.hair + '"/>' +
-           // The book, open and held up; then the hands that hold it.
-           '<polygon points="114,150 134,143 134,116 114,122" fill="' + LAND.cover + '"/>' +
-           '<polygon points="114,150 94,143 94,116 114,122" fill="' + LAND.cover + '"/>' +
-           '<polygon points="' + PAGE_L + '" fill="' + LAND.paper + '"/>' + print(-1) +
-           '<polygon points="' + PAGE_R + '" fill="' + LAND.paper + '"/>' + print(1) +
-           '<g class="page"><polygon points="' + PAGE_R + '" fill="' + LAND.paper + '" stroke="#e9e1cf" stroke-width="0.5"/>' + print(1) + '</g>' +
-           '<path d="M78 136 Q86 158 101 148" fill="none" stroke="' + LAND.skin + '" stroke-width="7" stroke-linecap="round"/>' +
-           '<circle cx="102" cy="146" r="3.6" fill="' + LAND.skin + '"/><circle cx="127" cy="143" r="3.4" fill="' + LAND.skin + '"/>';
+      // Soft shadows: the reader on the grass, and the tree's spread.
+      s += '<ellipse cx="104" cy="187" rx="66" ry="5" fill="rgba(0,0,0,0.22)" filter="url(#rt-soft)"/>' +
+           '<ellipse cx="44" cy="190" rx="60" ry="7" fill="rgba(0,0,0,0.18)" filter="url(#rt-soft)"/>';
+
+      // The big tree in front: its trunk down the left edge, grooved bark,
+      // roots out over the grass, and its leaves overhead.
+      s += '<path d="M-5 0 H52 C47 40 44 90 48 130 C51 152 58 166 78 178 C92 186 112 188 124 192 C100 194 80 192 66 188 C70 194 76 198 82 200 H-5 Z" fill="url(#rt-bark)"/>' +
+           '<g fill="none" stroke="' + LAND.groove + '" stroke-linecap="round" opacity="0.4">' +
+           '<path d="M12 0 C10 50 11 110 17 160 C19 176 23 188 27 200" stroke-width="1.4"/>' +
+           '<path d="M27 4 C24 60 24 118 30 168" stroke-width="1.1"/>' +
+           '<path d="M40 12 C36 60 36 104 40 138 C43 156 50 168 62 178" stroke-width="1"/>' +
+           '<path d="M21 70 C23 78 23 86 21 94" stroke-width="0.8"/><path d="M34 120 C36 128 36 136 34 144" stroke-width="0.8"/>' +
+           '<ellipse cx="33" cy="88" rx="2.6" ry="4.6" stroke-width="1"/></g>' +
+           '<path d="M47 120 C46 140 52 160 70 176" fill="none" stroke="#a07a55" stroke-width="1.2" opacity="0.45"/>';
+      [[6, -4, 50, 0], [60, -12, 44, 0], [108, -6, 34, 1], [148, -18, 30, 0], [182, -14, 18, 1],
+       [36, 18, 24, 1], [86, 14, 20, 2], [128, 8, 14, 2], [18, 36, 9, 1], [52, 34, 7, 2], [74, 32, 6, 1],
+       [104, 26, 7, 0], [140, 20, 6, 2], [166, 8, 7, 1]].forEach(function (c) {
+        s += circle(c[0], c[1], c[2], 'url(#rt-leaf' + c[3] + ')');
+      });
+
+      // The reader, back to the trunk, legs out with the ankles crossed.
+      // Behind first: the far leg and shoe, and the far arm, whose elbow
+      // rests by the lap and whose hand holds the book's right edge.
+      var leg = 'M66 176 C68 169 74 166 80 166 C95 163 108 161 118 163 C124 164 128 167 134 169 C143 172 151 173 158 173 L159 181 C150 181 140 180 130 178 C122 177 116 178 108 180 C94 183 80 185 70 185 C66 184 64 181 66 176 Z';
+      var shoe = 'M155 171 C157 166 163 163 168 163.5 C172 164 174.5 167 174 171 L171.5 180 C170 184 166 186 161 185.5 C157.5 185 155 182 155 178 Z';
+      var sole = 'M168.5 163.6 C172.6 164.2 175 167.4 174.3 171.2 L171.8 180.4 C170.6 184 167 186 162 185.8';
+      s += '<g transform="translate(3 3.5)"><path d="' + leg + '" fill="' + LAND.jeansFar + '"/></g>' +
+           '<g transform="translate(2.5 3.5)"><path d="' + shoe + '" fill="#1f2326"/></g>' +
+           '<path d="M86 146 L126 128.5" stroke="' + LAND.skinShade + '" stroke-width="5.2" stroke-linecap="round"/>';
+
+      // The near leg and shoe.
+      s += '<path d="' + leg + '" fill="url(#rt-jeans)"/>' +
+           '<path d="M80 167 C95 164 108 162 118 164" stroke="#fff" stroke-opacity="0.25" stroke-width="0.8" fill="none"/>' +
+           '<path d="M115 166 Q120 170.5 125 168" stroke="#3d5584" stroke-width="0.8" fill="none" opacity="0.7"/>' +
+           '<path d="M100 172 Q108 175 116 173" stroke="#3d5584" stroke-width="0.6" fill="none" opacity="0.5"/>' +
+           '<path d="M152.6 172.8 L156.2 172.4 L156.8 181.8 L153.2 182 Z" fill="#e9ecef"/>' +
+           '<path d="M152 172.6 L152.8 182.4" stroke="#3d5584" stroke-width="0.9" opacity="0.7"/>' +
+           '<path d="' + shoe + '" fill="' + LAND.shoe + '"/>' +
+           '<path d="M168.5 163.6 C172.6 164.2 175 167.4 174.3 171.2 L173.7 173.6 C170.6 172.4 167.8 168.8 167.2 164.6 Z" fill="' + LAND.sole + '"/>' +
+           '<path d="' + sole + '" stroke="' + LAND.sole + '" stroke-width="1.3" fill="none" stroke-linecap="round"/>' +
+           '<path d="M158.6 171.4 L162.6 173.2 M159.8 168.8 L163.8 170.6 M161.4 166.4 L165 168.2" stroke="#fff" stroke-width="0.7" opacity="0.8" stroke-linecap="round"/>';
+
+      // The body, leaning back against the trunk, and the neck.
+      s += '<path d="M54 137 C54 129 60 124 68 124 C76 124 82 128 84 135 C87 147 89 160 89 172 C81 178 66 179 57 175 C55 162 53 149 54 137 Z" fill="url(#rt-shirt)"/>' +
+           '<path d="M70 152 Q78 157 86 155 M62 166 Q72 170 86 166" stroke="#a51d1d" stroke-width="0.8" fill="none" opacity="0.45"/>' +
+           '<path d="M64 117 L73 117 L74 127 C70 129 66 129 63 127 Z" fill="' + LAND.skinShade + '"/>';
+
+      // The head, turned to the book: face in profile, a bob of dark hair.
+      s += '<ellipse cx="71" cy="108" rx="10.2" ry="11" fill="' + LAND.skin + '"/>' +
+           '<path d="M78 99.5 C80.6 102 81.3 104.5 82.4 107.6 C83.2 109.6 82.6 110.2 81.4 110.6 C81.9 111.6 81.6 112.4 80.9 113 C81.1 114.2 80.4 115 79.4 115.6 C78.8 117.6 77 119 74.6 119.4 L70 117 L72 100 Z" fill="' + LAND.skin + '"/>' +
+           '<path d="M77.4 106.4 Q79 107.5 80.4 106.8" stroke="#2b2b2b" stroke-width="0.8" fill="none" stroke-linecap="round"/>' +
+           '<path d="M77 103.9 Q79 103 81 103.7" stroke="' + LAND.hair[1] + '" stroke-width="0.7" fill="none" stroke-linecap="round"/>' +
+           '<path d="M80.2 112.6 L81.2 112.7" stroke="#c0765a" stroke-width="0.7" stroke-linecap="round"/>' +
+           '<path d="M59.5 112 C57.5 101 62.5 94.5 70.5 94 C78 93.5 83 97.5 82.6 103.2 C79.5 101.8 76.2 102.2 74.5 104.2 C73.2 105.8 73.4 108.6 73.2 111.6 C73 115.5 72 119.2 70.6 121.6 C66.8 122.2 62.6 119.6 60.6 116 Z" fill="url(#rt-hair)"/>' +
+           '<path d="M63 100 C66 96.5 71 95.6 75 96.4" stroke="#fff" stroke-opacity="0.22" stroke-width="1.4" fill="none" stroke-linecap="round"/>' +
+           '<ellipse cx="74.8" cy="111" rx="1.8" ry="2.7" fill="' + LAND.skin + '" stroke="' + LAND.skinShade + '" stroke-width="0.5"/>';
+
+      // The near arm: upper arm down the side in its sleeve, the elbow at
+      // the lap, the forearm up to the book's lower left corner.
+      s += '<path d="M73 132 L84 156.5" stroke="' + LAND.skin + '" stroke-width="6.2" stroke-linecap="round"/>' +
+           circle(84, 156.5, 3.1, LAND.skin) +
+           '<path d="M84 156.5 L96 140.5" stroke="' + LAND.skin + '" stroke-width="5.2" stroke-linecap="round"/>' +
+           '<path d="M71.6 129.2 L77.2 141" stroke="' + LAND.shirt[0] + '" stroke-width="8.6" stroke-linecap="round"/>' +
+           '<path d="M73.6 141.6 L80.6 139" stroke="#a51d1d" stroke-width="0.8" opacity="0.5" stroke-linecap="round"/>';
+
+      // The hands behind the book's lower corners, then the book, open and
+      // tipped toward its reader, then the thumbs over the pages.
+      var spineTop = [110.4, 115.6], spineBottom = [112, 140];
+      var leftTop = [96, 112], leftBottom = [97.8, 136.2];
+      var rightTop = [126.6, 109.4], rightBottom = [127.6, 133.6];
+      s += '<ellipse cx="96.6" cy="139" rx="3.4" ry="2.8" fill="' + LAND.skin + '"/>' +
+           '<ellipse cx="128.6" cy="129" rx="3" ry="3.4" fill="' + LAND.skinShade + '"/>' +
+           '<polygon points="94.6,110.8 110.2,114.6 112.4,142 97.4,138" fill="' + LAND.cover + '"/>' +
+           '<polygon points="110.2,114.6 127.6,108 128.8,135.4 112.4,142" fill="' + LAND.cover + '"/>' +
+           '<path d="M97.8 136.4 L112 140.4 L127.8 133.8 L128 135.2 L112.2 141.8 L97.8 137.8 Z" fill="' + LAND.block + '"/>' +
+           '<path d="M' + pt(leftTop) + ' Q103.5 111.2 ' + pt(spineTop) + ' L' + pt(spineBottom) + ' L' + pt(leftBottom) + ' Z" fill="url(#rt-pageL)"/>' +
+           '<path d="M' + pt(spineTop) + ' Q118.5 109.6 ' + pt(rightTop) + ' L' + pt(rightBottom) + ' L' + pt(spineBottom) + ' Z" fill="url(#rt-pageR)"/>' +
+           printLines([spineTop, spineBottom], [leftTop, leftBottom]) +
+           printLines([spineTop, spineBottom], [rightTop, rightBottom]) +
+           '<path d="M' + pt(spineTop) + ' L' + pt(spineBottom) + '" stroke="#d6c9ae" stroke-width="0.9"/>' +
+           '<path d="M97.4 137.6 Q99.6 136 101.4 133.8" stroke="' + LAND.skin + '" stroke-width="2.5" stroke-linecap="round" fill="none"/>' +
+           '<path d="M128.2 128.6 Q126.6 127 125.2 125.4" stroke="' + LAND.skin + '" stroke-width="2.3" stroke-linecap="round" fill="none"/>';
 
       // Leaves that come down now and then, from the canopy overhead.
       [[132, 26, -2], [88, 34, -10]].forEach(function (lf) {
-        s += '<g transform="translate(' + lf[0] + ' ' + lf[1] + ')"><path class="leaf" style="animation-delay:' + lf[2] + 's" ' +
-             'd="M0 0 C3 -4 9 -4 11 0 C9 4 3 4 0 0 Z" fill="' + LAND.leaves[1] + '"/></g>';
+        s += '<g transform="translate(' + lf[0] + ' ' + lf[1] + ')"><g class="leaf" style="animation-delay:' + lf[2] + 's">' +
+             '<path d="M0 0 C3 -4.5 9 -4.5 12 0 C9 4.5 3 4.5 0 0 Z" fill="' + LAND.leaves[1][0] + '"/>' +
+             '<path d="M1 0 L11 0" stroke="' + LAND.leaves[0][1] + '" stroke-width="0.6"/></g></g>';
       });
 
       if (sky.wash) s += '<rect width="400" height="200" fill="' + sky.wash + '"/>';
@@ -1541,14 +1619,13 @@
       // by the reader. Drawn over the wash so they keep their light.
       if (night) {
         [[190, 20], [228, 46], [262, 14], [300, 30], [384, 26], [244, 76], [205, 64], [376, 70]].forEach(function (st, i) {
-          s += '<circle cx="' + st[0] + '" cy="' + st[1] + '" r="' + (i % 3 === 0 ? 1.4 : 0.9) + '" fill="#fff" opacity="0.85"/>';
+          s += circle(st[0], st[1], i % 3 === 0 ? 1.4 : 0.9, '#fff', ' opacity="0.85"');
         });
-        s += '<circle cx="338" cy="44" r="30" fill="url(#rt-sun)"/>' +
-             '<circle cx="338" cy="44" r="13" fill="' + sky.sun + '"/><circle cx="344" cy="39" r="11" fill="#2f3778"/>' +
-             '<circle cx="184" cy="176" r="34" fill="url(#rt-lamp)"/>' +
-             '<rect x="179" y="170" width="10" height="13" rx="2" fill="#ffe066"/>' +
-             '<rect x="178" y="168" width="12" height="3" rx="1" fill="#343a40"/><rect x="178" y="182" width="12" height="3" rx="1" fill="#343a40"/>' +
-             '<path d="M181 168 Q184 162 187 168" fill="none" stroke="#343a40" stroke-width="1"/>';
+        s += circle(338, 44, 30, 'url(#rt-sun)') + circle(338, 44, 13, sky.sun) + circle(344, 39, 11, '#2f3778') +
+             circle(192, 178, 34, 'url(#rt-lamp)') +
+             '<rect x="187" y="172" width="10" height="13" rx="2" fill="#ffe066"/>' +
+             '<rect x="186" y="170" width="12" height="3" rx="1" fill="#343a40"/><rect x="186" y="184" width="12" height="3" rx="1" fill="#343a40"/>' +
+             '<path d="M189 170 Q192 164 195 170" fill="none" stroke="#343a40" stroke-width="1"/>';
       }
       return s + '</svg>';
     }
