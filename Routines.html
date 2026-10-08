@@ -201,10 +201,11 @@
     .empty { opacity: 0.6; font-size: 0.82rem; padding: 12px 2px; }
 
     /* --- the caught-up scene ---
-       A little landscape in place of an empty list: hills, a house and a
-       tree under a sky that follows the time of day. A kite (a shooting star
-       at night) when every routine is done; just the quiet scene when nothing
-       is scheduled. The picture keeps its own colors, like a photo would. */
+       In place of an empty list: someone reading against a big tree, legs
+       out on the grass, green trees on the hill beyond, under a sky that
+       follows the time of day. All that moves is a page turning now and
+       then and the odd leaf coming down. The picture keeps its own colors,
+       like a photo would. */
     .scene {
       position: relative;
       height: 180px;
@@ -217,8 +218,8 @@
     .scene.full { height: calc(100vh - 76px); min-height: 180px; }
     .scene svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
     [data-theme="dark"] .scene.morning svg, [data-theme="dark"] .scene.day svg { filter: brightness(0.86) saturate(0.92); }
-    /* The words sit on a frosted panel, so the sun or the kite passing
-       behind them never costs a letter. */
+    /* The words sit on a frosted panel, so the leaves and the sun behind
+       them never cost a letter. */
     .scene .msg {
       position: absolute;
       top: 10%;
@@ -240,23 +241,38 @@
     .scene:not(.full) .msg { top: 10px; padding: 6px 12px; }
     .scene:not(.full) .msg h2 { font-size: 1.05rem; }
 
-    .scene .drift { animation: rt-drift linear infinite; }
-    @keyframes rt-drift { from { transform: translateX(-120px); } to { transform: translateX(520px); } }
-    .scene .twinkle { animation: rt-twinkle 3.2s ease-in-out infinite alternate; }
-    @keyframes rt-twinkle { from { opacity: 0.25; } to { opacity: 1; } }
-    .scene .kite { transform-box: fill-box; transform-origin: 50% 100%; animation: rt-kite 4.5s ease-in-out infinite alternate; }
-    @keyframes rt-kite { from { transform: rotate(-7deg) translateY(2px); } to { transform: rotate(6deg) translateY(-4px); } }
-    .scene .shoot { animation: rt-shoot 8s ease-in infinite; opacity: 0; }
-    @keyframes rt-shoot {
-      0%, 82% { transform: translate(0, 0); opacity: 0; }
-      84% { opacity: 1; }
-      100% { transform: translate(-140px, 70px); opacity: 0; }
+    /* The turning page folds over the spine (x 114 in the picture) from the
+       right-hand page onto the left. It is drawn exactly over the right page
+       and, flipped, exactly over the left, so it can vanish at the end of a
+       turn and reappear on the right without a visible jump. */
+    .scene .page {
+      transform-box: view-box;
+      transform-origin: 114px 136px;
+      animation: rt-page 9s ease-in-out infinite;
     }
-    .scene .glow { animation: rt-glow 5s ease-in-out infinite alternate; }
-    @keyframes rt-glow { from { opacity: 0.55; } to { opacity: 0.9; } }
+    @keyframes rt-page {
+      0%, 76% { transform: scaleX(1); opacity: 1; }
+      90%     { transform: scaleX(-1); opacity: 1; }
+      95%     { transform: scaleX(-1); opacity: 0; }
+      96%     { transform: scaleX(1); opacity: 0; }
+      100%    { transform: scaleX(1); opacity: 1; }
+    }
+    /* A leaf seesaws down from the canopy to the grass, then rests a while
+       before the next. */
+    .scene .leaf { opacity: 0; transform-box: fill-box; transform-origin: center; animation: rt-leaf 16s linear infinite; }
+    @keyframes rt-leaf {
+      0%       { transform: translate(0, 0) rotate(0deg); opacity: 0; }
+      3%       { opacity: 1; }
+      10%      { transform: translate(12px, 22px) rotate(50deg); }
+      18%      { transform: translate(-6px, 46px) rotate(-20deg); }
+      26%      { transform: translate(14px, 72px) rotate(60deg); }
+      34%      { transform: translate(-2px, 98px) rotate(-10deg); }
+      42%      { transform: translate(16px, 124px) rotate(40deg); }
+      48%      { transform: translate(8px, 144px) rotate(80deg); opacity: 1; }
+      52%, 100% { transform: translate(8px, 144px) rotate(80deg); opacity: 0; }
+    }
     @media (prefers-reduced-motion: reduce) {
       .scene * { animation: none !important; }
-      .scene .shoot { display: none; }
     }
 
     .toast {
@@ -1419,84 +1435,121 @@
       return 'night';
     }
 
-    var PALETTES = {
-      morning: { sky: ['#ffd8a8', '#a5d8ff'], sun: '#ffd43b', far: '#8ce99a', near: '#51cf66', cloud: '#fff', cloudOp: 0.9,
-                 wall: '#fff4e6', roof: '#e8590c', window: '#a5d8ff', trunk: '#8d5524', leaves: '#2f9e44' },
-      day:     { sky: ['#4dabf7', '#d0ebff'], sun: '#ffe066', far: '#69db7c', near: '#40c057', cloud: '#fff', cloudOp: 0.95,
-                 wall: '#fff4e6', roof: '#e8590c', window: '#a5d8ff', trunk: '#8d5524', leaves: '#2b8a3e' },
-      evening: { sky: ['#5f3dc4', '#ff922b'], sun: '#ff8787', far: '#7a9e7e', near: '#4f7a55', cloud: '#ffc9c9', cloudOp: 0.6,
-                 wall: '#e9d8c4', roof: '#a63d0f', window: '#ffe066', trunk: '#6b4226', leaves: '#2b5f3a' },
-      night:   { sky: ['#141833', '#38407a'], sun: '#f1f3f5', far: '#2b4a45', near: '#1e3532', cloud: '#c5cae9', cloudOp: 0.12,
-                 wall: '#5c5470', roof: '#4a2236', window: '#ffd43b', trunk: '#3d2a1c', leaves: '#173b2c' }
+    // The sky and light for each part of the day; the land keeps its greens
+    // and a wash over the whole picture brings the evening and the night in.
+    var SKIES = {
+      morning: { sky: ['#ffe3bf', '#bfe3ff'], sun: '#ffd43b', wash: 'rgba(255, 190, 120, 0.10)' },
+      day:     { sky: ['#74c0fc', '#d0ebff'], sun: '#ffe066', wash: '' },
+      evening: { sky: ['#9775fa', '#ffa94d'], sun: '#ff8787', wash: 'rgba(255, 120, 60, 0.16)' },
+      night:   { sky: ['#2a3170', '#4a5296'], sun: '#f1f3f5', wash: 'rgba(10, 14, 40, 0.50)' }
+    };
+    var LAND = {
+      hills: '#9cc3dd', meadow: '#94d26b', lawn: '#74c04a',
+      bark: '#6b4a35', barkDark: '#4e342e',
+      leaves: ['#3f9142', '#55a84f', '#7cc96a'],
+      skin: '#f1c27d', hair: '#212529', shirt: '#e03131', jeans: '#5b7db1', shoe: '#343a40',
+      cover: '#1c7ed6', paper: '#fffaf0', ink: '#ced4da'
     };
 
-    function cloud(x, y, s) {
-      return '<g transform="translate(' + x + ' ' + y + ') scale(' + s + ')">' +
-             '<circle cx="0" cy="0" r="12"/><circle cx="14" cy="-6" r="15"/><circle cx="30" cy="0" r="11"/>' +
-             '<rect x="0" y="-2" width="30" height="13" rx="6"/></g>';
+    // A round green tree on the hill, standing on (x, base).
+    function hillTree(x, base, s) {
+      var c = function (dx, dy, r, fill) {
+        return '<circle cx="' + (x + dx * s).toFixed(1) + '" cy="' + (base + dy * s).toFixed(1) + '" r="' + (r * s).toFixed(1) + '" fill="' + fill + '"/>';
+      };
+      return '<rect x="' + (x - 3 * s).toFixed(1) + '" y="' + (base - 26 * s).toFixed(1) + '" width="' + (6 * s).toFixed(1) +
+             '" height="' + (27 * s).toFixed(1) + '" fill="' + LAND.bark + '"/>' +
+             c(0, -38, 20, LAND.leaves[1]) + c(-16, -30, 15, LAND.leaves[0]) + c(16, -30, 16, LAND.leaves[0]) +
+             c(-8, -52, 14, LAND.leaves[1]) + c(10, -50, 14, LAND.leaves[1]) +
+             c(-6, -48, 7, LAND.leaves[2]) + c(4, -40, 6, LAND.leaves[2]);
     }
 
-    // kind: 'done' (every routine finished) or 'free' (nothing scheduled).
-    function sceneSvg(kind, part) {
-      var p = PALETTES[part];
-      var s = '<svg viewBox="0 0 400 200" preserveAspectRatio="xMidYMax slice" aria-hidden="true"><defs>' +
-        '<linearGradient id="rt-sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="' + p.sky[0] + '"/><stop offset="1" stop-color="' + p.sky[1] + '"/></linearGradient>' +
-        '<radialGradient id="rt-sun"><stop offset="0" stop-color="' + p.sun + '" stop-opacity="0.6"/><stop offset="1" stop-color="' + p.sun + '" stop-opacity="0"/></radialGradient>' +
-        '<radialGradient id="rt-lamp"><stop offset="0" stop-color="#ffd43b" stop-opacity="0.55"/><stop offset="1" stop-color="#ffd43b" stop-opacity="0"/></radialGradient>' +
-        '<linearGradient id="rt-trail" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fff" stop-opacity="1"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>' +
+    // The book's pages as polygons, and lines of print across a page.
+    // Right page: spine (114,124)-(114,148), outer edge at x 132; the left
+    // page is its mirror, which is what lets the turning page land on it.
+    var PAGE_R = '114,148 132,142 132,118 114,124';
+    var PAGE_L = '114,148 96,142 96,118 114,124';
+    function print(side) {
+      var out = '';
+      for (var k = 1; k <= 5; k += 1) {
+        var y0 = 126 + 3.6 * k, y1 = y0 - 4.7;
+        out += side > 0
+          ? '<line x1="116.5" y1="' + y0.toFixed(1) + '" x2="129.5" y2="' + y1.toFixed(1) + '"/>'
+          : '<line x1="111.5" y1="' + y0.toFixed(1) + '" x2="98.5" y2="' + y1.toFixed(1) + '"/>';
+      }
+      return '<g stroke="' + LAND.ink + '" stroke-width="0.8" stroke-linecap="round">' + out + '</g>';
+    }
+
+    function sceneSvg(part) {
+      var sky = SKIES[part];
+      var night = part === 'night';
+      // xMin: narrow tiles crop from the right, so the tree and the reader
+      // on the left always stay in the picture.
+      var s = '<svg viewBox="0 0 400 200" preserveAspectRatio="xMinYMax slice" aria-hidden="true"><defs>' +
+        '<linearGradient id="rt-sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="' + sky.sky[0] + '"/><stop offset="1" stop-color="' + sky.sky[1] + '"/></linearGradient>' +
+        '<radialGradient id="rt-sun"><stop offset="0" stop-color="' + sky.sun + '" stop-opacity="0.55"/><stop offset="1" stop-color="' + sky.sun + '" stop-opacity="0"/></radialGradient>' +
+        '<radialGradient id="rt-lamp"><stop offset="0" stop-color="#ffd43b" stop-opacity="0.5"/><stop offset="1" stop-color="#ffd43b" stop-opacity="0"/></radialGradient>' +
         '</defs><rect width="400" height="200" fill="url(#rt-sky)"/>';
 
-      // Sun, or the moon and stars.
-      if (part === 'night') {
-        [[30, 22], [72, 48], [118, 18], [160, 60], [205, 30], [248, 14], [270, 70], [352, 22], [382, 62], [20, 80], [95, 90], [228, 92], [140, 104], [340, 100]]
-          .forEach(function (st, i) {
-            s += '<circle class="twinkle" cx="' + st[0] + '" cy="' + st[1] + '" r="' + (i % 3 === 0 ? 1.5 : 1) + '" fill="#fff" style="animation-delay:-' + (i * 0.7).toFixed(1) + 's"/>';
-          });
-        s += '<circle cx="310" cy="52" r="34" fill="url(#rt-sun)"/>' +
-             '<circle cx="310" cy="52" r="14" fill="' + p.sun + '"/><circle cx="317" cy="46" r="12" fill="' + p.sky[0] + '"/>';
-        if (kind === 'done') {
-          s += '<g class="shoot"><line x1="330" y1="20" x2="370" y2="0" stroke="url(#rt-trail)" stroke-width="1.6" stroke-linecap="round"/><circle cx="330" cy="20" r="1.8" fill="#fff"/></g>';
-        }
-      } else {
-        var sun = { morning: [80, 128, 17], day: [310, 48, 18], evening: [330, 136, 21] }[part];
-        s += '<circle class="glow" cx="' + sun[0] + '" cy="' + sun[1] + '" r="' + (sun[2] * 3) + '" fill="url(#rt-sun)"/>' +
-             '<circle cx="' + sun[0] + '" cy="' + sun[1] + '" r="' + sun[2] + '" fill="' + p.sun + '"/>';
+      // The sun; at night the moon comes after the wash, below.
+      if (!night) {
+        var sun = { morning: [340, 104, 15], day: [345, 34, 16], evening: [372, 112, 19] }[part];
+        s += '<circle cx="' + sun[0] + '" cy="' + sun[1] + '" r="' + (sun[2] * 3) + '" fill="url(#rt-sun)"/>' +
+             '<circle cx="' + sun[0] + '" cy="' + sun[1] + '" r="' + sun[2] + '" fill="' + sky.sun + '"/>';
       }
 
-      // Clouds, drifting across at different speeds.
-      s += '<g fill="' + p.cloud + '" opacity="' + p.cloudOp + '">';
-      [[38, 0.9, 70, -10], [72, 0.6, 95, -55], [24, 0.5, 120, -80]].forEach(function (c) {
-        s += '<g class="drift" style="animation-duration:' + c[2] + 's;animation-delay:' + c[3] + 's">' + cloud(0, c[0], c[1]) + '</g>';
+      // Far hills, the meadow, and green trees across it.
+      s += '<path d="M0 128 Q40 112 85 124 T175 116 T265 122 T345 110 T400 118 V160 H0 Z" fill="' + LAND.hills + '"/>' +
+           '<path d="M0 150 Q120 128 260 136 T400 132 V200 H0 Z" fill="' + LAND.meadow + '"/>' +
+           hillTree(212, 140, 0.68) + hillTree(300, 138, 1.05) + hillTree(372, 141, 0.85) +
+           '<path d="M0 178 Q160 164 400 174 V200 H0 Z" fill="' + LAND.lawn + '"/>' +
+           '<ellipse cx="96" cy="188" rx="84" ry="7" fill="rgba(0,0,0,0.12)"/>';
+
+      // The big tree in front: its trunk down the left edge, roots out
+      // over the grass, and its leaves overhead.
+      s += '<path d="M-5 0 H52 C47 40 44 90 48 130 C51 152 58 166 78 178 C92 186 112 188 124 192 C100 194 80 192 66 188 C70 194 76 198 82 200 H-5 Z" fill="' + LAND.bark + '"/>' +
+           '<path d="M8 0 H20 C16 50 16 110 22 160 C24 176 30 190 34 200 H24 C18 186 12 170 10 150 C6 110 6 50 8 0 Z" fill="' + LAND.barkDark + '" opacity="0.55"/>' +
+           '<circle cx="10" cy="-6" r="48" fill="' + LAND.leaves[0] + '"/><circle cx="64" cy="-14" r="42" fill="' + LAND.leaves[0] + '"/>' +
+           '<circle cx="110" cy="-10" r="34" fill="' + LAND.leaves[1] + '"/><circle cx="146" cy="-22" r="30" fill="' + LAND.leaves[1] + '"/>' +
+           '<circle cx="40" cy="14" r="22" fill="' + LAND.leaves[1] + '"/><circle cx="92" cy="12" r="18" fill="' + LAND.leaves[2] + '" opacity="0.7"/>' +
+           '<circle cx="132" cy="2" r="12" fill="' + LAND.leaves[2] + '" opacity="0.6"/>';
+
+      // The reader, back to the trunk, legs out along the grass.
+      s += '<path d="M62 172 C80 168 98 166 112 166 C120 166 124 170 132 172 L162 174 C166 175 166 182 162 183 L128 182 C118 182 112 180 104 180 C90 181 76 184 62 186 Z" fill="' + LAND.jeans + '"/>' +
+           '<path d="M160 170 C166 168 172 172 172 178 L172 184 L160 184 Z" fill="' + LAND.shoe + '"/><rect x="160" y="182" width="12" height="2" fill="#f8f9fa"/>' +
+           '<path d="M50 132 C58 124 74 124 82 132 C88 146 88 162 84 176 L56 180 C52 166 48 148 50 132 Z" fill="' + LAND.shirt + '"/>' +
+           '<rect x="62" y="118" width="8" height="9" fill="' + LAND.skin + '"/>' +
+           '<circle cx="71" cy="111" r="11" fill="' + LAND.skin + '"/>' +
+           '<path d="M55 112 C54 100 62 96 70 97 C76 98 79 101 79 104 C73 104 70 108 68 114 C67 119 68 123 70 126 C62 126 56 120 55 112 Z" fill="' + LAND.hair + '"/>' +
+           // The book, open and held up; then the hands that hold it.
+           '<polygon points="114,150 134,143 134,116 114,122" fill="' + LAND.cover + '"/>' +
+           '<polygon points="114,150 94,143 94,116 114,122" fill="' + LAND.cover + '"/>' +
+           '<polygon points="' + PAGE_L + '" fill="' + LAND.paper + '"/>' + print(-1) +
+           '<polygon points="' + PAGE_R + '" fill="' + LAND.paper + '"/>' + print(1) +
+           '<g class="page"><polygon points="' + PAGE_R + '" fill="' + LAND.paper + '" stroke="#e9e1cf" stroke-width="0.5"/>' + print(1) + '</g>' +
+           '<path d="M78 136 Q86 158 101 148" fill="none" stroke="' + LAND.skin + '" stroke-width="7" stroke-linecap="round"/>' +
+           '<circle cx="102" cy="146" r="3.6" fill="' + LAND.skin + '"/><circle cx="127" cy="143" r="3.4" fill="' + LAND.skin + '"/>';
+
+      // Leaves that come down now and then, from the canopy overhead.
+      [[132, 26, -2], [88, 34, -10]].forEach(function (lf) {
+        s += '<g transform="translate(' + lf[0] + ' ' + lf[1] + ')"><path class="leaf" style="animation-delay:' + lf[2] + 's" ' +
+             'd="M0 0 C3 -4 9 -4 11 0 C9 4 3 4 0 0 Z" fill="' + LAND.leaves[1] + '"/></g>';
       });
-      s += '</g>';
 
-      // Birds on a free day, a kite when everything is done.
-      if (kind === 'free' && part !== 'night') {
-        s += '<g class="drift" style="animation-duration:48s;animation-delay:-20s" fill="none" stroke="#343a40" stroke-width="1.4" stroke-linecap="round" opacity="0.55">' +
-             '<path d="M0 70 q4 -4 8 0 q4 -4 8 0"/><path d="M22 62 q3 -3 6 0 q3 -3 6 0"/></g>';
-      }
-      if (kind === 'done' && part !== 'night') {
-        s += '<path d="M206 162 Q178 134 150 104" fill="none" stroke="#495057" stroke-width="0.8" opacity="0.6"/>' +
-             // The offset sits on a wrapper: the sway animation owns the
-             // kite group's own transform.
-             '<g transform="translate(18 26)"><g class="kite"><polygon points="132,58 146,76 132,98 118,76" fill="#ff6b6b"/>' +
-             '<polygon points="132,58 146,76 132,76" fill="#ffa8a8"/><polygon points="118,76 132,76 132,98" fill="#fa5252"/>' +
-             '<path d="M132 98 q-6 8 0 14 q6 6 0 14" fill="none" stroke="#495057" stroke-width="0.8"/>' +
-             '<polygon points="128,106 136,104 132,110" fill="#ffd43b"/><polygon points="128,120 136,118 132,124" fill="#74c0fc"/></g></g>';
-      }
+      if (sky.wash) s += '<rect width="400" height="200" fill="' + sky.wash + '"/>';
 
-      // Hills, the house and its tree.
-      s += '<path d="M0 150 Q90 105 190 140 T400 128 V200 H0 Z" fill="' + p.far + '"/>' +
-           '<circle cx="96" cy="124" r="9" fill="' + p.leaves + '" opacity="0.8"/><rect x="95" y="130" width="2" height="8" fill="' + p.trunk + '"/>' +
-           '<path d="M0 172 Q120 140 240 162 T400 160 V200 H0 Z" fill="' + p.near + '"/>';
-      if (part === 'evening' || part === 'night') s += '<circle class="glow" cx="262" cy="148" r="24" fill="url(#rt-lamp)"/>';
-      s += '<rect x="282" y="126" width="6" height="12" fill="' + p.roof + '"/>' +
-           '<rect x="246" y="140" width="40" height="26" fill="' + p.wall + '"/>' +
-           '<polygon points="240,141 266,120 292,141" fill="' + p.roof + '"/>' +
-           '<rect x="254" y="146" width="11" height="10" rx="1" fill="' + p.window + '"/>' +
-           '<rect x="271" y="150" width="9" height="16" rx="1" fill="' + p.roof + '"/>' +
-           '<rect x="318" y="140" width="4" height="22" fill="' + p.trunk + '"/>' +
-           '<circle cx="320" cy="130" r="15" fill="' + p.leaves + '"/><circle cx="310" cy="138" r="9" fill="' + p.leaves + '"/><circle cx="331" cy="138" r="10" fill="' + p.leaves + '"/>';
+      // At night: the moon and a few stars over the open sky, and a lantern
+      // by the reader. Drawn over the wash so they keep their light.
+      if (night) {
+        [[190, 20], [228, 46], [262, 14], [300, 30], [384, 26], [244, 76], [205, 64], [376, 70]].forEach(function (st, i) {
+          s += '<circle cx="' + st[0] + '" cy="' + st[1] + '" r="' + (i % 3 === 0 ? 1.4 : 0.9) + '" fill="#fff" opacity="0.85"/>';
+        });
+        s += '<circle cx="338" cy="44" r="30" fill="url(#rt-sun)"/>' +
+             '<circle cx="338" cy="44" r="13" fill="' + sky.sun + '"/><circle cx="344" cy="39" r="11" fill="#2f3778"/>' +
+             '<circle cx="184" cy="176" r="34" fill="url(#rt-lamp)"/>' +
+             '<rect x="179" y="170" width="10" height="13" rx="2" fill="#ffe066"/>' +
+             '<rect x="178" y="168" width="12" height="3" rx="1" fill="#343a40"/><rect x="178" y="182" width="12" height="3" rx="1" fill="#343a40"/>' +
+             '<path d="M181 168 Q184 162 187 168" fill="none" stroke="#343a40" stroke-width="1"/>';
+      }
       return s + '</svg>';
     }
 
@@ -1522,7 +1575,7 @@
       }
       var key = [kind, part, full ? 'full' : 'top', title, line].join('|');
       var html = '<div class="scene ' + part + (full ? ' full' : '') + '" data-key="' + esc(key) + '">' +
-                 sceneSvg(kind, part) +
+                 sceneSvg(part) +
                  '<div class="msg"><h2>' + esc(title) + '</h2><p>' + esc(line) + '</p></div></div>';
       return { key: key, html: html };
     }
