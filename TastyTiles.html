@@ -38,7 +38,7 @@
 
     body {
       background: transparent !important;
-      font-family: 'Inter', sans-serif;
+      font-family: var(--hg-font-body, 'Inter', sans-serif);
       margin: 0;
       padding: 0.75rem;
       box-sizing: border-box;
@@ -86,16 +86,20 @@
     }
 
     .custom-button {
-      /* Secondary to accent, the two interface colors the household picks;
-         the dashboard passes them in, the fallbacks are the stylesheet's. */
-      background: linear-gradient(45deg, var(--secondary, #38bdf8), var(--accent, #757575)) !important;
-      color: var(--text, #333) !important;
+      /* The theme's button roles. The fallbacks are the look these buttons
+         had before themes, a blend of the two interface colors the
+         household picks, for a dashboard too old to send the roles. */
+      background: var(--hg-button-bg, linear-gradient(45deg, var(--secondary, #38bdf8), var(--accent, #757575))) !important;
+      color: var(--hg-button-text, var(--text, #333)) !important;
       border: none;
-      border-radius: 8px;
+      border-radius: var(--hg-button-radius, 8px);
       padding: 6px 12px;
       cursor: pointer;
+      font-family: var(--hg-font-heading, inherit);
       font-size: 0.75rem;
-      font-weight: 600;
+      font-weight: var(--hg-button-weight, 600);
+      text-transform: var(--hg-heading-transform, none);
+      letter-spacing: var(--hg-heading-letter-spacing, normal);
       transition: all 0.3s ease;
     }
 
@@ -164,8 +168,10 @@
 
     .small-button {
       background: none !important;
-      border: 1px solid rgba(128, 128, 128, 0.3);
-      border-radius: 4px;
+      /* A quiet button: half the main button's rounding, so a theme's pills
+         make these round. */
+      border: 1px solid var(--hg-button-quiet-border, rgba(128, 128, 128, 0.3));
+      border-radius: calc(var(--hg-button-radius, 8px) / 2);
       padding: 2px 6px;
       cursor: pointer;
       font-size: 0.7rem;

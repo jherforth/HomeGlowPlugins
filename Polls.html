@@ -31,7 +31,7 @@
 
     body {
       background: transparent !important;
-      font-family: 'Inter', sans-serif;
+      font-family: var(--hg-font-body, 'Inter', sans-serif);
       margin: 0;
       padding: 0.75rem;
       box-sizing: border-box;
@@ -207,10 +207,10 @@
     }
 
     .remove-option-btn {
-      background: var(--error, #ef4444) !important;
+      background: var(--hg-error, var(--error, #ef4444)) !important;
       color: #fff !important;
       border: none;
-      border-radius: 4px;
+      border-radius: calc(var(--hg-button-radius, 8px) / 2);
       padding: 0.5rem;
       cursor: pointer;
       font-size: 0.7rem;
@@ -218,16 +218,20 @@
     }
 
     .custom-button {
-      /* Secondary to accent, the two interface colors the household picks;
-         the dashboard passes them in, the fallbacks are the stylesheet's. */
-      background: linear-gradient(45deg, var(--secondary, #38bdf8), var(--accent, #757575)) !important;
-      color: var(--text, #333) !important;
+      /* The theme's button roles. The fallbacks are the look these buttons
+         had before themes, a blend of the two interface colors the
+         household picks, for a dashboard too old to send the roles. */
+      background: var(--hg-button-bg, linear-gradient(45deg, var(--secondary, #38bdf8), var(--accent, #757575))) !important;
+      color: var(--hg-button-text, var(--text, #333)) !important;
       border: none;
-      border-radius: 8px;
+      border-radius: var(--hg-button-radius, 8px);
       padding: 8px 16px;
       cursor: pointer;
+      font-family: var(--hg-font-heading, inherit);
       font-size: 0.8rem;
-      font-weight: 600;
+      font-weight: var(--hg-button-weight, 600);
+      text-transform: var(--hg-heading-transform, none);
+      letter-spacing: var(--hg-heading-letter-spacing, normal);
       transition: all 0.3s ease;
       margin: 0.25rem;
     }
@@ -343,8 +347,8 @@
 
     .error-message {
       background: rgba(239, 68, 68, 0.1) !important;
-      border: 1px solid var(--error, #ef4444);
-      color: var(--error, #ef4444);
+      border: 1px solid var(--hg-error, var(--error, #ef4444));
+      color: var(--hg-error, var(--error, #ef4444));
       padding: 0.5rem;
       border-radius: 4px;
       margin-bottom: 1rem;
@@ -1130,7 +1134,7 @@
               Total votes: ${total} | Created by: ${escapeHtml(poll.createdBy)} | ${new Date(poll.createdAt).toLocaleDateString()}
               ${HIDE_MANAGE_POLLS ? '' : `
               <button type="button" class="custom-button" onclick="editPoll('${pollId}')" style="margin-left: 1rem; font-size: 0.7rem; padding: 4px 8px;">Edit</button>
-              <button type="button" class="custom-button" onclick="deletePoll('${pollId}')" style="margin-left: 0.5rem; font-size: 0.7rem; padding: 4px 8px;${armed ? ' background: var(--error, #ef4444) !important;' : ''}">${armed ? 'Confirm delete' : 'Delete'}</button>`}
+              <button type="button" class="custom-button" onclick="deletePoll('${pollId}')" style="margin-left: 0.5rem; font-size: 0.7rem; padding: 4px 8px;${armed ? ' background: var(--hg-error, var(--error, #ef4444)) !important;' : ''}">${armed ? 'Confirm delete' : 'Delete'}</button>`}
 
             </div>
           </div>
