@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Sports Scores</title>
+  <script type="application/json" id="homeglow-manifest">
+  {
+    "manifestVersion": 1,
+    "id": "sports-scores",
+    "name": "Sports Scores",
+    "author": "HomeGlow",
+    "description": "Scores and schedules for the leagues you pick: NFL, college football, NBA, MLB, NHL, MLS and the Premier League, from TheSportsDB. A free key is built in; you can add your own. Checks every few minutes while a game is on, and about once an hour otherwise.",
+    "category": "news-weather",
+    "version": "1.1.0",
+    "apiVersion": "v1",
+    "settings": [
+      { "key": "apiKey", "label": "TheSportsDB API key (3 is the free public key)", "type": "string", "default": "3", "scope": "household" },
+      { "key": "showNfl", "label": "NFL", "type": "boolean", "default": true, "scope": "household" },
+      { "key": "showCollegeFootball", "label": "College football", "type": "boolean", "default": false, "scope": "household" },
+      { "key": "showNba", "label": "NBA", "type": "boolean", "default": true, "scope": "household" },
+      { "key": "showMlb", "label": "MLB", "type": "boolean", "default": true, "scope": "household" },
+      { "key": "showNhl", "label": "NHL", "type": "boolean", "default": true, "scope": "household" },
+      { "key": "showMls", "label": "MLS", "type": "boolean", "default": false, "scope": "household" },
+      { "key": "showPremierLeague", "label": "Premier League", "type": "boolean", "default": false, "scope": "household" },
+      { "key": "gamesPerLeague", "label": "Games shown per league", "type": "number", "default": 4, "min": 1, "max": 10, "scope": "household" },
+      { "key": "liveMinutes", "label": "Refresh minutes while a game is on", "type": "number", "default": 5, "min": 2, "max": 30, "scope": "household" }
+    ]
+  }
+  </script>
+  <link rel="stylesheet" href="/index.css">
+  <style>
+    * {
+      background: transparent !important;
+      background-color: transparent !important;
+      background-image: none !important;
+    }
+
+    body {
+      font-family: var(--hg-font-body, 'Inter', sans-serif);
+      font-size: 0.85rem;
+      color: var(--text, #333);
+      margin: 0;
+      padding: 0.75rem;
+      box-sizing: border-box;
+    }
+
+    [data-theme="dark"] body {
+      color: var(--text, #e6e6f0);
+    }
+
+    .scores {
+      max-height: calc(100vh - 2.5rem);
+      overflow-y: auto;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .scores-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin: 0 0 0.5rem;
+      font-family: var(--hg-font-heading, inherit);
+      font-size: 1rem;
+      font-weight: 700;
+      text-transform: var(--hg-heading-transform, none);
+      letter-spacing: var(--hg-heading-letter-spacing, normal);
+    }
+
+    .live-badge {
+      display: none;
+      align-items: center;
+      gap: 0.3rem;
+      font-size: 0.7rem;
+      font-weight: 600;
+      color: var(--success, #10b981);
+    }
+
+    .live-badge.on {
+      display: inline-flex;
+    }
+
+    .live-badge::before {
+      content: '';
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+
+    .league {
+      margin-bottom: 0.6rem;
+    }
+
+    .league-name {
+      margin: 0 0 0.2rem;
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--text-secondary, #666);
+    }
+
+    .game {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.6rem;
+      padding: 0.3rem 0;
+    }
+
+    .game + .game {
+      border-top: 1px solid var(--border, rgba(128, 128, 128, 0.25));
+    }
+
+    .teams {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    .team {
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+    }
+
+    .team.loser {
+      opacity: 0.6;
+    }
+
+    .team img {
+      width: 18px;
+      height: 18px;
+      object-fit: contain;
+      flex: none;
+    }
+
+    .team .name {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-weight: 600;
+    }
+
+    .team .score {
+      min-width: 2ch;
+      text-align: right;
+      font-weight: 700;
+    }
+
+    .status {
+      min-width: 6.5rem;
+      text-align: right;
+      font-size: 0.75rem;
+      color: var(--text-secondary, #666);
+      white-space: nowrap;
+    }
+
+    .status.live {
+      color: var(--success, #10b981);
+      font-weight: 600;
+    }
+
+    .note {
+      margin: 0.2rem 0;
+      font-size: 0.8rem;
+      color: var(--text-secondary, #666);
+    }
+
+    .stamp {
+      margin: 0.5rem 0 0;
+      text-align: right;
+      font-size: 0.7rem;
+      color: var(--text-secondary, #666);
+    }
+  </style>
+</head>
+<body>
+  <div class="scores" id="scores">
+    <div class="scores-title">
+      <span>Scores</span>
+      <span class="live-badge" id="live">Live</span>
+    </div>
+    <p class="note">Loading scores…</p>
+  </div>
+  <p class="stamp" id="stamp"></p>
+
+  <script src="/plugin-sdk/v1.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function () {
+      var theme = new URLSearchParams(window.location.search).get('theme');
+      if (theme === 'dark' || theme === 'light') {
+        document.documentElement.setAttribute('data-theme', theme);
+      }
+    });
+
+    (function () {
+      'use strict';
+
+      // TheSportsDB: free, no sign-up needed for the public key "3", and it
+      // allows cross-origin reads. Each check makes one livescore request,
+      // which covers every sport at once. The full schedule and results are
+      // fetched per league at most once an hour, or when a live game ends.
+      var API = 'https://www.thesportsdb.com/api/v1/json/';
+      var FULL_MS = 60 * 60 * 1000;
+      var IDLE_MS = 30 * 60 * 1000;
+      var SOON_MS = 30 * 60 * 1000;
+      var MAX_WAIT_MS = 60 * 60 * 1000;
+
+      var LEAGUES = [
+        { id: '4391', name: 'NFL', setting: 'showNfl' },
+        { id: '4479', name: 'College football', setting: 'showCollegeFootball' },
+        { id: '4387', name: 'NBA', setting: 'showNba' },
+        { id: '4424', name: 'MLB', setting: 'showMlb' },
+        { id: '4380', name: 'NHL', setting: 'showNhl' },
+        { id: '4346', name: 'MLS', setting: 'showMls' },
+        { id: '4328', name: 'Premier League', setting: 'showPremierLeague' }
+      ];
+
+      var DEFAULTS = {
+        apiKey: '3',
+        showNfl: true, showCollegeFootball: false, showNba: true, showMlb: true,
+        showNhl: true, showMls: false, showPremierLeague: false,
+        gamesPerLeague: 4, liveMinutes: 5
+      };
+
+      var LIVE_LABEL = {
+        P1: '1st period', P2: '2nd period', P3: '3rd period', OT: 'Overtime',
+        Q1: 'Q1', Q2: 'Q2', Q3: 'Q3', Q4: 'Q4',
+        '1H': '1st half', '2H': '2nd half', HT: 'Halftime', ET: 'Extra time'
+      };
+      var FINAL = { FT: true, AP: true, AET: true, PEN: true, AOT: true };
+      var NOT_STARTED = { NS: true, '': true, TBD: true };
+
+      var root = document.getElementById('scores');
+      var badge = document.getElementById('live');
+      var stamp = document.getElementById('stamp');
+
+      var settings = DEFAULTS;
+      var full = {};        // league id -> { games, error }
+      var liveRows = {};    // idEvent -> livescore row, for enabled leagues
+      var lastFull = 0;
+      var needFull = true;
+      var liveError = false;
+      var timer = null;
+      var inFlight = false;
+      var failures = 0;
+      var checkedAt = 0;
+      var live = false;
+      var soon = false;
+
+      function el(tag, className, text) {
+        var node = document.createElement(tag);
+        if (className) node.className = className;
+        if (text !== undefined) node.textContent = text;
+        return node;
+      }
+
+      function note(text) {
+        return el('p', 'note', text);
+      }
+
+      function clamp(value, low, high, fallback) {
+        var n = Number(value);
+        if (!isFinite(n)) return fallback;
+        return Math.min(high, Math.max(low, n));
+      }
+
+      function loadSettings() {
+        var sdk = window.HomeGlow;
+        if (!sdk || !sdk.pluginId) return Promise.resolve(DEFAULTS);
+        return sdk.settings.get().then(function (values) {
+          var merged = Object.assign({}, DEFAULTS, values || {});
+          // Keys go into the URL, so only accept the characters a key uses.
+          if (!/^[A-Za-z0-9]{1,32}$/.test(String(merged.apiKey))) merged.apiKey = DEFAULTS.apiKey;
+          merged.gamesPerLeague = clamp(merged.gamesPerLeague, 1, 10, DEFAULTS.gamesPerLeague);
+          merged.liveMinutes = clamp(merged.liveMinutes, 2, 30, DEFAULTS.liveMinutes);
+          return merged;
+        }, function () {
+          return DEFAULTS;
+        });
+      }
+
+      function getJson(path) {
+        return fetch(API + settings.apiKey + '/' + path).then(function (response) {
+          if (!response.ok) throw new Error('HTTP ' + response.status);
+          return response.json();
+        });
+      }
+
+      // TheSportsDB sends times as UTC without a zone marker.
+      function utc(stamp) {
+        return Date.parse(String(stamp || '').replace(' ', 'T') + 'Z');
+      }
+
+      function toGame(event) {
+        return {
+          id: event.idEvent,
+          leagueId: event.idLeague,
+          date: utc(event.strTimestamp),
+          status: event.strStatus || '',
+          progress: event.strProgress || '',
+          home: side(event.strHomeTeam, event.strHomeTeamBadge, event.intHomeScore),
+          away: side(event.strAwayTeam, event.strAwayTeamBadge, event.intAwayScore),
+          state: 'pre'
+        };
+      }
+
+      function side(name, badgeUrl, score) {
+        return {
+          name: name || 'TBD',
+          badge: badgeUrl || '',
+          score: score === null || score === undefined ? '' : String(score),
+          winner: false
+        };
+      }
+
+      function fetchLeague(league) {
+        return Promise.all([
+          getJson('eventspastleague.php?id=' + league.id),
+          getJson('eventsnextleague.php?id=' + league.id)
+        ]).then(function (lists) {
+          var events = [].concat(lists[0].events || [], lists[1].events || []);
+          var seen = {};
+          var games = [];
+          events.forEach(function (event) {
+            if (seen[event.idEvent]) return;
+            seen[event.idEvent] = true;
+            games.push(toGame(event));
+          });
+          return games;
+        });
+      }
+
+      function fetchLive() {
+        return getJson('livescore.php').then(function (json) {
+          var rows = {};
+          var wanted = enabledLeagues();
+          (json.livescore || []).forEach(function (row) {
+            // The feed also lists games that have not started and some that
+            // have finished; only an in-progress status counts as live.
+            if (wanted[row.idLeague] && LIVE_LABEL[row.strStatus]) rows[row.idEvent] = row;
+          });
+          return rows;
+        });
+      }
+
+      function enabledLeagues() {
+        var map = {};
+        LEAGUES.forEach(function (league) {
+          if (settings[league.setting]) map[league.id] = league;
+        });
+        return map;
+      }
+
+      function refreshFull(enabled) {
+        return Promise.all(enabled.map(function (league) {
+          return fetchLeague(league).then(function (games) {
+            full[league.id] = { games: games, error: false };
+          }, function () {
+            var before = full[league.id] || { games: [] };
+            full[league.id] = { games: before.games, error: true };
+          });
+        })).then(function () {
+          lastFull = Date.now();
+          needFull = false;
+        });
+      }
+
+      function statusLabel(code, progress) {
+        if (LIVE_LABEL[code]) {
+          // Soccer halves carry a minute; show it.
+          var minute = (code === '1H' || code === '2H') && progress ? ' ' + progress + '’' : '';
+          return LIVE_LABEL[code] + minute;
+        }
+        return code || 'Live';
+      }
+
+      // Merge the schedule with the live feed. A game counts as live when the
+      // livescore feed lists it; the live row supplies its score and clock.
+      function merge(enabled) {
+        var byId = {};
+        enabled.forEach(function (league) {
+          var result = full[league.id];
+          if (!result) return;
+          result.games.forEach(function (game) { byId[game.id] = game; });
+        });
+        Object.keys(liveRows).forEach(function (id) {
+          var row = liveRows[id];
+          var game = byId[id] || toGame(row);
+          game.state = 'in';
+          game.status = row.strStatus || '';
+          game.progress = row.strProgress || '';
+          game.home.score = row.intHomeScore === null || row.intHomeScore === undefined ? '' : String(row.intHomeScore);
+          game.away.score = row.intAwayScore === null || row.intAwayScore === undefined ? '' : String(row.intAwayScore);
+          byId[id] = game;
+        });
+        Object.keys(byId).forEach(function (id) {
+          var game = byId[id];
+          if (game.state === 'in') return;
+          game.state = NOT_STARTED[game.status] ? 'pre' : 'post';
+        });
+        return byId;
+      }
+
+      function ordered(games) {
+        var rank = { in: 0, pre: 1, post: 2 };
+        return games.slice().sort(function (a, b) {
+          if (rank[a.state] !== rank[b.state]) return rank[a.state] - rank[b.state];
+          return a.state === 'post' ? b.date - a.date : a.date - b.date;
+        });
+      }
+
+      function statusText(game) {
+        var time = function (d) { return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); };
+        if (game.state === 'in') return statusLabel(game.status, game.progress);
+        if (game.state === 'pre') {
+          var when = new Date(game.date);
+          if (when.toDateString() === new Date().toDateString()) return time(when);
+          return when.toLocaleDateString([], { weekday: 'short' }) + ' ' + time(when);
+        }
+        var labels = { PST: 'Postponed', CANC: 'Cancelled', ABD: 'Abandoned' };
+        if (labels[game.status]) return labels[game.status];
+        var finals = { AET: 'Final (OT)', AOT: 'Final (OT)', AP: 'Final (SO)', PEN: 'Final (pens)' };
+        return finals[game.status] || 'Final';
+      }
+
+      function teamLine(team, done, started) {
+        var line = el('div', 'team' + (done && !team.winner ? ' loser' : ''));
+        if (team.badge) {
+          var img = el('img');
+          img.src = team.badge;
+          img.alt = '';
+          img.loading = 'lazy';
+          line.appendChild(img);
+        }
+        line.appendChild(el('span', 'name', team.name));
+        line.appendChild(el('span', 'score', started ? team.score : ''));
+        return line;
+      }
+
+      function gameRow(game) {
+        var done = game.state === 'post';
+        var started = game.state !== 'pre';
+        // A final shows the higher score as the winner.
+        if (done && game.home.score !== '' && game.away.score !== '') {
+          var h = Number(game.home.score);
+          var a = Number(game.away.score);
+          game.home.winner = h > a;
+          game.away.winner = a > h;
+        }
+        var row = el('div', 'game');
+        var teams = el('div', 'teams');
+        teams.appendChild(teamLine(game.away, done, started));
+        teams.appendChild(teamLine(game.home, done, started));
+        row.appendChild(teams);
+        row.appendChild(el('div', 'status' + (game.state === 'in' ? ' live' : ''), statusText(game)));
+        return row;
+      }
+
+      function render(enabled, games) {
+        root.textContent = '';
+        var title = el('div', 'scores-title');
+        title.appendChild(el('span', null, 'Scores'));
+        badge.classList.toggle('on', live);
+        title.appendChild(badge);
+        root.appendChild(title);
+
+        if (!enabled.length) {
+          root.appendChild(note('No leagues are turned on. Choose them under Plugin Options.'));
+          return;
+        }
+
+        enabled.forEach(function (league) {
+          var result = full[league.id] || { games: [] };
+          var mine = games.filter(function (g) { return g.leagueId === league.id; });
+          var section = el('section', 'league');
+          section.appendChild(el('h2', 'league-name', league.name));
+          if (!mine.length) {
+            section.appendChild(note(result.error ? 'Could not load scores. Trying again soon.' : 'No games on the schedule.'));
+          } else {
+            ordered(mine).slice(0, settings.gamesPerLeague).forEach(function (game) {
+              section.appendChild(gameRow(game));
+            });
+            if (result.error) section.appendChild(note('Could not refresh. Showing the last scores.'));
+          }
+          root.appendChild(section);
+        });
+
+        stamp.textContent = checkedAt
+          ? 'Updated ' + new Date(checkedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+          : '';
+      }
+
+      function schedule() {
+        var wait = live || soon ? settings.liveMinutes * 60 * 1000 : IDLE_MS;
+        // Back off while every request fails: 2x, 4x, ... up to an hour.
+        if (failures) wait = Math.min(wait * Math.pow(2, failures), MAX_WAIT_MS);
+        clearTimeout(timer);
+        timer = setTimeout(refresh, wait);
+      }
+
+      function refresh() {
+        clearTimeout(timer);
+        // A hidden page waits for the visibility handler below.
+        if (document.hidden || inFlight) return;
+        inFlight = true;
+
+        loadSettings().then(function (values) {
+          settings = values;
+          var enabled = LEAGUES.filter(function (league) { return settings[league.setting]; });
+          var previouslyLive = Object.keys(liveRows);
+          return fetchLive().then(function (rows) {
+            // A game that was live and has left the live feed has finished:
+            // fetch its final result in this same check.
+            previouslyLive.forEach(function (id) {
+              if (!rows[id]) needFull = true;
+            });
+            liveRows = rows;
+            liveError = false;
+          }, function () {
+            liveError = true;
+          }).then(function () {
+            if (!enabled.length || (!needFull && Date.now() - lastFull < FULL_MS)) return enabled;
+            return refreshFull(enabled).then(function () { return enabled; });
+          });
+        }).then(function (enabled) {
+          checkedAt = Date.now();
+          var failed = 0;
+          enabled.forEach(function (league) {
+            if (full[league.id] && full[league.id].error) failed += 1;
+          });
+          var allFailed = (enabled.length && failed === enabled.length) && liveError;
+          failures = allFailed ? failures + 1 : 0;
+
+          var byId = merge(enabled);
+          var games = Object.keys(byId).map(function (id) { return byId[id]; });
+          live = games.some(function (g) { return g.state === 'in'; });
+          soon = games.some(function (g) {
+            return g.state === 'pre' && g.date > checkedAt && g.date - checkedAt < SOON_MS;
+          });
+          render(enabled, games);
+        }).catch(function () {
+          failures += 1;
+        }).then(function () {
+          inFlight = false;
+          schedule();
+        });
+      }
+
+      document.addEventListener('visibilitychange', function () {
+        if (!document.hidden && Date.now() - checkedAt > 60 * 1000) refresh();
+      });
+
+      refresh();
+    })();
+  </script>
+</body>
+</html>
