@@ -11,7 +11,7 @@
     "manifestVersion": 1,
     "id": "music",
     "name": "Music",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "description": "What's playing on your Home Assistant speakers, with the cover large: play, pause, skip, shuffle, seek and volume, and each speaker's own library to browse and search. Brings your Jellyfin library too, played on any speaker.",
     "category": "household",
     "author": "HomeGlow",
@@ -20,7 +20,7 @@
     "events": ["ha.state"],
     "homeAssistant": { "domains": ["media_player"], "playUrlsFrom": "jellyfinUrl" },
     "settings": [
-      { "key": "speakers", "label": "Speakers to offer (entity ids, comma-separated; blank = every speaker)", "type": "string", "default": "" },
+      { "key": "speakers", "label": "Speakers to offer (entity ids, comma-separated; blank = every speaker). Also chosen from the widget: Speakers, then Edit.", "type": "string", "default": "" },
       { "key": "speaker", "label": "This display's speaker (entity id; blank = the first)", "type": "string", "default": "", "scope": "device" },
       { "key": "jellyfinUrl", "label": "Jellyfin address, to play your Jellyfin library (optional, e.g. http://192.168.1.20:8096)", "type": "string", "default": "" }
     ],
@@ -172,6 +172,14 @@
     .go svg { width: 50%; height: 50%; fill: currentColor; }
     .go.play { appearance: none; border: 0; cursor: pointer; background: var(--on-bg); color: var(--on-ink); }
     .go.play:focus-visible { outline: 3px solid var(--acc); outline-offset: 2px; }
+    .go.grp { appearance: none; border: 0; cursor: pointer; background: var(--tile-bg); color: var(--ink); }
+    .go.grp.on { background: var(--on-bg); color: var(--on-ink); }
+    .go.grp.busy { opacity: 0.45; cursor: progress; }
+    .go.grp:focus-visible { outline: 3px solid var(--acc); outline-offset: 2px; }
+    label.item { cursor: pointer; }
+    label.item input { width: 22px; height: 22px; margin: 0 6px; flex: none; accent-color: var(--acc); cursor: pointer; }
+    .hintline { margin: 0 2px; font-size: 0.82rem; color: var(--ink-2); line-height: 1.35; }
+    .foot { display: flex; gap: 8px; justify-content: flex-end; }
     .search { display: flex; gap: 6px; }
     input.text { flex: 1; min-width: 0; min-height: 44px; padding: 0 12px; border-radius: 10px; font: inherit; font-size: 1rem;
       border: 1px solid color-mix(in srgb, var(--ink) 22%, transparent); background: var(--background, #fff); color: var(--ink); -webkit-user-select: text; user-select: text; }
@@ -218,6 +226,10 @@
       jfUser: 'User name', jfPassword: 'Password', jfSignInButton: 'Sign in', jfSignedInAs: 'Signed in as {name}', jfSignOut: 'Sign out',
       jfWrong: 'Jellyfin didn\'t accept that user name and password.', jfUnreachable: 'Can\'t reach Jellyfin at {url}. Check the address in this plugin\'s settings.',
       jfRecent: 'Recently added', jfAlbums: 'Albums', jfArtists: 'Artists', jfPlaylists: 'Playlists', jfSongs: 'Songs',
+      edit: 'Edit', save: 'Save', cancel: 'Cancel', toOffer: 'Speakers to offer', needOne: 'Pick at least one speaker.',
+      editHint: 'Tick the speakers this widget offers. It\'s the same list on every display.',
+      groupHint: 'Tap + to play the same music on more speakers, in step with {name}.',
+      groupWith: 'Play on {name} too', groupLeave: 'Stop playing on {name}', withMore: '{name} + {n}', playingWith: '{name}, playing with {others}',
       kind_playlist: 'Playlist', kind_album: 'Album', kind_artist: 'Artist', kind_track: 'Song', kind_music: 'Music', kind_directory: 'Folder', kind_podcast: 'Podcast', kind_channel: 'Station'
     },
     es: {
@@ -235,6 +247,10 @@
       jfUser: 'Usuario', jfPassword: 'Contraseña', jfSignInButton: 'Entrar', jfSignedInAs: 'Sesión de {name}', jfSignOut: 'Cerrar sesión',
       jfWrong: 'Jellyfin no aceptó ese usuario y contraseña.', jfUnreachable: 'No se puede contactar con Jellyfin en {url}. Revisa la dirección en los ajustes del complemento.',
       jfRecent: 'Añadido recientemente', jfAlbums: 'Álbumes', jfArtists: 'Artistas', jfPlaylists: 'Listas', jfSongs: 'Canciones',
+      edit: 'Editar', save: 'Guardar', cancel: 'Cancelar', toOffer: 'Altavoces disponibles', needOne: 'Elige al menos un altavoz.',
+      editHint: 'Marca los altavoces que ofrece este widget. La lista es la misma en todas las pantallas.',
+      groupHint: 'Toca + para poner la misma música en más altavoces, a la vez que {name}.',
+      groupWith: 'Reproducir también en {name}', groupLeave: 'Dejar de reproducir en {name}', withMore: '{name} + {n}', playingWith: '{name}, junto con {others}',
       kind_playlist: 'Lista', kind_album: 'Álbum', kind_artist: 'Artista', kind_track: 'Canción', kind_music: 'Música', kind_directory: 'Carpeta', kind_podcast: 'Pódcast', kind_channel: 'Emisora'
     }
   };
@@ -250,7 +266,9 @@
     library: '<path d="M3 5h12v2H3zM3 10h12v2H3zM3 15h8v2H3zM17 5h4.5v2.2H19v9.3a3 3 0 1 1-2-2.83z"/>',
     open: '<path d="M9 5.5L15.5 12 9 18.5 7.6 17.1l5.1-5.1-5.1-5.1z"/>',
     back: '<path d="M15 5.5L8.5 12l6.5 6.5 1.4-1.4L11.3 12l5.1-5.1z"/>',
-    close: '<path d="M6.4 5L12 10.6 17.6 5 19 6.4 13.4 12l5.6 5.6-1.4 1.4-5.6-5.6L6.4 19 5 17.6 10.6 12 5 6.4z"/>'
+    close: '<path d="M6.4 5L12 10.6 17.6 5 19 6.4 13.4 12l5.6 5.6-1.4 1.4-5.6-5.6L6.4 19 5 17.6 10.6 12 5 6.4z"/>',
+    plus: '<path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6z"/>',
+    check: '<path d="M9.5 16.2L5.3 12l-1.4 1.4 5.6 5.6L20.1 8.4 18.7 7z"/>'
   };
   var STROKES = {
     music: '<path d="M9 18V5l11-2v13"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="17.5" cy="16" r="2.5"/>',
@@ -267,7 +285,7 @@
   };
 
   // MediaPlayerEntityFeature bits.
-  var F = { PAUSE: 1, SEEK: 2, VOLUME_SET: 4, PREVIOUS: 16, NEXT: 32, PLAY_MEDIA: 512, PLAY: 16384, SHUFFLE: 32768, BROWSE: 131072, ENQUEUE: 2097152, SEARCH: 4194304 };
+  var F = { PAUSE: 1, SEEK: 2, VOLUME_SET: 4, PREVIOUS: 16, NEXT: 32, PLAY_MEDIA: 512, PLAY: 16384, SHUFFLE: 32768, BROWSE: 131072, GROUPING: 524288, ENQUEUE: 2097152, SEARCH: 4194304 };
   var has = function (st, bit) { return ((Number(st && st.attributes && st.attributes.supported_features) || 0) & bit) === bit; };
 
   // --- State ------------------------------------------------------------------
@@ -295,6 +313,19 @@
   };
   var canOperate = function () { return !viewOnlyDisplay && control.indexOf(current) !== -1 && players[current] && players[current].state !== 'unavailable'; };
   var nameOf = function (id) { var s = players[id]; return (s && s.attributes && s.attributes.friendly_name) || id; };
+
+  // A speaker's group, the leader first; a speaker alone is a group of one.
+  var groupOf = function (id) {
+    var members = players[id] && players[id].attributes && players[id].attributes.group_members;
+    return Array.isArray(members) && members.length > 1 && members.indexOf(id) !== -1 ? members : [id];
+  };
+  // Home Assistant lists group_members for every speaker that can be
+  // grouped; a HomeGlow too old to group speakers doesn't pass it on.
+  var canGroup = function (id) {
+    return !viewOnlyDisplay && control.indexOf(id) !== -1 && players[id] && players[id].state !== 'unavailable'
+      && has(players[id], F.GROUPING) && Array.isArray(players[id].attributes.group_members);
+  };
+  var refreshSheet = null; // redraws the open speaker list after a poll
 
   function offered() {
     var wanted = String(settings.speakers || '').split(',').map(function (s) { return s.trim(); }).filter(Boolean);
@@ -331,6 +362,7 @@
       // The speaker reported back: the optimistic change has done its job.
       if (pending && players[pending.id] && pending.patch.state && players[pending.id].state === pending.patch.state) pending = null;
       render();
+      if (refreshSheet) refreshSheet();
     }).catch(function (error) {
       loaded = true;
       problem = error.status === 404 ? 'noAccess' : error.status === 503 ? 'notConnected' : 'unreachable';
@@ -440,7 +472,11 @@
     html += '<div class="stage' + (idle ? ' idle' : '') + '">';
     html += '<div class="sleeve">' + (now.art ? '<img alt="" src="' + esc(now.art) + '">' : stroke('music')) + '</div>';
     html += '<div class="info">';
-    html += '<button type="button" class="who" data-speakers' + (many ? ' aria-haspopup="dialog"' : ' disabled') + ' aria-label="' + esc(T.speakers + ': ' + nameOf(current)) + '">' + stroke('speaker') + '<span>' + esc(nameOf(current)) + '</span></button>';
+    var group = groupOf(current);
+    var others = group.filter(function (id) { return id !== current; });
+    var chipText = others.length ? fmt(T.withMore, { name: nameOf(current), n: others.length }) : nameOf(current);
+    var chipLabel = others.length ? fmt(T.playingWith, { name: nameOf(current), others: others.map(nameOf).join(', ') }) : nameOf(current);
+    html += '<button type="button" class="who" data-speakers' + (many || !viewOnlyDisplay ? ' aria-haspopup="dialog"' : ' disabled') + ' aria-label="' + esc(T.speakers + ': ' + chipLabel) + '">' + stroke('speaker') + '<span>' + esc(chipText) + '</span></button>';
     html += '<div class="title">' + esc(idle ? T.nothing : now.title) + '</div>';
     if (!idle && now.artist) html += '<div class="artist">' + esc(now.artist) + '</div>';
     if (!idle && now.album) html += '<div class="album">' + esc(now.album) + '</div>';
@@ -584,26 +620,128 @@
 
   function openSpeakers() {
     overlay(function (sheet, close) {
-      var ids = offered();
-      sheet.innerHTML = '<div class="head"><h2>' + esc(T.speakers) + '</h2><button type="button" class="btn icon quiet" data-close aria-label="' + esc(T.close) + '">' + glyph('close') + '</button></div>'
-        + '<div class="body" role="listbox">' + ids.map(function (id) {
-          var p = players[id];
-          var song = jellyfinSong(id, p);
-          var what = song ? song.title : (p.attributes.media_title && !looksLikeAddress(p.attributes.media_title) ? p.attributes.media_title : p.state);
-          return '<button type="button" class="item' + (id === current ? ' current' : '') + '" role="option" aria-selected="' + (id === current) + '" data-id="' + esc(id) + '">'
-            + '<span class="thumb">' + stroke('speaker') + '</span><span class="t"><b>' + esc(nameOf(id)) + '</b><span>' + esc(what) + '</span></span></button>';
-        }).join('') + '</div>';
+      var editing = null;   // the ticked speakers while the list is being edited
+      var busyIds = {};
+      var problemText = null;
+
+      function draw() {
+        if (!sheet.isConnected) { refreshSheet = null; return; }
+        var focused = document.activeElement && sheet.contains(document.activeElement) ? document.activeElement : null;
+        var mark = focused && (focused.getAttribute('data-id') ? '[data-id="' + focused.getAttribute('data-id') + '"]'
+          : focused.getAttribute('data-group') ? '[data-group="' + focused.getAttribute('data-group') + '"]' : null);
+        var html;
+        if (editing) {
+          var everyone = Object.keys(players).sort(function (a, b) { return nameOf(a).localeCompare(nameOf(b)); });
+          html = '<div class="head"><h2>' + esc(T.toOffer) + '</h2><button type="button" class="btn icon quiet" data-close aria-label="' + esc(T.close) + '">' + glyph('close') + '</button></div>'
+            + '<p class="hintline">' + esc(T.editHint) + '</p>'
+            + '<div class="body">' + everyone.map(function (id) {
+              return '<label class="item"><input type="checkbox" data-pick="' + esc(id) + '"' + (editing[id] ? ' checked' : '') + '>'
+                + '<span class="t"><b>' + esc(nameOf(id)) + '</b><span>' + esc(id) + '</span></span></label>';
+            }).join('') + '</div>'
+            + (problemText ? '<p class="status err">' + esc(problemText) + '</p>' : '')
+            + '<div class="foot"><button type="button" class="btn" data-cancel>' + esc(T.cancel) + '</button><button type="button" class="btn primary" data-save>' + esc(T.save) + '</button></div>';
+          sheet.innerHTML = html;
+          return;
+        }
+        var ids = offered();
+        var group = groupOf(current);
+        var groupable = canGroup(current);
+        html = '<div class="head"><h2>' + esc(T.speakers) + '</h2>'
+          + (viewOnlyDisplay ? '' : '<button type="button" class="btn" data-edit>' + esc(T.edit) + '</button>')
+          + '<button type="button" class="btn icon quiet" data-close aria-label="' + esc(T.close) + '">' + glyph('close') + '</button></div>'
+          + (groupable && ids.some(function (id) { return id !== current && canGroup(id); }) ? '<p class="hintline">' + esc(fmt(T.groupHint, { name: nameOf(current) })) + '</p>' : '')
+          + '<div class="body">' + ids.map(function (id) {
+            var p = players[id];
+            var song = jellyfinSong(id, p);
+            var what = song ? song.title : (p.attributes.media_title && !looksLikeAddress(p.attributes.media_title) ? p.attributes.media_title : p.state);
+            var inGroup = group.indexOf(id) !== -1;
+            var toggle = id !== current && groupable && canGroup(id)
+              ? '<button type="button" class="go grp' + (inGroup ? ' on' : '') + (busyIds[id] ? ' busy' : '') + '" data-group="' + esc(id) + '" aria-pressed="' + inGroup + '" aria-label="'
+                + esc(fmt(inGroup ? T.groupLeave : T.groupWith, { name: nameOf(id) })) + '">' + glyph(inGroup ? 'check' : 'plus') + '</button>'
+              : '';
+            return '<div class="row"><button type="button" class="item' + (id === current ? ' current' : '') + '"' + (id === current ? ' aria-current="true"' : '') + ' data-id="' + esc(id) + '">'
+              + '<span class="thumb">' + stroke('speaker') + '</span><span class="t"><b>' + esc(nameOf(id)) + '</b><span>' + esc(what) + '</span></span></button>' + toggle + '</div>';
+          }).join('') + '</div>'
+          + (problemText ? '<p class="status err">' + esc(problemText) + '</p>' : '');
+        sheet.innerHTML = html;
+        var again = mark && sheet.querySelector(mark);
+        if (again) again.focus();
+      }
+
+      // Join to the group's leader; leave on the speaker itself.
+      function toggleGroup(id) {
+        if (busyIds[id]) return;
+        var group = groupOf(current);
+        var joining = group.indexOf(id) === -1;
+        var leader = canGroup(group[0]) ? group[0] : current;
+        var target = joining ? leader : id;
+        busyIds[id] = true;
+        problemText = null;
+        draw();
+        HG.homeAssistant.action(target, joining ? 'join' : 'unjoin', joining ? [id] : undefined).then(function (data) {
+          Object.keys((data && data.entities) || {}).forEach(function (key) { if (data.entities[key]) players[key] = data.entities[key]; });
+          delete busyIds[id];
+          render();
+          draw();
+          // The other speakers' side of it arrives with the next look.
+          setTimeout(poll, 700);
+        }).catch(function (error) {
+          delete busyIds[id];
+          problemText = error.message || T.failed;
+          draw();
+        });
+      }
+
+      function save() {
+        var everyone = Object.keys(players);
+        var picked = everyone.filter(function (id) { return editing[id]; });
+        if (!picked.length) { problemText = T.needOne; draw(); return; }
+        // Every speaker ticked: blank, so speakers added later are offered too.
+        var value = picked.length === everyone.length ? '' : picked.join(',');
+        HG.settings.set({ speakers: value }).then(function () {
+          settings.speakers = value;
+          editing = null;
+          problemText = null;
+          chooseCurrent();
+          render();
+          draw();
+        }).catch(function (error) {
+          problemText = error.message || T.failed;
+          draw();
+        });
+      }
+
       sheet.addEventListener('click', function (event) {
-        if (event.target.closest('[data-close]')) { close(); return; }
-        var item = event.target.closest('[data-id]');
+        var t = event.target;
+        if (t.closest('[data-close]')) { refreshSheet = null; close(); return; }
+        if (t.closest('[data-edit]')) {
+          editing = {};
+          offered().forEach(function (id) { editing[id] = true; });
+          problemText = null;
+          draw();
+          return;
+        }
+        if (t.closest('[data-cancel]')) { editing = null; problemText = null; draw(); return; }
+        if (t.closest('[data-save]')) { save(); return; }
+        var grp = t.closest('[data-group]');
+        if (grp) { toggleGroup(grp.getAttribute('data-group')); return; }
+        var item = t.closest('[data-id]');
         if (!item) return;
         current = item.getAttribute('data-id');
         // Remembered for this display.
         HG.settings.set({ speaker: current }).catch(function () {});
         settings.speaker = current;
+        refreshSheet = null;
         close();
         render();
       });
+      sheet.addEventListener('change', function (event) {
+        var box = event.target.closest('[data-pick]');
+        if (box && editing) editing[box.getAttribute('data-pick')] = box.checked;
+      });
+
+      refreshSheet = function () { if (!editing) draw(); };
+      draw();
       var first = sheet.querySelector('.current') || sheet.querySelector('[data-id]');
       if (first) first.focus();
     }, true);
