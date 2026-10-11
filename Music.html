@@ -623,6 +623,22 @@
       var editing = null;   // the ticked speakers while the list is being edited
       var busyIds = {};
       var problemText = null;
+      var lastHtml = null;
+      var touching = false;
+      var scrolledAt = 0;
+
+      // Drawn again only when something shown has changed, at the same place
+      // in the list: a poll mustn't throw a scrolling finger back to the top.
+      function paintSheet(html) {
+        if (html === lastHtml) return false;
+        var list = sheet.querySelector('.body');
+        var top = list ? list.scrollTop : 0;
+        sheet.innerHTML = html;
+        lastHtml = html;
+        list = sheet.querySelector('.body');
+        if (list) list.scrollTop = top;
+        return true;
+      }
 
       function draw() {
         if (!sheet.isConnected) { refreshSheet = null; return; }
@@ -640,7 +656,7 @@
             }).join('') + '</div>'
             + (problemText ? '<p class="status err">' + esc(problemText) + '</p>' : '')
             + '<div class="foot"><button type="button" class="btn" data-cancel>' + esc(T.cancel) + '</button><button type="button" class="btn primary" data-save>' + esc(T.save) + '</button></div>';
-          sheet.innerHTML = html;
+          paintSheet(html);
           return;
         }
         var ids = offered();
@@ -663,9 +679,9 @@
               + '<span class="thumb">' + stroke('speaker') + '</span><span class="t"><b>' + esc(nameOf(id)) + '</b><span>' + esc(what) + '</span></span></button>' + toggle + '</div>';
           }).join('') + '</div>'
           + (problemText ? '<p class="status err">' + esc(problemText) + '</p>' : '');
-        sheet.innerHTML = html;
+        if (!paintSheet(html)) return;
         var again = mark && sheet.querySelector(mark);
-        if (again) again.focus();
+        if (again) again.focus({ preventScroll: true });
       }
 
       // Join to the group's leader; leave on the speaker itself.
@@ -740,7 +756,15 @@
         if (box && editing) editing[box.getAttribute('data-pick')] = box.checked;
       });
 
-      refreshSheet = function () { if (!editing) draw(); };
+      // Not while a finger is on the list or it is still gliding.
+      sheet.addEventListener('pointerdown', function () { touching = true; });
+      window.addEventListener('pointerup', function () { touching = false; scrolledAt = Date.now(); });
+      window.addEventListener('pointercancel', function () { touching = false; scrolledAt = Date.now(); });
+      sheet.addEventListener('scroll', function () { scrolledAt = Date.now(); }, true);
+      refreshSheet = function () {
+        if (editing || touching || Date.now() - scrolledAt < 1500) return;
+        draw();
+      };
       draw();
       var first = sheet.querySelector('.current') || sheet.querySelector('[data-id]');
       if (first) first.focus();
