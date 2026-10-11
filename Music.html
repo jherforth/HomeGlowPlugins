@@ -837,7 +837,7 @@
       var opts = options || {};
       return fetch(server + path, {
         method: opts.method || 'GET',
-        headers: Object.assign({ 'X-Emby-Authorization': header(opts.anonymous ? null : jellyfin && jellyfin.token), Accept: 'application/json' },
+        headers: Object.assign({ 'X-Emby-Authorization': header(opts.anonymous ? null : opts.token || (jellyfin && jellyfin.token)), Accept: 'application/json' },
           opts.body ? { 'Content-Type': 'application/json' } : {}),
         body: opts.body ? JSON.stringify(opts.body) : undefined
       }).then(function (res) {
@@ -884,7 +884,7 @@
     function signOut() {
       var token = jellyfin && jellyfin.token;
       jellyfin = null;
-      if (token) call('/Sessions/Logout', { method: 'POST' }).catch(function () {});
+      if (token) call('/Sessions/Logout', { method: 'POST', token: token }).catch(function () {});
       return HG.storage.remove('jellyfin').catch(function () {});
     }
     return {
