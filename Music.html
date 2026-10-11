@@ -1,0 +1,1010 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Music</title>
+  <link rel="stylesheet" href="/index.css">
+
+  <script type="application/json" id="homeglow-manifest">
+  {
+    "manifestVersion": 1,
+    "id": "music",
+    "name": "Music",
+    "version": "1.0.0",
+    "description": "What's playing on your Home Assistant speakers, with the cover large: play, pause, skip, shuffle, seek and volume, and each speaker's own library to browse and search. Brings your Jellyfin library too, played on any speaker.",
+    "category": "household",
+    "author": "HomeGlow",
+    "apiVersion": "v1",
+    "storage": true,
+    "events": ["ha.state"],
+    "homeAssistant": { "domains": ["media_player"], "playUrlsFrom": "jellyfinUrl" },
+    "settings": [
+      { "key": "speakers", "label": "Speakers to offer (entity ids, comma-separated; blank = every speaker)", "type": "string", "default": "" },
+      { "key": "speaker", "label": "This display's speaker (entity id; blank = the first)", "type": "string", "default": "", "scope": "device" },
+      { "key": "jellyfinUrl", "label": "Jellyfin address, to play your Jellyfin library (optional, e.g. http://192.168.1.20:8096)", "type": "string", "default": "" }
+    ],
+    "hideableControls": [
+      { "id": "operate", "label": "Play and change music" }
+    ]
+  }
+  </script>
+
+  <style>
+    /* The whole widget is the player (after the music player of
+       HomeGlow #264, by Jason Stantler): the cover large, its colors blurred
+       behind, side by side when wide and stacked when tall. Theme roles
+       throughout, each with a fallback. */
+    :root {
+      color-scheme: light dark;
+      --acc: var(--accent, #3a7cc4);
+      --ink: var(--text, #1e2b3a);
+      --ink-2: var(--text-secondary, #5a6b7d);
+      --on-bg: var(--hg-button-bg, var(--acc));
+      --on-ink: var(--hg-button-text, #fff);
+      --level: var(--hg-meter-fill, var(--acc));
+      --level-track: var(--hg-meter-track, rgba(127, 127, 127, 0.22));
+      --tile-bg: color-mix(in srgb, var(--ink) 7%, transparent);
+      --err: var(--hg-error, #c43d3d);
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; height: 100%; }
+    body {
+      background: var(--card-bg, #fff);
+      color: var(--ink);
+      font-family: var(--hg-font-body, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif);
+      -webkit-font-smoothing: antialiased;
+      overflow: hidden;
+      -webkit-user-select: none; user-select: none;
+    }
+    button { font: inherit; color: inherit; }
+    svg { display: block; }
+
+    #app { position: relative; height: 100%; container-type: size; isolation: isolate; overflow: hidden; }
+    .backdrop { position: absolute; inset: -15%; width: 130%; height: 130%; object-fit: cover; z-index: 0; pointer-events: none;
+      filter: blur(46px) saturate(1.3); opacity: 0.55; }
+    #app::after { content: ''; position: absolute; inset: 0; z-index: 0; pointer-events: none;
+      background: linear-gradient(100deg, color-mix(in srgb, var(--surface, #fff) 18%, transparent), color-mix(in srgb, var(--surface, #fff) 74%, transparent) 58%); }
+    .stage { --pad: clamp(12px, 5cqmin, 40px); position: relative; z-index: 1; height: 100%; padding: var(--pad);
+      display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: clamp(12px, 5cqmin, 48px); }
+    .sleeve { height: min(calc(100cqh - 2 * var(--pad)), 46cqw); aspect-ratio: 1; border-radius: var(--hg-radius-md, 14px); overflow: hidden;
+      display: grid; place-items: center; background: color-mix(in srgb, var(--acc) 14%, var(--surface, #fff));
+      box-shadow: 0 22px 48px -18px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.12); }
+    .sleeve img { width: 100%; height: 100%; object-fit: cover; }
+    .sleeve > svg { width: 36%; height: 36%; fill: none; stroke: var(--acc); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+    .info { min-width: 0; display: flex; flex-direction: column; gap: clamp(4px, 1.4cqmin, 12px); }
+    .who { align-self: flex-start; display: inline-flex; align-items: center; gap: 0.45em; max-width: 100%; min-height: 32px; padding: 0 0.7em 0 0.5em;
+      border: 0; border-radius: 999px; background: var(--tile-bg); color: var(--ink-2); font-weight: 650; font-size: clamp(0.74rem, 2.3cqmin, 1rem); cursor: pointer; }
+    .who[disabled] { cursor: default; background: transparent; padding-left: 0; }
+    .who svg { width: 1.25em; height: 1.25em; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .who span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .title { font-family: var(--hg-font-heading, inherit); font-size: clamp(1.1rem, 6.4cqmin, 3.2rem); font-weight: 760; line-height: 1.06; letter-spacing: -0.015em;
+      overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; text-wrap: balance; }
+    .artist { font-size: clamp(0.9rem, 3.4cqmin, 1.6rem); font-weight: 620; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .album { font-size: clamp(0.78rem, 2.6cqmin, 1.15rem); color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .idle .title { color: var(--ink-2); font-weight: 650; }
+
+    .prog { width: 100%; margin-top: clamp(2px, 2cqmin, 16px); }
+    .bar { position: relative; height: 22px; display: flex; align-items: center; }
+    .bar[data-seek] { cursor: pointer; touch-action: none; }
+    .bar::before { content: ''; position: absolute; left: 0; right: 0; height: 5px; border-radius: 999px; background: var(--level-track); }
+    .done { position: absolute; left: 0; width: 0; height: 5px; border-radius: 999px; background: var(--level); }
+    .bar[data-seek] .done::after { content: ''; position: absolute; right: -7px; top: 50%; width: 14px; height: 14px; margin-top: -7px;
+      border-radius: 50%; background: var(--level); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3); }
+    .bar:focus-visible { outline: 3px solid var(--acc); outline-offset: 2px; border-radius: 6px; }
+    .times { display: flex; justify-content: space-between; margin-top: -2px; font-size: clamp(0.68rem, 2.2cqmin, 0.95rem); color: var(--ink-2); font-variant-numeric: tabular-nums; }
+
+    .ctl { display: flex; align-items: center; gap: clamp(4px, 2.4cqmin, 22px); margin-top: clamp(0px, 1cqmin, 8px); }
+    .btn { appearance: none; border: 0; cursor: pointer; border-radius: var(--hg-button-radius, 999px); background: color-mix(in srgb, var(--acc) 14%, transparent);
+      font-weight: var(--hg-button-weight, 650); min-height: 40px; padding: 0 1em; }
+    .btn:focus-visible { outline: 3px solid var(--acc); outline-offset: 2px; }
+    .btn[disabled] { opacity: 0.4; cursor: default; }
+    .btn.primary { background: var(--on-bg); color: var(--on-ink); }
+    .btn.icon { padding: 0; width: clamp(40px, 9.5cqmin, 72px); height: clamp(40px, 9.5cqmin, 72px); display: grid; place-items: center; flex: none; }
+    .btn.icon svg { width: 50%; height: 50%; fill: currentColor; }
+    .btn.icon.lg { width: clamp(52px, 15cqmin, 104px); height: clamp(52px, 15cqmin, 104px); background: var(--on-bg); color: var(--on-ink); }
+    .btn.icon.lg svg { width: 44%; height: 44%; }
+    .btn.icon.quiet { background: transparent; }
+    .btn.icon.toggled { background: var(--on-bg); color: var(--on-ink); }
+    .btn.busy { position: relative; }
+    .btn.busy::after { content: ''; position: absolute; inset: -3px; border-radius: 50%; border: 3px solid transparent; border-top-color: var(--acc); animation: spin 0.9s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .vol { display: flex; align-items: center; gap: 10px; max-width: 440px; margin-top: clamp(2px, 1.4cqmin, 12px); }
+    .vol svg { width: 22px; height: 22px; flex: none; fill: none; stroke: var(--ink-2); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    input[type=range] { -webkit-appearance: none; appearance: none; flex: 1; min-width: 0; height: 30px; margin: 0; background: transparent; cursor: pointer; --pct: 50%; }
+    input[type=range]::-webkit-slider-runnable-track { height: 6px; border-radius: 999px;
+      background: linear-gradient(to right, var(--level) 0 var(--pct), var(--level-track) var(--pct) 100%); }
+    input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 22px; height: 22px; margin-top: -8px; border-radius: 50%;
+      background: var(--surface, #fff); border: 3px solid var(--level); box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25); }
+    input[type=range]::-moz-range-track { height: 6px; border-radius: 999px; background: var(--level-track); }
+    input[type=range]::-moz-range-progress { height: 6px; border-radius: 999px; background: var(--level); }
+    input[type=range]::-moz-range-thumb { width: 16px; height: 16px; border-radius: 50%; background: var(--surface, #fff); border: 3px solid var(--level); }
+    input[type=range]:focus-visible { outline: 3px solid var(--acc); outline-offset: 2px; border-radius: 8px; }
+
+    .note { margin: auto; max-width: 420px; padding: 16px; text-align: center; color: var(--ink-2); line-height: 1.45; position: relative; z-index: 1; }
+    .note.err { color: var(--err); }
+    .hint { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); z-index: 5; max-width: 90%; padding: 6px 12px; border-radius: 10px;
+      font-size: 0.82rem; font-weight: 650; text-align: center; background: color-mix(in srgb, var(--ink) 85%, transparent); color: var(--background, #fff); }
+
+    /* Taller than wide: the cover on top, everything centered under it. */
+    @container (max-aspect-ratio: 6/5) {
+      .stage { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; justify-items: center; text-align: center; }
+      .sleeve { height: auto; max-height: 100%; width: min(76cqw, 46cqh); }
+      .info { align-items: center; width: 100%; max-width: 560px; }
+      .who { align-self: center; }
+      .ctl { justify-content: center; }
+      .vol { width: 100%; }
+      #app::after { background: linear-gradient(180deg, color-mix(in srgb, var(--surface, #fff) 18%, transparent), color-mix(in srgb, var(--surface, #fff) 76%, transparent) 52%); }
+    }
+    /* Too small for the cover above the controls: the controls alone. */
+    @container (max-aspect-ratio: 6/5) and (max-height: 460px) {
+      .sleeve { display: none; }
+      .stage { grid-template-rows: auto; align-content: center; }
+    }
+    @container (max-height: 340px) { .album { display: none; } }
+    @container (max-height: 240px) { .vol, .times { display: none; } .sleeve { display: none; } .stage { grid-template-columns: minmax(0, 1fr); } }
+
+    /* Overlays: the library and the speaker list. */
+    .overlay { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 8px;
+      background: color-mix(in srgb, var(--background, #000) 72%, transparent); }
+    .sheet { width: min(640px, 100%); max-height: 100%; height: min(100%, 780px); overflow: hidden; border-radius: var(--hg-radius-lg, 18px); padding: 12px;
+      background: var(--surface, #fff); color: var(--ink); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3); display: flex; flex-direction: column; gap: 8px; }
+    .sheet.small { height: auto; width: min(420px, 100%); }
+    .sheet h2 { margin: 0; font-size: 1rem; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .head { display: flex; align-items: center; gap: 6px; }
+    .head .btn.icon { width: 40px; height: 40px; }
+    .tabs { display: flex; gap: 4px; padding: 4px; border-radius: 999px; background: var(--tile-bg); }
+    .tabs .btn { flex: 1; background: transparent; min-height: 36px; }
+    .tabs .btn.current { background: var(--on-bg); color: var(--on-ink); }
+    .body { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 4px; }
+    .item { appearance: none; border: 0; text-align: left; cursor: pointer; width: 100%; display: flex; align-items: center; gap: 10px;
+      padding: 6px; min-height: 56px; border-radius: 10px; background: transparent; }
+    .item:hover, .item:focus-visible { background: var(--tile-bg); }
+    .item:focus-visible { outline: 3px solid var(--acc); outline-offset: -3px; }
+    .item.current { background: color-mix(in srgb, var(--acc) 14%, transparent); }
+    .thumb { width: 44px; height: 44px; flex: none; border-radius: 6px; object-fit: cover; background: var(--tile-bg); display: grid; place-items: center; }
+    .thumb svg { width: 55%; height: 55%; fill: none; stroke: var(--acc); stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+    .t { flex: 1; min-width: 0; }
+    .t b { display: block; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .t span { display: block; font-size: 0.78rem; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .go { flex: none; width: 40px; height: 40px; display: grid; place-items: center; border-radius: 999px; }
+    .go svg { width: 50%; height: 50%; fill: currentColor; }
+    .go.play { appearance: none; border: 0; cursor: pointer; background: var(--on-bg); color: var(--on-ink); }
+    .go.play:focus-visible { outline: 3px solid var(--acc); outline-offset: 2px; }
+    .search { display: flex; gap: 6px; }
+    input.text { flex: 1; min-width: 0; min-height: 44px; padding: 0 12px; border-radius: 10px; font: inherit; font-size: 1rem;
+      border: 1px solid color-mix(in srgb, var(--ink) 22%, transparent); background: var(--background, #fff); color: var(--ink); -webkit-user-select: text; user-select: text; }
+    input.text:focus-visible { outline: 3px solid var(--acc); outline-offset: 1px; }
+    .label { display: flex; align-items: center; justify-content: space-between; font-size: 0.8rem; font-weight: 650; color: var(--ink-2); margin: 6px 2px 2px; }
+    .label .btn { min-height: 30px; }
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .chips .btn { min-height: 40px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .status { padding: 14px 6px; text-align: center; color: var(--ink-2); font-size: 0.9rem; }
+    .status.err { color: var(--err); }
+    .form { display: flex; flex-direction: column; gap: 8px; padding: 6px 2px; }
+    .form p { margin: 0; color: var(--ink-2); font-size: 0.88rem; line-height: 1.4; }
+    .row { display: flex; gap: 8px; align-items: center; }
+    @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+  </style>
+</head>
+<body>
+<div id="app" aria-live="polite"></div>
+<script src="/plugin-sdk/v1.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  var HG = window.HomeGlow;
+  var params = new URLSearchParams(location.search);
+  var viewOnlyDisplay = (params.get('hide') || '').split(',').indexOf('operate') !== -1;
+  var lang = (params.get('lang') || navigator.language || 'en').slice(0, 2) === 'es' ? 'es' : 'en';
+  var POLL_MS = 2000;
+  var QUEUE_LIMIT = 40;
+
+  var STRINGS = {
+    en: {
+      nothing: 'Nothing playing', chooseMusic: 'Choose music', speakers: 'Speakers', library: 'Music', browse: 'Browse', search: 'Search',
+      searchPlaceholder: 'Song, artist, album…', go: 'Go', recent: 'Recent searches', clear: 'Clear', back: 'Back', close: 'Close',
+      play: 'Play', pause: 'Pause', previous: 'Previous', next: 'Next', shuffle: 'Shuffle', volume: 'Volume', position: 'Place in the song',
+      open: 'Open', playAll: 'Play all', loading: 'Loading…', empty: 'Nothing here.', noResults: 'Nothing found.', stale: 'That list is out of date; it has been opened again.',
+      noSpeakers: 'No speakers found in Home Assistant.', notConnected: 'Home Assistant isn\'t connected. Set it up in Admin → System → Connections.',
+      noAccess: 'This HomeGlow is too old for the Music plugin. Update HomeGlow to the release after 1.9.1 or later.',
+      unreachable: 'Home Assistant can\'t be reached right now.', viewOnly: 'View only on this display',
+      cannotBrowse: 'This speaker has no library to browse. Pick music from Jellyfin, or another speaker.',
+      cannotPlay: 'This speaker can\'t be sent music.', oneAtATime: 'This speaker plays one song at a time.',
+      queued: 'Playing, with {n} more queued', starting: 'Starting…', failed: 'That didn\'t work',
+      jellyfin: 'Jellyfin', jfSignIn: 'Sign in to Jellyfin', jfIntro: 'Sign in once for the whole household. The password isn\'t kept; Jellyfin gives HomeGlow a sign-in of its own, which you can revoke in Jellyfin\'s dashboard under Devices.',
+      jfUser: 'User name', jfPassword: 'Password', jfSignInButton: 'Sign in', jfSignedInAs: 'Signed in as {name}', jfSignOut: 'Sign out',
+      jfWrong: 'Jellyfin didn\'t accept that user name and password.', jfUnreachable: 'Can\'t reach Jellyfin at {url}. Check the address in this plugin\'s settings.',
+      jfRecent: 'Recently added', jfAlbums: 'Albums', jfArtists: 'Artists', jfPlaylists: 'Playlists', jfSongs: 'Songs',
+      kind_playlist: 'Playlist', kind_album: 'Album', kind_artist: 'Artist', kind_track: 'Song', kind_music: 'Music', kind_directory: 'Folder', kind_podcast: 'Podcast', kind_channel: 'Station'
+    },
+    es: {
+      nothing: 'No suena nada', chooseMusic: 'Elegir música', speakers: 'Altavoces', library: 'Música', browse: 'Explorar', search: 'Buscar',
+      searchPlaceholder: 'Canción, artista, álbum…', go: 'Ir', recent: 'Búsquedas recientes', clear: 'Borrar', back: 'Atrás', close: 'Cerrar',
+      play: 'Reproducir', pause: 'Pausa', previous: 'Anterior', next: 'Siguiente', shuffle: 'Aleatorio', volume: 'Volumen', position: 'Punto de la canción',
+      open: 'Abrir', playAll: 'Reproducir todo', loading: 'Cargando…', empty: 'No hay nada aquí.', noResults: 'No se encontró nada.', stale: 'La lista estaba desactualizada; se ha abierto de nuevo.',
+      noSpeakers: 'No hay altavoces en Home Assistant.', notConnected: 'Home Assistant no está conectado. Configúralo en Administración → Sistema → Conexiones.',
+      noAccess: 'Este HomeGlow es demasiado antiguo para el complemento Música. Actualiza HomeGlow a una versión posterior a la 1.9.1.',
+      unreachable: 'No se puede contactar con Home Assistant ahora.', viewOnly: 'Solo lectura en esta pantalla',
+      cannotBrowse: 'Este altavoz no tiene biblioteca. Elige música de Jellyfin u otro altavoz.',
+      cannotPlay: 'A este altavoz no se le puede enviar música.', oneAtATime: 'Este altavoz reproduce una canción cada vez.',
+      queued: 'Reproduciendo, con {n} más en cola', starting: 'Empezando…', failed: 'No ha funcionado',
+      jellyfin: 'Jellyfin', jfSignIn: 'Iniciar sesión en Jellyfin', jfIntro: 'Inicia sesión una vez para toda la casa. La contraseña no se guarda; Jellyfin da a HomeGlow una sesión propia, que puedes revocar en el panel de Jellyfin, en Dispositivos.',
+      jfUser: 'Usuario', jfPassword: 'Contraseña', jfSignInButton: 'Entrar', jfSignedInAs: 'Sesión de {name}', jfSignOut: 'Cerrar sesión',
+      jfWrong: 'Jellyfin no aceptó ese usuario y contraseña.', jfUnreachable: 'No se puede contactar con Jellyfin en {url}. Revisa la dirección en los ajustes del complemento.',
+      jfRecent: 'Añadido recientemente', jfAlbums: 'Álbumes', jfArtists: 'Artistas', jfPlaylists: 'Listas', jfSongs: 'Canciones',
+      kind_playlist: 'Lista', kind_album: 'Álbum', kind_artist: 'Artista', kind_track: 'Canción', kind_music: 'Música', kind_directory: 'Carpeta', kind_podcast: 'Pódcast', kind_channel: 'Emisora'
+    }
+  };
+  var T = STRINGS[lang];
+  var fmt = function (text, values) { return text.replace(/\{(\w+)\}/g, function (_, k) { return values[k]; }); };
+
+  var GLYPHS = {
+    play: '<path d="M8 5.5v13l11-6.5z"/>',
+    pause: '<path d="M6.5 5h4v14h-4zM13.5 5h4v14h-4z"/>',
+    previous: '<path d="M6 5h2.2v14H6zM9.5 12L19 5.5v13z"/>',
+    next: '<path d="M15.8 5H18v14h-2.2zM14.5 12L5 18.5v-13z"/>',
+    shuffle: '<path d="M16 3h5v5l-1.8-1.8-3.7 3.7-1.4-1.4 3.7-3.7zM3 5.4L4.4 4l15.3 15.3V16H21.7v5h-5v-2h2.6zM8.6 13.9l1.4 1.4-4.6 4.7L4 18.6z"/>',
+    library: '<path d="M3 5h12v2H3zM3 10h12v2H3zM3 15h8v2H3zM17 5h4.5v2.2H19v9.3a3 3 0 1 1-2-2.83z"/>',
+    open: '<path d="M9 5.5L15.5 12 9 18.5 7.6 17.1l5.1-5.1-5.1-5.1z"/>',
+    back: '<path d="M15 5.5L8.5 12l6.5 6.5 1.4-1.4L11.3 12l5.1-5.1z"/>',
+    close: '<path d="M6.4 5L12 10.6 17.6 5 19 6.4 13.4 12l5.6 5.6-1.4 1.4-5.6-5.6L6.4 19 5 17.6 10.6 12 5 6.4z"/>'
+  };
+  var STROKES = {
+    music: '<path d="M9 18V5l11-2v13"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="17.5" cy="16" r="2.5"/>',
+    speaker: '<rect x="6" y="3" width="12" height="18" rx="2"/><circle cx="12" cy="14" r="3"/><circle cx="12" cy="7" r=".8"/>',
+    volLow: '<path d="M4 9.5h3.5L12 6v12l-4.5-3.5H4z"/><path d="M15.5 10a3 3 0 0 1 0 4"/>',
+    volHigh: '<path d="M4 9.5h3.5L12 6v12l-4.5-3.5H4z"/><path d="M15.5 10a3 3 0 0 1 0 4M18 7.5a6.5 6.5 0 0 1 0 9"/>'
+  };
+  var glyph = function (name) { return '<svg viewBox="0 0 24 24" aria-hidden="true">' + GLYPHS[name] + '</svg>'; };
+  var stroke = function (name) { return '<svg viewBox="0 0 24 24" aria-hidden="true">' + STROKES[name] + '</svg>'; };
+  var esc = function (text) {
+    return String(text == null ? '' : text).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  };
+
+  // MediaPlayerEntityFeature bits.
+  var F = { PAUSE: 1, SEEK: 2, VOLUME_SET: 4, PREVIOUS: 16, NEXT: 32, PLAY_MEDIA: 512, PLAY: 16384, SHUFFLE: 32768, BROWSE: 131072, ENQUEUE: 2097152, SEARCH: 4194304 };
+  var has = function (st, bit) { return ((Number(st && st.attributes && st.attributes.supported_features) || 0) & bit) === bit; };
+
+  // --- State ------------------------------------------------------------------
+
+  var settings = { speakers: '', speaker: '', jellyfinUrl: '' };
+  var players = {};          // entity_id -> state
+  var control = [];          // ids this plugin may operate
+  var current = null;        // the chosen speaker's entity id
+  var problem = null;        // 'notConnected' | 'noAccess' | 'unreachable'
+  var loaded = false;
+  var pending = null;        // { id, patch, until } an optimistic change
+  var busy = {};             // control name -> true while a slow speaker works
+  var hintText = null;
+  var jellyfin = null;       // { server, userId, token, name, deviceId } once signed in
+  var nowJellyfin = {};      // entity_id -> { first, songs: { jellyfin id: { title, artist, album, image } } } we sent there
+  var app = document.getElementById('app');
+
+  var serverUrl = function () { return String(settings.jellyfinUrl || '').trim().replace(/\/+$/, ''); };
+  var st = function () {
+    var s = players[current];
+    if (s && pending && pending.id === current && pending.until > Date.now()) {
+      return { state: pending.patch.state || s.state, attributes: Object.assign({}, s.attributes, pending.patch.attributes || {}) };
+    }
+    return s;
+  };
+  var canOperate = function () { return !viewOnlyDisplay && control.indexOf(current) !== -1 && players[current] && players[current].state !== 'unavailable'; };
+  var nameOf = function (id) { var s = players[id]; return (s && s.attributes && s.attributes.friendly_name) || id; };
+
+  function offered() {
+    var wanted = String(settings.speakers || '').split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+    var ids = Object.keys(players).filter(function (id) { return players[id]; });
+    if (wanted.length) ids = ids.filter(function (id) { return wanted.indexOf(id) !== -1; });
+    return ids.sort(function (a, b) { return nameOf(a).localeCompare(nameOf(b)); });
+  }
+
+  function chooseCurrent() {
+    var ids = offered();
+    if (current && ids.indexOf(current) !== -1) return;
+    var wanted = String(settings.speaker || '').trim();
+    current = ids.indexOf(wanted) !== -1 ? wanted : (ids.find(function (id) { return players[id].state === 'playing'; }) || ids[0] || null);
+  }
+
+  function flash(text) {
+    hintText = text;
+    render();
+    var shown = text;
+    setTimeout(function () { if (hintText === shown) { hintText = null; render(); } }, 2800);
+  }
+
+  // --- Home Assistant ----------------------------------------------------------
+
+  function poll() {
+    if (document.hidden) return Promise.resolve();
+    return HG.homeAssistant.state().then(function (data) {
+      loaded = true;
+      problem = data.error ? 'unreachable' : null;
+      players = {};
+      Object.keys(data.entities || {}).forEach(function (id) { if (data.entities[id]) players[id] = data.entities[id]; });
+      control = data.control || [];
+      chooseCurrent();
+      // The speaker reported back: the optimistic change has done its job.
+      if (pending && players[pending.id] && pending.patch.state && players[pending.id].state === pending.patch.state) pending = null;
+      render();
+    }).catch(function (error) {
+      loaded = true;
+      problem = error.status === 404 ? 'noAccess' : error.status === 503 ? 'notConnected' : 'unreachable';
+      render();
+    });
+  }
+
+  function act(action, value, options) {
+    if (!canOperate()) return Promise.resolve();
+    var opts = options || {};
+    if (opts.optimistic) { pending = { id: current, patch: opts.optimistic, until: Date.now() + 6000 }; }
+    if (opts.busy) busy[opts.busy] = true;
+    render();
+    return HG.homeAssistant.action(current, action, value).then(function (data) {
+      if (data && data.entities && data.entities[current]) players[current] = data.entities[current];
+      if (opts.busy && !(data && data.pending)) delete busy[opts.busy];
+      if (opts.busy && data && data.pending) setTimeout(function () { delete busy[opts.busy]; render(); }, 8000);
+      render();
+      return data;
+    }).catch(function (error) {
+      pending = null;
+      if (opts.busy) delete busy[opts.busy];
+      flash(error.message || T.failed);
+      throw error;
+    });
+  }
+
+  // --- Drawing the player --------------------------------------------------------
+
+  function positionNow(s) {
+    var a = s.attributes;
+    var pos = Number(a.media_position);
+    if (!isFinite(pos)) return null;
+    if (s.state === 'playing' && a.media_position_updated_at) pos += (Date.now() - Date.parse(a.media_position_updated_at)) / 1000;
+    var dur = Number(a.media_duration);
+    return isFinite(dur) && dur > 0 ? Math.min(pos, dur) : pos;
+  }
+  var clock = function (secs) {
+    secs = Math.max(0, Math.floor(secs));
+    var h = Math.floor(secs / 3600), m = Math.floor((secs % 3600) / 60), s = secs % 60;
+    return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(s).padStart(2, '0');
+  };
+  var looksLikeAddress = function (text) { return /^https?:\/\//i.test(String(text || '')) || /\/stream\.mp3/.test(String(text || '')); };
+
+  // Which of the Jellyfin songs we sent a speaker it's playing: found by the
+  // song's id in its stream address, or by the title we sent with it.
+  function jellyfinSong(id, s) {
+    var sent = nowJellyfin[id];
+    var a = s.attributes;
+    if (!sent || !sent.songs || !(s.state === 'playing' || s.state === 'paused' || s.state === 'buffering')) return null;
+    var where = String(a.media_content_id || '') + ' ' + String(a.media_title || '');
+    var m = where.match(/\/Audio\/([^/?\s]+)\/stream/);
+    if (m) return sent.songs[m[1]] || null;
+    if (!a.media_title) return sent.songs[sent.first] || null;
+    var ids = Object.keys(sent.songs);
+    for (var i = 0; i < ids.length; i += 1) if (sent.songs[ids[i]].title === a.media_title) return sent.songs[ids[i]];
+    return null;
+  }
+
+  // What's playing: Home Assistant's account, or, for a Jellyfin song, what
+  // we know of it (a speaker may know it only by its stream address).
+  function playing(s) {
+    var a = s.attributes;
+    var song = jellyfinSong(current, s);
+    if (song) return { title: song.title, artist: song.artist, album: song.album, art: song.image || (a.media_art ? HG.homeAssistant.media.artUrl(current, a.media_art) : null) };
+    return {
+      title: looksLikeAddress(a.media_title) ? '' : a.media_title,
+      artist: a.media_artist,
+      album: a.media_album_name,
+      art: a.media_art ? HG.homeAssistant.media.artUrl(current, a.media_art) : null
+    };
+  }
+
+  // Drawn again only when something shown has changed, keeping focus, so a
+  // poll every 2 seconds doesn't disturb a finger or a keyboard.
+  var lastHtml = null;
+  var holdingVolume = false;
+  function paint(html) {
+    if (html === lastHtml) return;
+    var focused = document.activeElement && app.contains(document.activeElement) ? document.activeElement : null;
+    var mark = focused && ['data-act', 'data-library', 'data-speakers', 'data-volume', 'data-seek'].filter(function (name) { return focused.hasAttribute(name); })[0];
+    var selector = mark && (mark === 'data-act' ? '[data-act="' + focused.getAttribute('data-act') + '"]' : '[' + mark + ']');
+    app.innerHTML = html;
+    lastHtml = html;
+    if (selector) { var again = app.querySelector(selector); if (again) again.focus(); }
+  }
+
+  function render() {
+    if (dragging || holdingVolume) return;
+    var html = '';
+    if (!loaded) { paint('<p class="note">' + esc(T.loading) + '</p>'); return; }
+    if (problem && problem !== 'unreachable') {
+      paint('<p class="note err">' + esc(T[problem]) + '</p>');
+      return;
+    }
+    var s = st();
+    if (!current || !s) {
+      paint('<p class="note">' + esc(problem ? T.unreachable : T.noSpeakers) + '</p>');
+      return;
+    }
+    var a = s.attributes;
+    var now = playing(s);
+    var idle = !now.title || s.state === 'off' || s.state === 'unavailable';
+    var operate = canOperate();
+    var many = offered().length > 1;
+    if (now.art) html += '<img class="backdrop" alt="" src="' + esc(now.art) + '">';
+    html += '<div class="stage' + (idle ? ' idle' : '') + '">';
+    html += '<div class="sleeve">' + (now.art ? '<img alt="" src="' + esc(now.art) + '">' : stroke('music')) + '</div>';
+    html += '<div class="info">';
+    html += '<button type="button" class="who" data-speakers' + (many ? ' aria-haspopup="dialog"' : ' disabled') + ' aria-label="' + esc(T.speakers + ': ' + nameOf(current)) + '">' + stroke('speaker') + '<span>' + esc(nameOf(current)) + '</span></button>';
+    html += '<div class="title">' + esc(idle ? T.nothing : now.title) + '</div>';
+    if (!idle && now.artist) html += '<div class="artist">' + esc(now.artist) + '</div>';
+    if (!idle && now.album) html += '<div class="album">' + esc(now.album) + '</div>';
+
+    var dur = Number(a.media_duration);
+    // The place in the song is filled in by tick(), so it alone doesn't
+    // count as a change.
+    if (!idle && isFinite(dur) && dur > 0 && positionNow(s) !== null) {
+      var seekable = operate && has(s, F.SEEK);
+      html += '<div class="prog"><div class="bar"' + (seekable ? ' data-seek tabindex="0" role="slider" aria-label="' + esc(T.position) + '" aria-valuemin="0" aria-valuemax="' + Math.round(dur) + '"' : '') + '>'
+        + '<div class="done"></div></div>'
+        + '<div class="times"><span data-pos></span><span>' + clock(dur) + '</span></div></div>';
+    }
+
+    if (operate) {
+      var btn = function (name, label, cls, enabled, attrs) {
+        return '<button type="button" class="btn icon ' + (cls || '') + (busy[name] ? ' busy' : '') + '" data-act="' + name + '" aria-label="' + esc(label) + '"' + (enabled ? '' : ' disabled') + (attrs || '') + '>' + glyph(name === 'play_pause' ? (s.state === 'playing' ? 'pause' : 'play') : name) + '</button>';
+      };
+      html += '<div class="ctl">';
+      if (has(s, F.SHUFFLE)) html += btn('shuffle', T.shuffle, 'quiet' + (a.shuffle ? ' toggled' : ''), true, ' aria-pressed="' + !!a.shuffle + '"');
+      html += btn('previous', T.previous, 'quiet', has(s, F.PREVIOUS));
+      html += btn('play_pause', s.state === 'playing' ? T.pause : T.play, 'lg', has(s, F.PAUSE) || has(s, F.PLAY));
+      html += btn('next', T.next, 'quiet', has(s, F.NEXT));
+      html += '<button type="button" class="btn icon quiet" data-library aria-haspopup="dialog" aria-label="' + esc(T.chooseMusic) + '">' + glyph('library') + '</button>';
+      html += '</div>';
+      if (has(s, F.VOLUME_SET) && a.volume_level != null) {
+        var vol = Math.round(a.volume_level * 100);
+        html += '<div class="vol">' + stroke('volLow') + '<input type="range" min="0" max="100" step="2" value="' + vol + '" style="--pct:' + vol + '%" data-volume aria-label="' + esc(T.volume) + '">' + stroke('volHigh') + '</div>';
+      }
+    } else if (viewOnlyDisplay) {
+      html += '<div class="album">' + esc(T.viewOnly) + '</div>';
+    }
+    html += '</div></div>';
+    if (hintText) html += '<div class="hint" role="status">' + esc(hintText) + '</div>';
+    paint(html);
+    tick();
+  }
+
+  // The progress bar, moved every second between polls.
+  function tick() {
+    var s = st();
+    if (!s || dragging) return;
+    var pos = positionNow(s);
+    var dur = Number(s.attributes.media_duration);
+    if (pos === null || !(dur > 0)) return;
+    var done = app.querySelector('.done');
+    var label = app.querySelector('[data-pos]');
+    var bar = app.querySelector('[data-seek]');
+    if (done) done.style.width = Math.max(0, Math.min(100, pos / dur * 100)).toFixed(2) + '%';
+    if (label) label.textContent = clock(pos);
+    if (bar) bar.setAttribute('aria-valuenow', Math.round(pos));
+  }
+  setInterval(tick, 1000);
+
+  // --- Touch and keys on the player -------------------------------------------------
+
+  var dragging = null;
+  app.addEventListener('click', function (event) {
+    var el = event.target.closest('[data-act],[data-library],[data-speakers]');
+    if (!el || el.disabled) return;
+    if (el.hasAttribute('data-library')) { openLibrary(); return; }
+    if (el.hasAttribute('data-speakers')) { openSpeakers(); return; }
+    var s = st();
+    var name = el.getAttribute('data-act');
+    if (name === 'play_pause') {
+      act('play_pause', undefined, { busy: 'play_pause', optimistic: { state: s.state === 'playing' ? 'paused' : 'playing' } }).catch(function () {});
+    } else if (name === 'shuffle') {
+      act('shuffle', !s.attributes.shuffle, { optimistic: { attributes: { shuffle: !s.attributes.shuffle } } }).catch(function () {});
+    } else {
+      act(name, undefined, { busy: name }).catch(function () {});
+    }
+  });
+
+  app.addEventListener('change', function (event) {
+    if (!event.target.hasAttribute('data-volume')) return;
+    var v = Number(event.target.value);
+    holdingVolume = false;
+    act('volume', v, { optimistic: { attributes: { volume_level: v / 100 } } }).catch(function () {});
+  });
+  app.addEventListener('input', function (event) {
+    if (event.target.hasAttribute('data-volume')) event.target.style.setProperty('--pct', event.target.value + '%');
+  });
+  // Not drawn over while a finger is on the volume.
+  app.addEventListener('pointerdown', function (event) { if (event.target.hasAttribute && event.target.hasAttribute('data-volume')) holdingVolume = true; });
+  window.addEventListener('pointerup', function () { if (holdingVolume) { holdingVolume = false; setTimeout(render, 0); } });
+
+  // Seeking: drag or tap along the bar; arrow keys step 10 seconds.
+  function seekTo(fraction) {
+    var s = st();
+    var dur = Number(s.attributes.media_duration);
+    if (!(dur > 0)) return;
+    var secs = Math.round(Math.max(0, Math.min(1, fraction)) * dur);
+    act('seek', secs, { optimistic: { attributes: { media_position: secs, media_position_updated_at: new Date().toISOString() } } }).catch(function () {});
+  }
+  app.addEventListener('pointerdown', function (event) {
+    var bar = event.target.closest('[data-seek]');
+    if (!bar) return;
+    dragging = { bar: bar, id: event.pointerId };
+    try { bar.setPointerCapture(event.pointerId); } catch (e) { /* not capturable */ }
+    moveDrag(event);
+  });
+  function moveDrag(event) {
+    if (!dragging) return;
+    var rect = dragging.bar.getBoundingClientRect();
+    dragging.fraction = (event.clientX - rect.left) / rect.width;
+    var done = dragging.bar.querySelector('.done');
+    if (done) done.style.width = Math.max(0, Math.min(100, dragging.fraction * 100)).toFixed(2) + '%';
+  }
+  app.addEventListener('pointermove', moveDrag);
+  app.addEventListener('pointerup', function () {
+    if (!dragging) return;
+    var fraction = dragging.fraction;
+    dragging = null;
+    seekTo(fraction);
+  });
+  app.addEventListener('pointercancel', function () { dragging = null; render(); });
+  app.addEventListener('keydown', function (event) {
+    var bar = event.target.closest && event.target.closest('[data-seek]');
+    if (!bar || (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight')) return;
+    event.preventDefault();
+    var s = st();
+    var pos = positionNow(s) || 0;
+    var dur = Number(s.attributes.media_duration);
+    seekTo((pos + (event.key === 'ArrowRight' ? 10 : -10)) / dur);
+  });
+
+  // --- Overlays ------------------------------------------------------------------------
+
+  function overlay(build, small) {
+    var el = document.createElement('div');
+    el.className = 'overlay';
+    el.innerHTML = '<div class="sheet' + (small ? ' small' : '') + '" role="dialog" aria-modal="true"></div>';
+    document.body.appendChild(el);
+    var sheet = el.firstChild;
+    var close = function () { el.remove(); };
+    el.addEventListener('click', function (event) { if (event.target === el) close(); });
+    el.addEventListener('keydown', function (event) { if (event.key === 'Escape') close(); });
+    build(sheet, close);
+    return close;
+  }
+
+  function openSpeakers() {
+    overlay(function (sheet, close) {
+      var ids = offered();
+      sheet.innerHTML = '<div class="head"><h2>' + esc(T.speakers) + '</h2><button type="button" class="btn icon quiet" data-close aria-label="' + esc(T.close) + '">' + glyph('close') + '</button></div>'
+        + '<div class="body" role="listbox">' + ids.map(function (id) {
+          var p = players[id];
+          var song = jellyfinSong(id, p);
+          var what = song ? song.title : (p.attributes.media_title && !looksLikeAddress(p.attributes.media_title) ? p.attributes.media_title : p.state);
+          return '<button type="button" class="item' + (id === current ? ' current' : '') + '" role="option" aria-selected="' + (id === current) + '" data-id="' + esc(id) + '">'
+            + '<span class="thumb">' + stroke('speaker') + '</span><span class="t"><b>' + esc(nameOf(id)) + '</b><span>' + esc(what) + '</span></span></button>';
+        }).join('') + '</div>';
+      sheet.addEventListener('click', function (event) {
+        if (event.target.closest('[data-close]')) { close(); return; }
+        var item = event.target.closest('[data-id]');
+        if (!item) return;
+        current = item.getAttribute('data-id');
+        // Remembered for this display.
+        HG.settings.set({ speaker: current }).catch(function () {});
+        settings.speaker = current;
+        close();
+        render();
+      });
+      var first = sheet.querySelector('.current') || sheet.querySelector('[data-id]');
+      if (first) first.focus();
+    }, true);
+  }
+
+  // --- The library: the speaker's own, and Jellyfin's ----------------------------------
+
+  // view: { source: 'speaker'|'jellyfin', tab: 'browse'|'search', stack: [levels], query, results, recent, status }
+  function openLibrary() {
+    var s = st();
+    var speakerLibrary = has(s, F.BROWSE) || has(s, F.SEARCH);
+    // Most speakers can be browsed; only some (Music Assistant) searched.
+    var can = function (tab) {
+      if (view.source === 'jellyfin') return true;
+      return has(s, tab === 'search' ? F.SEARCH : F.BROWSE);
+    };
+    var firstTab = function () { return can('browse') ? 'browse' : 'search'; };
+    var view = {
+      source: speakerLibrary ? 'speaker' : (serverUrl() ? 'jellyfin' : 'speaker'),
+      tab: 'browse', stack: [], query: '', results: null, recent: [], status: null
+    };
+    view.tab = firstTab();
+    overlay(function (sheet, close) {
+      function draw() {
+        var top = view.stack[view.stack.length - 1];
+        var title = view.tab === 'search' ? T.search : (top && top.title) || T.library;
+        var html = '<div class="head">'
+          + (view.tab === 'browse' && view.stack.length > 1 ? '<button type="button" class="btn icon quiet" data-back aria-label="' + esc(T.back) + '">' + glyph('back') + '</button>' : '')
+          + '<h2>' + esc(title) + '</h2><button type="button" class="btn icon quiet" data-close aria-label="' + esc(T.close) + '">' + glyph('close') + '</button></div>';
+        if (serverUrl() && speakerLibrary) {
+          html += '<div class="tabs" role="tablist"><button type="button" class="btn' + (view.source === 'speaker' ? ' current' : '') + '" data-source="speaker" role="tab" aria-selected="' + (view.source === 'speaker') + '">' + esc(nameOf(current)) + '</button>'
+            + '<button type="button" class="btn' + (view.source === 'jellyfin' ? ' current' : '') + '" data-source="jellyfin" role="tab" aria-selected="' + (view.source === 'jellyfin') + '">' + esc(T.jellyfin) + '</button></div>';
+        }
+        var signedOut = view.source === 'jellyfin' && !jellyfin;
+        if (!signedOut && can('browse') && can('search')) {
+          html += '<div class="tabs" role="tablist"><button type="button" class="btn' + (view.tab === 'browse' ? ' current' : '') + '" data-tab="browse">' + esc(T.browse) + '</button>'
+            + '<button type="button" class="btn' + (view.tab === 'search' ? ' current' : '') + '" data-tab="search">' + esc(T.search) + '</button></div>';
+        }
+        html += '<div class="body">';
+        if (view.source === 'speaker' && !speakerLibrary) {
+          html += '<p class="status">' + esc(T.cannotBrowse) + '</p>';
+        } else if (signedOut) {
+          html += signInForm();
+        } else if (view.tab === 'search') {
+          html += '<form class="search" data-search><input class="text" type="search" name="q" value="' + esc(view.query) + '" placeholder="' + esc(T.searchPlaceholder) + '" aria-label="' + esc(T.search) + '" enterkeyhint="search"><button class="btn primary">' + esc(T.go) + '</button></form>';
+          if (view.status) html += '<p class="status' + (view.status.err ? ' err' : '') + '">' + esc(view.status.text) + '</p>';
+          else if (view.results) html += view.results.length ? view.results.map(itemHtml).join('') : '<p class="status">' + esc(T.noResults) + '</p>';
+          else if (view.recent.length) {
+            html += '<div class="label"><span>' + esc(T.recent) + '</span><button type="button" class="btn" data-clear-recent>' + esc(T.clear) + '</button></div>'
+              + '<div class="chips">' + view.recent.map(function (q) { return '<button type="button" class="btn" data-recent="' + esc(q) + '">' + esc(q) + '</button>'; }).join('') + '</div>';
+          }
+        } else if (view.status) {
+          html += '<p class="status' + (view.status.err ? ' err' : '') + '">' + esc(view.status.text) + '</p>';
+        } else if (top) {
+          if (top.playAll) html += '<button type="button" class="item" data-play-all><span class="thumb">' + glyph('play') + '</span><span class="t"><b>' + esc(T.playAll) + '</b></span></button>';
+          html += top.items.length ? top.items.map(itemHtml).join('') : '<p class="status">' + esc(T.empty) + '</p>';
+          if (view.source === 'jellyfin' && view.stack.length === 1) {
+            html += '<div class="label"><span>' + esc(fmt(T.jfSignedInAs, { name: jellyfin.name })) + '</span><button type="button" class="btn" data-sign-out>' + esc(T.jfSignOut) + '</button></div>';
+          }
+        }
+        html += '</div>';
+        sheet.innerHTML = html;
+        var input = sheet.querySelector('input[name=q]');
+        if (input && !view.results && !view.status) input.focus();
+      }
+
+      function itemHtml(item, index) {
+        var thumb = item.thumb ? '<img class="thumb" alt="" loading="lazy" src="' + esc(item.thumb) + '">' : '<span class="thumb">' + stroke('music') + '</span>';
+        var kind = T['kind_' + item.kind] || item.kind || '';
+        var sub = [kind, item.sub].filter(Boolean).join(' · ');
+        var action = item.canOpen ? 'open' : 'play';
+        return '<div class="row">'
+          + '<button type="button" class="item" data-index="' + index + '" data-do="' + action + '">' + thumb + '<span class="t"><b>' + esc(item.title) + '</b>' + (sub ? '<span>' + esc(sub) + '</span>' : '') + '</span>'
+          + (item.canOpen ? '<span class="go">' + glyph('open') + '</span>' : '') + '</button>'
+          + (item.canOpen && item.canPlay ? '<button type="button" class="go play" data-index="' + index + '" data-do="play" aria-label="' + esc(T.play + ' ' + item.title) + '">' + glyph('play') + '</button>' : '')
+          + '</div>';
+      }
+
+      function signInForm() {
+        return '<form class="form" data-sign-in><b>' + esc(T.jfSignIn) + '</b><p>' + esc(T.jfIntro) + '</p>'
+          + '<input class="text" name="user" autocomplete="username" value="' + esc(view.user || '') + '" placeholder="' + esc(T.jfUser) + '" aria-label="' + esc(T.jfUser) + '">'
+          + '<input class="text" name="pw" type="password" autocomplete="current-password" placeholder="' + esc(T.jfPassword) + '" aria-label="' + esc(T.jfPassword) + '">'
+          + (view.status ? '<p class="status err">' + esc(view.status.text) + '</p>' : '')
+          + '<button class="btn primary">' + esc(T.jfSignInButton) + '</button></form>';
+      }
+
+      var listOf = function () { return view.tab === 'search' ? view.results || [] : (view.stack[view.stack.length - 1] || { items: [] }).items; };
+
+      function load(promise, push) {
+        view.status = { text: T.loading };
+        draw();
+        return promise.then(function (level) {
+          view.status = null;
+          if (push) view.stack.push(level);
+          draw();
+        }).catch(function (error) {
+          if (error && error.status === 410) { flash(T.stale); return openRoot(); }
+          view.status = { text: (error && error.message) || T.failed, err: true };
+          draw();
+        });
+      }
+
+      function openRoot() {
+        view.stack = [];
+        view.results = null;
+        if (view.source === 'speaker') {
+          if (!speakerLibrary) { draw(); return Promise.resolve(); }
+          if (view.tab === 'search') return loadRecent();
+          return load(speakerSource.browse(null), true);
+        }
+        if (!jellyfin) { draw(); return Promise.resolve(); }
+        if (view.tab === 'search') return loadRecent();
+        return load(Promise.resolve(jellyfinSource.root()), true);
+      }
+
+      function loadRecent() {
+        var source = view.source === 'speaker' ? speakerSource : jellyfinSource;
+        return source.recent().then(function (list) { view.recent = list || []; draw(); }).catch(function () { view.recent = []; draw(); });
+      }
+
+      function play(items, index) {
+        var item = items[index];
+        if (!st() || !has(st(), F.PLAY_MEDIA)) { flash(T.cannotPlay); return; }
+        close();
+        if (view.source === 'speaker') {
+          act('play_media', item.key, { busy: 'play_pause', optimistic: { state: 'playing' } }).catch(function (error) {
+            if (error && error.status === 410) flash(T.stale);
+          });
+          delete nowJellyfin[current];
+          return;
+        }
+        // Jellyfin: the chosen song now, the rest of its list queued after it.
+        jellyfinSource.tracksFor(items, index).then(function (tracks) { playTracks(tracks); }).catch(function (error) { flash(error.message || T.failed); });
+      }
+
+      sheet.addEventListener('click', function (event) {
+        var t = event.target;
+        if (t.closest('[data-close]')) { close(); return; }
+        if (t.closest('[data-back]')) { view.stack.pop(); view.status = null; draw(); return; }
+        var src = t.closest('[data-source]');
+        if (src) { view.source = src.getAttribute('data-source'); view.tab = firstTab(); view.status = null; openRoot(); return; }
+        var tab = t.closest('[data-tab]');
+        if (tab) { view.tab = tab.getAttribute('data-tab'); view.status = null; view.results = null; openRoot(); return; }
+        var recent = t.closest('[data-recent]');
+        if (recent) { runSearch(recent.getAttribute('data-recent')); return; }
+        if (t.closest('[data-clear-recent]')) {
+          (view.source === 'speaker' ? speakerSource : jellyfinSource).clearRecent().then(function () { view.recent = []; draw(); });
+          return;
+        }
+        if (t.closest('[data-sign-out]')) { jellyfinSource.signOut().then(function () { openRoot(); }); return; }
+        if (t.closest('[data-play-all]')) { play(listOf(), 0); return; }
+        var row = t.closest('[data-index]');
+        if (!row) return;
+        var items = listOf();
+        var index = Number(row.getAttribute('data-index'));
+        var item = items[index];
+        if (!item) return;
+        if (row.getAttribute('data-do') === 'open') {
+          view.tab = 'browse';
+          load(view.source === 'speaker' ? speakerSource.browse(item) : jellyfinSource.open(item), true);
+          view.results = null;
+        } else {
+          play(items, index);
+        }
+      });
+
+      function runSearch(query) {
+        var q = String(query || '').trim();
+        if (!q) return;
+        view.query = q;
+        view.status = { text: T.loading };
+        draw();
+        (view.source === 'speaker' ? speakerSource : jellyfinSource).search(q).then(function (result) {
+          view.status = null;
+          view.results = result.items;
+          view.recent = result.recent || view.recent;
+          draw();
+        }).catch(function (error) {
+          view.status = { text: (error && error.message) || T.failed, err: true };
+          draw();
+        });
+      }
+
+      sheet.addEventListener('submit', function (event) {
+        event.preventDefault();
+        var form = event.target;
+        if (form.hasAttribute('data-search')) { runSearch(form.q.value); return; }
+        if (form.hasAttribute('data-sign-in')) {
+          view.status = null;
+          view.user = form.user.value;
+          jellyfinSource.signIn(form.user.value, form.pw.value).then(function () { view.status = null; openRoot(); }).catch(function (error) {
+            view.status = { text: error.message, err: true };
+            draw();
+            var pw = sheet.querySelector('input[name=pw]');
+            if (pw) pw.focus();
+          });
+        }
+      });
+
+      draw();
+      openRoot();
+    });
+  }
+
+  // The speaker's own library, through HomeGlow and Home Assistant.
+  var speakerSource = {
+    browse: function (item) {
+      return HG.homeAssistant.media.browse(current, item ? item.key : undefined).then(function (level) {
+        return {
+          title: level.title || (item && item.title) || nameOf(current),
+          items: level.items,
+          playAll: false
+        };
+      });
+    },
+    search: function (q) { return HG.homeAssistant.media.search(current, q); },
+    recent: function () { return HG.homeAssistant.media.recent(current).then(function (r) { return r.recent; }); },
+    clearRecent: function () { return HG.homeAssistant.media.clearRecent(current); }
+  };
+
+  // --- Jellyfin -------------------------------------------------------------------------
+  // Read straight from the Jellyfin server, which allows other sites to ask
+  // it (CORS). The sign-in is Jellyfin's own token for this household,
+  // kept in this plugin's storage; the password is never kept.
+
+  var jellyfinSource = (function () {
+    var VERSION = '1.0.0';
+    function header(token) {
+      return 'MediaBrowser Client="HomeGlow Music", Device="HomeGlow", DeviceId="' + (jellyfin ? jellyfin.deviceId : deviceId()) + '", Version="' + VERSION + '"' + (token ? ', Token="' + token + '"' : '');
+    }
+    var newDeviceId = null;
+    function deviceId() {
+      if (!newDeviceId) newDeviceId = 'homeglow-' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+      return newDeviceId;
+    }
+    function call(path, options) {
+      var server = serverUrl();
+      var opts = options || {};
+      return fetch(server + path, {
+        method: opts.method || 'GET',
+        headers: Object.assign({ 'X-Emby-Authorization': header(opts.anonymous ? null : opts.token || (jellyfin && jellyfin.token)), Accept: 'application/json' },
+          opts.body ? { 'Content-Type': 'application/json' } : {}),
+        body: opts.body ? JSON.stringify(opts.body) : undefined
+      }).then(function (res) {
+        if (res.status === 401 && !opts.anonymous) {
+          // Revoked in Jellyfin: sign in again.
+          return signOut().then(function () { var e = new Error(T.jfSignIn); e.status = 401; throw e; });
+        }
+        if (!res.ok) { var e = new Error(res.status === 401 ? T.jfWrong : 'Jellyfin: HTTP ' + res.status); e.status = res.status; throw e; }
+        return res.status === 204 ? null : res.json();
+      }, function () {
+        throw new Error(fmt(T.jfUnreachable, { url: server }));
+      });
+    }
+    function image(item, height) {
+      var server = serverUrl();
+      if (item.ImageTags && item.ImageTags.Primary) return server + '/Items/' + item.Id + '/Images/Primary?fillHeight=' + height + '&quality=90&tag=' + encodeURIComponent(item.ImageTags.Primary);
+      if (item.AlbumId && item.AlbumPrimaryImageTag) return server + '/Items/' + item.AlbumId + '/Images/Primary?fillHeight=' + height + '&quality=90&tag=' + encodeURIComponent(item.AlbumPrimaryImageTag);
+      return null;
+    }
+    var KIND = { MusicAlbum: 'album', MusicArtist: 'artist', Playlist: 'playlist', Audio: 'track', Folder: 'directory' };
+    function toItem(item) {
+      var kind = KIND[item.Type] || 'music';
+      return {
+        id: item.Id, kind: kind, title: item.Name || '',
+        sub: kind === 'track' ? [(item.Artists || [])[0] || item.AlbumArtist, item.Album].filter(Boolean).join(' · ') : (kind === 'album' ? item.AlbumArtist || '' : ''),
+        canOpen: kind !== 'track', canPlay: true, thumb: image(item, 120), raw: item
+      };
+    }
+    var items = function (res) { return ((res && res.Items) || []).map(toItem); };
+    var u = function () { return '/Users/' + jellyfin.userId; };
+    var LIST = '&Fields=PrimaryImageAspectRatio&ImageTypeLimit=1&EnableTotalRecordCount=false';
+    var tracksOf = function (item) {
+      if (item.kind === 'playlist') return call('/Playlists/' + item.id + '/Items?userId=' + jellyfin.userId + LIST).then(items);
+      if (item.kind === 'artist') return call(u() + '/Items?IncludeItemTypes=Audio&Recursive=true&ArtistIds=' + item.id + '&SortBy=Album,ParentIndexNumber,IndexNumber&Limit=200' + LIST).then(items);
+      return call(u() + '/Items?ParentId=' + item.id + '&IncludeItemTypes=Audio&Recursive=true&SortBy=ParentIndexNumber,IndexNumber,SortName' + LIST).then(items);
+    };
+    var ROOT = [
+      { kind: 'directory', title: T.jfRecent, canOpen: true, path: function () { return u() + '/Items?IncludeItemTypes=MusicAlbum&Recursive=true&SortBy=DateCreated&SortOrder=Descending&Limit=60' + LIST; } },
+      { kind: 'directory', title: T.jfAlbums, canOpen: true, path: function () { return u() + '/Items?IncludeItemTypes=MusicAlbum&Recursive=true&SortBy=SortName&Limit=500' + LIST; } },
+      { kind: 'directory', title: T.jfArtists, canOpen: true, path: function () { return '/Artists/AlbumArtists?userId=' + jellyfin.userId + '&SortBy=SortName&Limit=500' + LIST; } },
+      { kind: 'directory', title: T.jfPlaylists, canOpen: true, path: function () { return u() + '/Items?IncludeItemTypes=Playlist&Recursive=true&SortBy=SortName' + LIST; } },
+      { kind: 'directory', title: T.jfSongs, canOpen: true, path: function () { return u() + '/Items?IncludeItemTypes=Audio&Recursive=true&SortBy=SortName&Limit=500' + LIST; } }
+    ];
+    function signOut() {
+      var token = jellyfin && jellyfin.token;
+      jellyfin = null;
+      if (token) call('/Sessions/Logout', { method: 'POST', token: token }).catch(function () {});
+      return HG.storage.remove('jellyfin').catch(function () {});
+    }
+    return {
+      root: function () { return { title: T.jellyfin, items: ROOT, playAll: false }; },
+      open: function (item) {
+        if (item.path) return call(item.path()).then(function (res) { return { title: item.title, items: items(res), playAll: false }; });
+        if (item.kind === 'artist') {
+          return call(u() + '/Items?IncludeItemTypes=MusicAlbum&Recursive=true&AlbumArtistIds=' + item.id + '&SortBy=ProductionYear,SortName' + LIST)
+            .then(function (res) { return { title: item.title, items: items(res), playAll: false }; });
+        }
+        return tracksOf(item).then(function (tracks) { return { title: item.title, items: tracks, playAll: tracks.length > 0 }; });
+      },
+      // The songs to play for a choice: a song plays with the rest of its list
+      // after it; an album, artist or playlist plays from its first song.
+      tracksFor: function (list, index) {
+        var item = list[index];
+        if (item.kind === 'track') return Promise.resolve(list.slice(index).filter(function (x) { return x.kind === 'track'; }));
+        return tracksOf(item);
+      },
+      search: function (q) {
+        return call(u() + '/Items?searchTerm=' + encodeURIComponent(q) + '&IncludeItemTypes=Audio,MusicAlbum,MusicArtist,Playlist&Recursive=true&Limit=60' + LIST).then(function (res) {
+          var recent = [q].concat(jfRecent.filter(function (r) { return r.toLowerCase() !== q.toLowerCase(); })).slice(0, 8);
+          jfRecent = recent;
+          HG.storage.set('jellyfinRecent', recent).catch(function () {});
+          return { items: items(res), recent: recent };
+        });
+      },
+      recent: function () { return Promise.resolve(jfRecent); },
+      clearRecent: function () { jfRecent = []; return HG.storage.set('jellyfinRecent', []).catch(function () {}); },
+      signIn: function (user, pw) {
+        if (!serverUrl()) return Promise.reject(new Error(T.cannotPlay));
+        return call('/Users/AuthenticateByName', { method: 'POST', anonymous: true, body: { Username: user, Pw: pw } }).then(function (res) {
+          jellyfin = { server: serverUrl(), userId: res.User.Id, name: res.User.Name, token: res.AccessToken, deviceId: deviceId() };
+          return HG.storage.set('jellyfin', jellyfin);
+        });
+      },
+      signOut: signOut,
+      // A song's stream, as MP3, which every speaker plays.
+      streamUrl: function (track) {
+        return serverUrl() + '/Audio/' + track.id + '/stream.mp3?audioCodec=mp3&audioBitRate=320000&deviceId=' + encodeURIComponent(jellyfin.deviceId) + '&api_key=' + encodeURIComponent(jellyfin.token);
+      },
+      cover: function (track) {
+        var raw = track.raw || {};
+        var id = raw.AlbumId && raw.AlbumPrimaryImageTag ? raw.AlbumId : (raw.ImageTags && raw.ImageTags.Primary ? raw.Id : null);
+        return id ? serverUrl() + '/Items/' + id + '/Images/Primary?fillHeight=600&quality=90' : undefined;
+      }
+    };
+  })();
+  var jfRecent = [];
+
+  // Jellyfin songs on a Home Assistant speaker: the first now, the rest
+  // queued, one call each, a little apart (HomeGlow allows 10 a second).
+  function playTracks(tracks) {
+    if (!tracks.length) return;
+    var s = st();
+    var queue = has(s, F.ENQUEUE) ? tracks.slice(0, QUEUE_LIMIT) : tracks.slice(0, 1);
+    var speaker = current;
+    var describe = function (track) {
+      var raw = track.raw || {};
+      return { title: track.title, artist: (raw.Artists || [])[0] || raw.AlbumArtist || '', album: raw.Album || '', image: jellyfinSource.cover(track) };
+    };
+    var first = describe(queue[0]);
+    var sent = { first: queue[0].id, songs: {} };
+    queue.forEach(function (track) { sent.songs[track.id] = describe(track); });
+    nowJellyfin[speaker] = sent;
+    HG.storage.set('playing:' + speaker, sent).catch(function () {});
+    flash(T.starting);
+    act('play_url', Object.assign({ url: jellyfinSource.streamUrl(queue[0]) }, first), { busy: 'play_pause', optimistic: { state: 'playing' } }).then(function () {
+      var rest = queue.slice(1);
+      if (!rest.length) { if (!has(s, F.ENQUEUE) && tracks.length > 1) flash(T.oneAtATime); return; }
+      flash(fmt(T.queued, { n: rest.length }));
+      var i = 0;
+      var retries = 0;
+      (function next() {
+        if (i >= rest.length) return;
+        var track = rest[i];
+        i += 1;
+        HG.homeAssistant.action(speaker, 'play_url', Object.assign({ url: jellyfinSource.streamUrl(track), enqueue: 'add' }, describe(track)))
+          .catch(function (error) { if (error.status === 429 && retries < 5) { retries += 1; i -= 1; } })
+          .then(function () { setTimeout(next, 150); });
+      })();
+    }).catch(function () {});
+  }
+
+  // --- Starting -----------------------------------------------------------------------------
+
+  Promise.all([
+    HG.settings.get().then(function (values) { Object.assign(settings, values || {}); }).catch(function () {}),
+    HG.storage.get('jellyfin').catch(function () { return null; }),
+    HG.storage.get('jellyfinRecent').then(function (list) { if (Array.isArray(list)) jfRecent = list; }).catch(function () {})
+  ]).then(function (got) {
+    // A sign-in made for another Jellyfin address doesn't carry over.
+    var saved = got[1];
+    if (saved && saved.token && serverUrl() && saved.server === serverUrl()) jellyfin = saved;
+  }).then(poll).then(function () {
+    // What was last started from Jellyfin on each speaker, for one that only
+    // knows the stream's address.
+    Object.keys(players).forEach(function (id) {
+      HG.storage.get('playing:' + id).then(function (saved) { if (saved && saved.songs) { nowJellyfin[id] = saved; render(); } }).catch(function () {});
+    });
+  });
+
+  setInterval(poll, POLL_MS);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) poll(); });
+  var nudge = null;
+  HG.on('ha.state', function (payload) {
+    if (!payload || !Array.isArray(payload.entityIds) || payload.entityIds.indexOf(current) === -1) return;
+    clearTimeout(nudge);
+    nudge = setTimeout(poll, 150);
+  });
+  HG.onTheme(function () { render(); });
+  render();
+})();
+</script>
+</body>
+</html>
