@@ -10,7 +10,7 @@
     "manifestVersion": 1,
     "id": "routines",
     "name": "Routines",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "description": "Groups everyday steps into a routine - brush teeth, make bed, get dressed - that a child ticks off as a checklist, on chosen weekdays or on days with a matching calendar event. Each routine is one ordinary chore, so it counts toward the day once. Clams are paid at streak milestones you choose.",
     "category": "chores-rewards",
     "author": "HomeGlow",
@@ -29,46 +29,74 @@
   </script>
 
   <style>
-    /* Styling deliberately mirrors ChoreWidget: 1px --card-border cards at
-       8px radius, a 32px round --accent button carrying the icon, the same
-       green tint on completion, and the same clam/time chips. A routine
-       should not look like a different application. */
-    :root { color-scheme: light dark; }
+    /* Styling deliberately mirrors ChoreWidget: 1px bordered cards at the
+       theme's medium radius, a 32px round --accent button carrying the icon,
+       the same green tint on completion, and the same clam/time chips. A
+       routine should not look like a different application.
+
+       Type, borders, corners, buttons and the progress meter read the
+       theme's roles (docs/guides/plugin-development.md). Borders read
+       --border, which the dashboard sends; --card-border is only the
+       stylesheet's, so it never followed a theme. Quiet text (dates, help,
+       labels) takes --text-secondary rather than an opacity: a theme
+       picks that color to read on its own background, while a faded --text
+       washes out over a see-through frame such as Reef's. Each fallback is
+       the look from before themes. */
+    /* No color-scheme of our own. The dashboard declares none, and a frame
+       whose scheme differs from the page around it is painted opaque: with
+       "light dark", a Mac in dark mode got a black tile on a light theme,
+       with the theme's dark text on it. The theme's tokens carry the colors. */
     * { box-sizing: border-box; }
 
     body {
       margin: 0;
       padding: 12px;
-      background: var(--card-bg, #fff);
+      /* No background: the dashboard's frame draws it, at the household's
+         card opacity, or nothing when the widget is set transparent. */
       /* The host defines --text, not --text-color. */
       color: var(--text, #333);
-      font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+      font-family: var(--hg-font-body, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif);
       font-size: 14px;
     }
 
     .head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
     .head h1 { font-size: 0.9rem; margin: 0; font-weight: 700; }
-    .head .today { font-size: 0.75rem; opacity: 0.6; margin-left: auto; }
+    .head h1, .section h2, .scene .msg h2 {
+      font-family: var(--hg-font-heading, inherit);
+      text-transform: var(--hg-heading-transform, none);
+    }
+    .head h1, .section h2 { letter-spacing: var(--hg-heading-letter-spacing, normal); }
+    .head .today { font-size: 0.75rem; color: var(--text-secondary, color-mix(in srgb, currentColor 60%, transparent)); margin-left: auto; }
 
     .btn {
       background: transparent;
-      border: 1px solid var(--card-border, rgba(128,128,128,0.35));
+      border: 1px solid var(--hg-button-quiet-border, var(--border, var(--card-border, rgba(128,128,128,0.35))));
       color: inherit;
-      border-radius: 8px;
+      border-radius: var(--hg-button-radius, 8px);
       cursor: pointer;
       font-size: 0.78rem;
       padding: 4px 9px;
       font-family: inherit;
     }
     .btn:hover { border-color: var(--accent, #757575); }
-    .btn.primary { background: var(--accent, #757575); color: #fff; border-color: var(--accent, #757575); font-weight: 600; }
+    .btn.primary, .btn.add, .btn.danger {
+      font-family: var(--hg-font-heading, inherit);
+      text-transform: var(--hg-heading-transform, none);
+      letter-spacing: var(--hg-heading-letter-spacing, normal);
+    }
+    .btn.primary {
+      background: var(--hg-button-bg, var(--accent, #757575));
+      color: var(--hg-button-text, #fff);
+      border-color: transparent;
+      font-weight: var(--hg-button-weight, 600);
+    }
     /* The header's "+ Add": green, so the way in stands out; it becomes a
        plain "Close" while setting up. */
     .btn.add {
       background: var(--success, #2e7d32);
       border-color: var(--success, #2e7d32);
       color: #fff;
-      font-weight: 700;
+      font-weight: var(--hg-button-weight, 700);
     }
     .btn.add:hover { border-color: var(--success, #2e7d32); filter: brightness(1.08); }
     .btn:disabled { opacity: 0.5; cursor: default; }
@@ -77,21 +105,21 @@
       background: var(--hg-error, #d32f2f);
       border-color: var(--hg-error, #d32f2f);
       color: #fff;
-      font-weight: 600;
+      font-weight: var(--hg-button-weight, 600);
     }
 
     .note {
       font-size: 0.72rem;
-      opacity: 0.65;
-      border: 1px dashed var(--card-border, rgba(128,128,128,0.35));
-      border-radius: 8px;
+      color: var(--text-secondary, color-mix(in srgb, currentColor 65%, transparent));
+      border: 1px dashed var(--border, var(--card-border, rgba(128,128,128,0.35)));
+      border-radius: var(--hg-radius-md, 8px);
       padding: 6px 8px;
       margin-bottom: 8px;
     }
     .err {
-      border: 1px solid rgba(244, 67, 54, 0.55);
-      background: rgba(244, 67, 54, 0.10);
-      border-radius: 8px;
+      border: 1px solid color-mix(in srgb, var(--hg-error, #f44336) 55%, transparent);
+      background: color-mix(in srgb, var(--hg-error, #f44336) 10%, transparent);
+      border-radius: var(--hg-radius-md, 8px);
       padding: 7px 9px;
       font-size: 0.78rem;
       margin-bottom: 8px;
@@ -101,7 +129,7 @@
       font-size: 0.68rem;
       text-transform: uppercase;
       letter-spacing: 0.06em;
-      opacity: 0.5;
+      color: var(--text-secondary, color-mix(in srgb, currentColor 50%, transparent));
       margin: 10px 0 5px;
       font-weight: 700;
     }
@@ -109,8 +137,8 @@
 
     /* --- cards: same geometry as .chore-card --- */
     .card {
-      border: 1px solid var(--card-border, rgba(128,128,128,0.3));
-      border-radius: 8px;
+      border: 1px solid var(--border, var(--card-border, rgba(128,128,128,0.3)));
+      border-radius: var(--hg-radius-md, 8px);
       margin-bottom: 8px;
       overflow: hidden;
     }
@@ -133,7 +161,7 @@
       font-size: 0.7rem;
       padding: 1px 7px;
       border-radius: 999px;
-      border: 1px solid var(--card-border, rgba(128,128,128,0.35));
+      border: 1px solid var(--border, var(--card-border, rgba(128,128,128,0.35)));
       white-space: nowrap;
       vertical-align: middle;
     }
@@ -147,13 +175,13 @@
       gap: 10px;
       border: 1px solid var(--accent, #757575);
       background: rgba(var(--accent-rgb, 158,127,255), 0.10);
-      border-radius: 8px;
+      border-radius: var(--hg-radius-md, 8px);
       padding: 8px 10px;
       margin-bottom: 8px;
       font-size: 0.8rem;
     }
     .found span { flex: 1; }
-    .hint { font-size: 0.78rem; opacity: 0.75; padding: 8px 12px; }
+    .hint { font-size: 0.78rem; color: var(--text-secondary, color-mix(in srgb, currentColor 75%, transparent)); padding: 8px 12px; }
 
     /* The 32px round action button, exactly as the chore card uses it. */
     .go {
@@ -174,11 +202,11 @@
     }
     .go.off {
       background: transparent;
-      border: 1px solid var(--card-border, rgba(128,128,128,0.4));
+      border: 1px solid var(--border, var(--card-border, rgba(128,128,128,0.4)));
       color: inherit;
     }
 
-    .steps { border-top: 1px solid var(--card-border, rgba(128,128,128,0.25)); }
+    .steps { border-top: 1px solid var(--border, var(--card-border, rgba(128,128,128,0.25))); }
     .step {
       display: flex;
       align-items: center;
@@ -187,19 +215,22 @@
       cursor: pointer;
       user-select: none;
     }
-    .step + .step { border-top: 1px solid var(--card-border, rgba(128,128,128,0.15)); }
-    .step.on .slabel { text-decoration: line-through; opacity: 0.55; }
+    .step + .step { border-top: 1px solid var(--border, var(--card-border, rgba(128,128,128,0.15))); }
+    /* A done step keeps full-strength text: the tick and the strike say it
+       is done, and a faded label is lost over a see-through frame. */
+    .step.on .slabel { text-decoration: line-through; }
     .slabel { font-size: 0.82rem; }
 
-    .bar { height: 3px; background: rgba(var(--accent-rgb, 158,127,255), 0.15); }
+    /* The routine's progress, as the theme draws a meter. */
+    .bar { height: var(--hg-meter-thickness, 3px); background: var(--hg-meter-track, rgba(var(--accent-rgb, 158,127,255), 0.15)); }
     .bar > i {
       display: block;
       height: 100%;
-      background: var(--accent, #757575);
+      background: var(--hg-meter-fill, var(--accent, #757575));
       transition: width 0.18s ease;
     }
 
-    .empty { opacity: 0.6; font-size: 0.82rem; padding: 12px 2px; }
+    .empty { color: var(--text-secondary, color-mix(in srgb, currentColor 60%, transparent)); font-size: 0.82rem; padding: 12px 2px; }
 
     /* --- the caught-up scene ---
        In place of an empty list: someone reading against a big tree, legs
@@ -209,9 +240,9 @@
     .scene {
       position: relative;
       height: 180px;
-      border-radius: 10px;
+      border-radius: var(--hg-radius-md, 10px);
       overflow: hidden;
-      border: 1px solid var(--card-border, rgba(128,128,128,0.3));
+      border: 1px solid var(--border, var(--card-border, rgba(128,128,128,0.3)));
       margin-bottom: 10px;
     }
     /* Alone in the tile, the scene takes the room the list would have. */
@@ -280,8 +311,8 @@
        Every field has its label above it and its help text below it, so the
        directions read as part of the field instead of floating between them. */
     .section {
-      border: 1px solid var(--card-border, rgba(128,128,128,0.3));
-      border-radius: 10px;
+      border: 1px solid var(--border, var(--card-border, rgba(128,128,128,0.3)));
+      border-radius: var(--hg-radius-md, 10px);
       padding: 12px 14px 14px;
       margin-bottom: 12px;
     }
@@ -289,8 +320,8 @@
     .section > .help:first-of-type { margin-top: 3px; }
     .field { margin-top: 14px; }
     .label { font-size: 0.8rem; font-weight: 700; margin-bottom: 6px; }
-    .help { font-size: 0.75rem; opacity: 0.75; margin: 6px 0 0; line-height: 1.45; }
-    .muted { font-size: 0.8rem; opacity: 0.6; margin: 8px 0 0; }
+    .help { font-size: 0.75rem; color: var(--text-secondary, color-mix(in srgb, currentColor 75%, transparent)); margin: 6px 0 0; line-height: 1.45; }
+    .muted { font-size: 0.8rem; color: var(--text-secondary, color-mix(in srgb, currentColor 60%, transparent)); margin: 8px 0 0; }
     .inline { font-size: 0.8rem; }
     .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
     .grow { flex: 1 1 160px; }
@@ -299,8 +330,8 @@
     input[type="text"], input[type="time"], input[type="number"], select {
       background: transparent;
       color: inherit;
-      border: 1px solid var(--card-border, rgba(128,128,128,0.35));
-      border-radius: 8px;
+      border: 1px solid var(--border, var(--card-border, rgba(128,128,128,0.35)));
+      border-radius: var(--hg-radius-md, 8px);
       padding: 6px 8px;
       font-size: 0.82rem;
       font-family: inherit;
@@ -321,8 +352,8 @@
       justify-content: center;
       gap: 3px;
       padding: 0 6px;
-      border: 1px solid var(--card-border, rgba(128,128,128,0.35));
-      border-radius: 8px;
+      border: 1px solid var(--border, var(--card-border, rgba(128,128,128,0.35)));
+      border-radius: var(--hg-radius-md, 8px);
       background: transparent;
       color: inherit;
       cursor: pointer;
@@ -336,8 +367,8 @@
       display: flex;
       flex-wrap: wrap;
       gap: 4px;
-      border: 1px solid var(--card-border, rgba(128,128,128,0.3));
-      border-radius: 8px;
+      border: 1px solid var(--border, var(--card-border, rgba(128,128,128,0.3)));
+      border-radius: var(--hg-radius-md, 8px);
       padding: 6px;
       margin-top: 6px;
       max-height: 116px;
@@ -347,7 +378,7 @@
     .ic {
       width: 32px;
       height: 32px;
-      border-radius: 8px;
+      border-radius: var(--hg-radius-md, 8px);
       border: 1px solid transparent;
       background: transparent;
       font-size: 1.15rem;
@@ -358,11 +389,11 @@
       justify-content: center;
       padding: 0;
     }
-    .ic:hover { border-color: var(--card-border, rgba(128,128,128,0.5)); }
+    .ic:hover { border-color: var(--border, var(--card-border, rgba(128,128,128,0.5))); }
     .ic.on { border-color: var(--accent, #757575); background: rgba(var(--accent-rgb, 158,127,255), 0.18); }
 
     .pill {
-      border: 1px solid var(--card-border, rgba(128,128,128,0.35));
+      border: 1px solid var(--border, var(--card-border, rgba(128,128,128,0.35)));
       border-radius: 999px;
       padding: 5px 11px;
       font-size: 0.8rem;
@@ -380,7 +411,7 @@
       align-items: center;
       gap: 8px;
       padding: 8px 0;
-      border-bottom: 1px solid var(--card-border, rgba(128,128,128,0.18));
+      border-bottom: 1px solid var(--border, var(--card-border, rgba(128,128,128,0.18)));
       font-size: 0.85rem;
     }
     .line:last-of-type { border-bottom: none; }
@@ -944,7 +975,10 @@
       saveProgress(r.id);
 
       var work = Promise.resolve();
-      if (now && !was) work = complete(r);
+      if (now && !was) {
+        celebrate();
+        work = complete(r);
+      }
       else if (!now && was) work = uncomplete(r);
       render();
       work.then(render);
@@ -998,6 +1032,15 @@
         if (window.parent && window.parent !== window) {
           window.parent.postMessage({ type: 'homeglow:data-changed', scope: 'chores' }, '*');
         }
+      } catch (e) { /* best effort */ }
+    }
+
+    // A finished routine is worth the board's celebration (the theme's
+    // confetti and cast). HomeGlow decides whether it plays; a HomeGlow
+    // without celebrate() just skips it.
+    function celebrate() {
+      try {
+        if (window.HomeGlow && typeof window.HomeGlow.celebrate === 'function') window.HomeGlow.celebrate();
       } catch (e) { /* best effort */ }
     }
 
@@ -2183,7 +2226,6 @@
       var params = new URLSearchParams(window.location.search);
       var theme = params.get('theme');
       if (theme === 'dark' || theme === 'light') document.documentElement.setAttribute('data-theme', theme);
-      if (params.get('transparent') === 'true') document.body.style.background = 'transparent';
 
       var start = SDK
         ? SDK.settings.get().then(function (v) { state.settings = Object.assign(state.settings, v || {}); })
