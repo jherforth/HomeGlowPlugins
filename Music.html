@@ -11,18 +11,16 @@
     "manifestVersion": 1,
     "id": "music",
     "name": "Music",
-    "version": "1.1.0",
-    "description": "What's playing on your Home Assistant speakers, with the cover large: play, pause, skip, shuffle, seek and volume, and each speaker's own library to browse and search. Brings your Jellyfin library too, played on any speaker.",
+    "version": "1.2.0",
+    "description": "What's playing on your Home Assistant speakers, with the cover large: play, pause, skip, shuffle, seek and volume, and each speaker's own library to browse and search (with Music Assistant, every service it brings). Group speakers to play in step.",
     "category": "household",
     "author": "HomeGlow",
     "apiVersion": "v1",
-    "storage": true,
     "events": ["ha.state"],
-    "homeAssistant": { "domains": ["media_player"], "playUrlsFrom": "jellyfinUrl" },
+    "homeAssistant": { "domains": ["media_player"] },
     "settings": [
       { "key": "speakers", "label": "Speakers to offer (entity ids, comma-separated; blank = every speaker). Also chosen from the widget: Speakers, then Edit.", "type": "string", "default": "" },
-      { "key": "speaker", "label": "This display's speaker (entity id; blank = the first)", "type": "string", "default": "", "scope": "device" },
-      { "key": "jellyfinUrl", "label": "Jellyfin address, to play your Jellyfin library (optional, e.g. http://192.168.1.20:8096)", "type": "string", "default": "" }
+      { "key": "speaker", "label": "This display's speaker (entity id; blank = the first)", "type": "string", "default": "", "scope": "device" }
     ],
     "hideableControls": [
       { "id": "operate", "label": "Play and change music" }
@@ -190,8 +188,6 @@
     .chips .btn { min-height: 40px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .status { padding: 14px 6px; text-align: center; color: var(--ink-2); font-size: 0.9rem; }
     .status.err { color: var(--err); }
-    .form { display: flex; flex-direction: column; gap: 8px; padding: 6px 2px; }
-    .form p { margin: 0; color: var(--ink-2); font-size: 0.88rem; line-height: 1.4; }
     .row { display: flex; gap: 8px; align-items: center; }
     @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
   </style>
@@ -208,24 +204,18 @@
   var viewOnlyDisplay = (params.get('hide') || '').split(',').indexOf('operate') !== -1;
   var lang = (params.get('lang') || navigator.language || 'en').slice(0, 2) === 'es' ? 'es' : 'en';
   var POLL_MS = 2000;
-  var QUEUE_LIMIT = 40;
 
   var STRINGS = {
     en: {
       nothing: 'Nothing playing', chooseMusic: 'Choose music', speakers: 'Speakers', library: 'Music', browse: 'Browse', search: 'Search',
       searchPlaceholder: 'Song, artist, album…', go: 'Go', recent: 'Recent searches', clear: 'Clear', back: 'Back', close: 'Close',
       play: 'Play', pause: 'Pause', previous: 'Previous', next: 'Next', shuffle: 'Shuffle', volume: 'Volume', position: 'Place in the song',
-      open: 'Open', playAll: 'Play all', loading: 'Loading…', empty: 'Nothing here.', noResults: 'Nothing found.', stale: 'That list is out of date; it has been opened again.',
+      open: 'Open', loading: 'Loading…', empty: 'Nothing here.', noResults: 'Nothing found.', stale: 'That list is out of date; it has been opened again.',
       noSpeakers: 'No speakers found in Home Assistant.', notConnected: 'Home Assistant isn\'t connected. Set it up in Admin → System → Connections.',
       noAccess: 'This HomeGlow is too old for the Music plugin. Update HomeGlow to the release after 1.9.1 or later.',
       unreachable: 'Home Assistant can\'t be reached right now.', viewOnly: 'View only on this display',
-      cannotBrowse: 'This speaker has no library to browse. Pick music from Jellyfin, or another speaker.',
-      cannotPlay: 'This speaker can\'t be sent music.', oneAtATime: 'This speaker plays one song at a time.',
-      queued: 'Playing, with {n} more queued', starting: 'Starting…', failed: 'That didn\'t work',
-      jellyfin: 'Jellyfin', jfSignIn: 'Sign in to Jellyfin', jfIntro: 'Sign in once for the whole household. The password isn\'t kept; Jellyfin gives HomeGlow a sign-in of its own, which you can revoke in Jellyfin\'s dashboard under Devices.',
-      jfUser: 'User name', jfPassword: 'Password', jfSignInButton: 'Sign in', jfSignedInAs: 'Signed in as {name}', jfSignOut: 'Sign out',
-      jfWrong: 'Jellyfin didn\'t accept that user name and password.', jfUnreachable: 'Can\'t reach Jellyfin at {url}. Check the address in this plugin\'s settings.',
-      jfRecent: 'Recently added', jfAlbums: 'Albums', jfArtists: 'Artists', jfPlaylists: 'Playlists', jfSongs: 'Songs',
+      cannotBrowse: 'This speaker has no library to browse. Pick another speaker (with Music Assistant, its own).',
+      cannotPlay: 'This speaker can\'t be sent music.', failed: 'That didn\'t work',
       edit: 'Edit', save: 'Save', cancel: 'Cancel', toOffer: 'Speakers to offer', needOne: 'Pick at least one speaker.',
       editHint: 'Tick the speakers this widget offers. It\'s the same list on every display.',
       groupHint: 'Tap + to play the same music on more speakers, in step with {name}.',
@@ -236,17 +226,12 @@
       nothing: 'No suena nada', chooseMusic: 'Elegir música', speakers: 'Altavoces', library: 'Música', browse: 'Explorar', search: 'Buscar',
       searchPlaceholder: 'Canción, artista, álbum…', go: 'Ir', recent: 'Búsquedas recientes', clear: 'Borrar', back: 'Atrás', close: 'Cerrar',
       play: 'Reproducir', pause: 'Pausa', previous: 'Anterior', next: 'Siguiente', shuffle: 'Aleatorio', volume: 'Volumen', position: 'Punto de la canción',
-      open: 'Abrir', playAll: 'Reproducir todo', loading: 'Cargando…', empty: 'No hay nada aquí.', noResults: 'No se encontró nada.', stale: 'La lista estaba desactualizada; se ha abierto de nuevo.',
+      open: 'Abrir', loading: 'Cargando…', empty: 'No hay nada aquí.', noResults: 'No se encontró nada.', stale: 'La lista estaba desactualizada; se ha abierto de nuevo.',
       noSpeakers: 'No hay altavoces en Home Assistant.', notConnected: 'Home Assistant no está conectado. Configúralo en Administración → Sistema → Conexiones.',
       noAccess: 'Este HomeGlow es demasiado antiguo para el complemento Música. Actualiza HomeGlow a una versión posterior a la 1.9.1.',
       unreachable: 'No se puede contactar con Home Assistant ahora.', viewOnly: 'Solo lectura en esta pantalla',
-      cannotBrowse: 'Este altavoz no tiene biblioteca. Elige música de Jellyfin u otro altavoz.',
-      cannotPlay: 'A este altavoz no se le puede enviar música.', oneAtATime: 'Este altavoz reproduce una canción cada vez.',
-      queued: 'Reproduciendo, con {n} más en cola', starting: 'Empezando…', failed: 'No ha funcionado',
-      jellyfin: 'Jellyfin', jfSignIn: 'Iniciar sesión en Jellyfin', jfIntro: 'Inicia sesión una vez para toda la casa. La contraseña no se guarda; Jellyfin da a HomeGlow una sesión propia, que puedes revocar en el panel de Jellyfin, en Dispositivos.',
-      jfUser: 'Usuario', jfPassword: 'Contraseña', jfSignInButton: 'Entrar', jfSignedInAs: 'Sesión de {name}', jfSignOut: 'Cerrar sesión',
-      jfWrong: 'Jellyfin no aceptó ese usuario y contraseña.', jfUnreachable: 'No se puede contactar con Jellyfin en {url}. Revisa la dirección en los ajustes del complemento.',
-      jfRecent: 'Añadido recientemente', jfAlbums: 'Álbumes', jfArtists: 'Artistas', jfPlaylists: 'Listas', jfSongs: 'Canciones',
+      cannotBrowse: 'Este altavoz no tiene biblioteca. Elige otro altavoz (con Music Assistant, el suyo).',
+      cannotPlay: 'A este altavoz no se le puede enviar música.', failed: 'No ha funcionado',
       edit: 'Editar', save: 'Guardar', cancel: 'Cancelar', toOffer: 'Altavoces disponibles', needOne: 'Elige al menos un altavoz.',
       editHint: 'Marca los altavoces que ofrece este widget. La lista es la misma en todas las pantallas.',
       groupHint: 'Toca + para poner la misma música en más altavoces, a la vez que {name}.',
@@ -290,7 +275,7 @@
 
   // --- State ------------------------------------------------------------------
 
-  var settings = { speakers: '', speaker: '', jellyfinUrl: '' };
+  var settings = { speakers: '', speaker: '' };
   var players = {};          // entity_id -> state
   var control = [];          // ids this plugin may operate
   var current = null;        // the chosen speaker's entity id
@@ -299,11 +284,8 @@
   var pending = null;        // { id, patch, until } an optimistic change
   var busy = {};             // control name -> true while a slow speaker works
   var hintText = null;
-  var jellyfin = null;       // { server, userId, token, name, deviceId } once signed in
-  var nowJellyfin = {};      // entity_id -> { first, songs: { jellyfin id: { title, artist, album, image } } } we sent there
   var app = document.getElementById('app');
 
-  var serverUrl = function () { return String(settings.jellyfinUrl || '').trim().replace(/\/+$/, ''); };
   var st = function () {
     var s = players[current];
     if (s && pending && pending.id === current && pending.until > Date.now()) {
@@ -405,29 +387,12 @@
     var h = Math.floor(secs / 3600), m = Math.floor((secs % 3600) / 60), s = secs % 60;
     return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(s).padStart(2, '0');
   };
-  var looksLikeAddress = function (text) { return /^https?:\/\//i.test(String(text || '')) || /\/stream\.mp3/.test(String(text || '')); };
+  var looksLikeAddress = function (text) { return /^https?:\/\//i.test(String(text || '')); };
 
-  // Which of the Jellyfin songs we sent a speaker it's playing: found by the
-  // song's id in its stream address, or by the title we sent with it.
-  function jellyfinSong(id, s) {
-    var sent = nowJellyfin[id];
-    var a = s.attributes;
-    if (!sent || !sent.songs || !(s.state === 'playing' || s.state === 'paused' || s.state === 'buffering')) return null;
-    var where = String(a.media_content_id || '') + ' ' + String(a.media_title || '');
-    var m = where.match(/\/Audio\/([^/?\s]+)\/stream/);
-    if (m) return sent.songs[m[1]] || null;
-    if (!a.media_title) return sent.songs[sent.first] || null;
-    var ids = Object.keys(sent.songs);
-    for (var i = 0; i < ids.length; i += 1) if (sent.songs[ids[i]].title === a.media_title) return sent.songs[ids[i]];
-    return null;
-  }
-
-  // What's playing: Home Assistant's account, or, for a Jellyfin song, what
-  // we know of it (a speaker may know it only by its stream address).
+  // What's playing, as Home Assistant tells it (a stream known only by its
+  // address shows no title).
   function playing(s) {
     var a = s.attributes;
-    var song = jellyfinSong(current, s);
-    if (song) return { title: song.title, artist: song.artist, album: song.album, art: song.image || (a.media_art ? HG.homeAssistant.media.artUrl(current, a.media_art) : null) };
     return {
       title: looksLikeAddress(a.media_title) ? '' : a.media_title,
       artist: a.media_artist,
@@ -668,8 +633,7 @@
           + (groupable && ids.some(function (id) { return id !== current && canGroup(id); }) ? '<p class="hintline">' + esc(fmt(T.groupHint, { name: nameOf(current) })) + '</p>' : '')
           + '<div class="body">' + ids.map(function (id) {
             var p = players[id];
-            var song = jellyfinSong(id, p);
-            var what = song ? song.title : (p.attributes.media_title && !looksLikeAddress(p.attributes.media_title) ? p.attributes.media_title : p.state);
+            var what = p.attributes.media_title && !looksLikeAddress(p.attributes.media_title) ? p.attributes.media_title : p.state;
             var inGroup = group.indexOf(id) !== -1;
             var toggle = id !== current && groupable && canGroup(id)
               ? '<button type="button" class="go grp' + (inGroup ? ' on' : '') + (busyIds[id] ? ' busy' : '') + '" data-group="' + esc(id) + '" aria-pressed="' + inGroup + '" aria-label="'
@@ -771,23 +735,15 @@
     }, true);
   }
 
-  // --- The library: the speaker's own, and Jellyfin's ----------------------------------
+  // --- The library: the speaker's own ----------------------------------------------------
 
-  // view: { source: 'speaker'|'jellyfin', tab: 'browse'|'search', stack: [levels], query, results, recent, status }
+  // view: { tab: 'browse'|'search', stack: [levels], query, results, recent, status }
   function openLibrary() {
     var s = st();
     var speakerLibrary = has(s, F.BROWSE) || has(s, F.SEARCH);
     // Most speakers can be browsed; only some (Music Assistant) searched.
-    var can = function (tab) {
-      if (view.source === 'jellyfin') return true;
-      return has(s, tab === 'search' ? F.SEARCH : F.BROWSE);
-    };
-    var firstTab = function () { return can('browse') ? 'browse' : 'search'; };
-    var view = {
-      source: speakerLibrary ? 'speaker' : (serverUrl() ? 'jellyfin' : 'speaker'),
-      tab: 'browse', stack: [], query: '', results: null, recent: [], status: null
-    };
-    view.tab = firstTab();
+    var can = function (tab) { return has(s, tab === 'search' ? F.SEARCH : F.BROWSE); };
+    var view = { tab: can('browse') ? 'browse' : 'search', stack: [], query: '', results: null, recent: [], status: null };
     overlay(function (sheet, close) {
       function draw() {
         var top = view.stack[view.stack.length - 1];
@@ -795,20 +751,13 @@
         var html = '<div class="head">'
           + (view.tab === 'browse' && view.stack.length > 1 ? '<button type="button" class="btn icon quiet" data-back aria-label="' + esc(T.back) + '">' + glyph('back') + '</button>' : '')
           + '<h2>' + esc(title) + '</h2><button type="button" class="btn icon quiet" data-close aria-label="' + esc(T.close) + '">' + glyph('close') + '</button></div>';
-        if (serverUrl() && speakerLibrary) {
-          html += '<div class="tabs" role="tablist"><button type="button" class="btn' + (view.source === 'speaker' ? ' current' : '') + '" data-source="speaker" role="tab" aria-selected="' + (view.source === 'speaker') + '">' + esc(nameOf(current)) + '</button>'
-            + '<button type="button" class="btn' + (view.source === 'jellyfin' ? ' current' : '') + '" data-source="jellyfin" role="tab" aria-selected="' + (view.source === 'jellyfin') + '">' + esc(T.jellyfin) + '</button></div>';
-        }
-        var signedOut = view.source === 'jellyfin' && !jellyfin;
-        if (!signedOut && can('browse') && can('search')) {
+        if (can('browse') && can('search')) {
           html += '<div class="tabs" role="tablist"><button type="button" class="btn' + (view.tab === 'browse' ? ' current' : '') + '" data-tab="browse">' + esc(T.browse) + '</button>'
             + '<button type="button" class="btn' + (view.tab === 'search' ? ' current' : '') + '" data-tab="search">' + esc(T.search) + '</button></div>';
         }
         html += '<div class="body">';
-        if (view.source === 'speaker' && !speakerLibrary) {
+        if (!speakerLibrary) {
           html += '<p class="status">' + esc(T.cannotBrowse) + '</p>';
-        } else if (signedOut) {
-          html += signInForm();
         } else if (view.tab === 'search') {
           html += '<form class="search" data-search><input class="text" type="search" name="q" value="' + esc(view.query) + '" placeholder="' + esc(T.searchPlaceholder) + '" aria-label="' + esc(T.search) + '" enterkeyhint="search"><button class="btn primary">' + esc(T.go) + '</button></form>';
           if (view.status) html += '<p class="status' + (view.status.err ? ' err' : '') + '">' + esc(view.status.text) + '</p>';
@@ -820,11 +769,7 @@
         } else if (view.status) {
           html += '<p class="status' + (view.status.err ? ' err' : '') + '">' + esc(view.status.text) + '</p>';
         } else if (top) {
-          if (top.playAll) html += '<button type="button" class="item" data-play-all><span class="thumb">' + glyph('play') + '</span><span class="t"><b>' + esc(T.playAll) + '</b></span></button>';
           html += top.items.length ? top.items.map(itemHtml).join('') : '<p class="status">' + esc(T.empty) + '</p>';
-          if (view.source === 'jellyfin' && view.stack.length === 1) {
-            html += '<div class="label"><span>' + esc(fmt(T.jfSignedInAs, { name: jellyfin.name })) + '</span><button type="button" class="btn" data-sign-out>' + esc(T.jfSignOut) + '</button></div>';
-          }
         }
         html += '</div>';
         sheet.innerHTML = html;
@@ -842,14 +787,6 @@
           + (item.canOpen ? '<span class="go">' + glyph('open') + '</span>' : '') + '</button>'
           + (item.canOpen && item.canPlay ? '<button type="button" class="go play" data-index="' + index + '" data-do="play" aria-label="' + esc(T.play + ' ' + item.title) + '">' + glyph('play') + '</button>' : '')
           + '</div>';
-      }
-
-      function signInForm() {
-        return '<form class="form" data-sign-in><b>' + esc(T.jfSignIn) + '</b><p>' + esc(T.jfIntro) + '</p>'
-          + '<input class="text" name="user" autocomplete="username" value="' + esc(view.user || '') + '" placeholder="' + esc(T.jfUser) + '" aria-label="' + esc(T.jfUser) + '">'
-          + '<input class="text" name="pw" type="password" autocomplete="current-password" placeholder="' + esc(T.jfPassword) + '" aria-label="' + esc(T.jfPassword) + '">'
-          + (view.status ? '<p class="status err">' + esc(view.status.text) + '</p>' : '')
-          + '<button class="btn primary">' + esc(T.jfSignInButton) + '</button></form>';
       }
 
       var listOf = function () { return view.tab === 'search' ? view.results || [] : (view.stack[view.stack.length - 1] || { items: [] }).items; };
@@ -871,52 +808,36 @@
       function openRoot() {
         view.stack = [];
         view.results = null;
-        if (view.source === 'speaker') {
-          if (!speakerLibrary) { draw(); return Promise.resolve(); }
-          if (view.tab === 'search') return loadRecent();
-          return load(speakerSource.browse(null), true);
-        }
-        if (!jellyfin) { draw(); return Promise.resolve(); }
+        if (!speakerLibrary) { draw(); return Promise.resolve(); }
         if (view.tab === 'search') return loadRecent();
-        return load(Promise.resolve(jellyfinSource.root()), true);
+        return load(speakerSource.browse(null), true);
       }
 
       function loadRecent() {
-        var source = view.source === 'speaker' ? speakerSource : jellyfinSource;
-        return source.recent().then(function (list) { view.recent = list || []; draw(); }).catch(function () { view.recent = []; draw(); });
+        return speakerSource.recent().then(function (list) { view.recent = list || []; draw(); }).catch(function () { view.recent = []; draw(); });
       }
 
       function play(items, index) {
         var item = items[index];
         if (!st() || !has(st(), F.PLAY_MEDIA)) { flash(T.cannotPlay); return; }
         close();
-        if (view.source === 'speaker') {
-          act('play_media', item.key, { busy: 'play_pause', optimistic: { state: 'playing' } }).catch(function (error) {
-            if (error && error.status === 410) flash(T.stale);
-          });
-          delete nowJellyfin[current];
-          return;
-        }
-        // Jellyfin: the chosen song now, the rest of its list queued after it.
-        jellyfinSource.tracksFor(items, index).then(function (tracks) { playTracks(tracks); }).catch(function (error) { flash(error.message || T.failed); });
+        act('play_media', item.key, { busy: 'play_pause', optimistic: { state: 'playing' } }).catch(function (error) {
+          if (error && error.status === 410) flash(T.stale);
+        });
       }
 
       sheet.addEventListener('click', function (event) {
         var t = event.target;
         if (t.closest('[data-close]')) { close(); return; }
         if (t.closest('[data-back]')) { view.stack.pop(); view.status = null; draw(); return; }
-        var src = t.closest('[data-source]');
-        if (src) { view.source = src.getAttribute('data-source'); view.tab = firstTab(); view.status = null; openRoot(); return; }
         var tab = t.closest('[data-tab]');
         if (tab) { view.tab = tab.getAttribute('data-tab'); view.status = null; view.results = null; openRoot(); return; }
         var recent = t.closest('[data-recent]');
         if (recent) { runSearch(recent.getAttribute('data-recent')); return; }
         if (t.closest('[data-clear-recent]')) {
-          (view.source === 'speaker' ? speakerSource : jellyfinSource).clearRecent().then(function () { view.recent = []; draw(); });
+          speakerSource.clearRecent().then(function () { view.recent = []; draw(); });
           return;
         }
-        if (t.closest('[data-sign-out]')) { jellyfinSource.signOut().then(function () { openRoot(); }); return; }
-        if (t.closest('[data-play-all]')) { play(listOf(), 0); return; }
         var row = t.closest('[data-index]');
         if (!row) return;
         var items = listOf();
@@ -925,7 +846,7 @@
         if (!item) return;
         if (row.getAttribute('data-do') === 'open') {
           view.tab = 'browse';
-          load(view.source === 'speaker' ? speakerSource.browse(item) : jellyfinSource.open(item), true);
+          load(speakerSource.browse(item), true);
           view.results = null;
         } else {
           play(items, index);
@@ -938,7 +859,7 @@
         view.query = q;
         view.status = { text: T.loading };
         draw();
-        (view.source === 'speaker' ? speakerSource : jellyfinSource).search(q).then(function (result) {
+        speakerSource.search(q).then(function (result) {
           view.status = null;
           view.results = result.items;
           view.recent = result.recent || view.recent;
@@ -952,17 +873,7 @@
       sheet.addEventListener('submit', function (event) {
         event.preventDefault();
         var form = event.target;
-        if (form.hasAttribute('data-search')) { runSearch(form.q.value); return; }
-        if (form.hasAttribute('data-sign-in')) {
-          view.status = null;
-          view.user = form.user.value;
-          jellyfinSource.signIn(form.user.value, form.pw.value).then(function () { view.status = null; openRoot(); }).catch(function (error) {
-            view.status = { text: error.message, err: true };
-            draw();
-            var pw = sheet.querySelector('input[name=pw]');
-            if (pw) pw.focus();
-          });
-        }
+        if (form.hasAttribute('data-search')) runSearch(form.q.value);
       });
 
       draw();
@@ -974,11 +885,7 @@
   var speakerSource = {
     browse: function (item) {
       return HG.homeAssistant.media.browse(current, item ? item.key : undefined).then(function (level) {
-        return {
-          title: level.title || (item && item.title) || nameOf(current),
-          items: level.items,
-          playAll: false
-        };
+        return { title: level.title || (item && item.title) || nameOf(current), items: level.items };
       });
     },
     search: function (q) { return HG.homeAssistant.media.search(current, q); },
@@ -986,175 +893,9 @@
     clearRecent: function () { return HG.homeAssistant.media.clearRecent(current); }
   };
 
-  // --- Jellyfin -------------------------------------------------------------------------
-  // Read straight from the Jellyfin server, which allows other sites to ask
-  // it (CORS). The sign-in is Jellyfin's own token for this household,
-  // kept in this plugin's storage; the password is never kept.
-
-  var jellyfinSource = (function () {
-    var VERSION = '1.0.0';
-    function header(token) {
-      return 'MediaBrowser Client="HomeGlow Music", Device="HomeGlow", DeviceId="' + (jellyfin ? jellyfin.deviceId : deviceId()) + '", Version="' + VERSION + '"' + (token ? ', Token="' + token + '"' : '');
-    }
-    var newDeviceId = null;
-    function deviceId() {
-      if (!newDeviceId) newDeviceId = 'homeglow-' + Math.random().toString(36).slice(2) + Date.now().toString(36);
-      return newDeviceId;
-    }
-    function call(path, options) {
-      var server = serverUrl();
-      var opts = options || {};
-      return fetch(server + path, {
-        method: opts.method || 'GET',
-        headers: Object.assign({ 'X-Emby-Authorization': header(opts.anonymous ? null : opts.token || (jellyfin && jellyfin.token)), Accept: 'application/json' },
-          opts.body ? { 'Content-Type': 'application/json' } : {}),
-        body: opts.body ? JSON.stringify(opts.body) : undefined
-      }).then(function (res) {
-        if (res.status === 401 && !opts.anonymous) {
-          // Revoked in Jellyfin: sign in again.
-          return signOut().then(function () { var e = new Error(T.jfSignIn); e.status = 401; throw e; });
-        }
-        if (!res.ok) { var e = new Error(res.status === 401 ? T.jfWrong : 'Jellyfin: HTTP ' + res.status); e.status = res.status; throw e; }
-        return res.status === 204 ? null : res.json();
-      }, function () {
-        throw new Error(fmt(T.jfUnreachable, { url: server }));
-      });
-    }
-    function image(item, height) {
-      var server = serverUrl();
-      if (item.ImageTags && item.ImageTags.Primary) return server + '/Items/' + item.Id + '/Images/Primary?fillHeight=' + height + '&quality=90&tag=' + encodeURIComponent(item.ImageTags.Primary);
-      if (item.AlbumId && item.AlbumPrimaryImageTag) return server + '/Items/' + item.AlbumId + '/Images/Primary?fillHeight=' + height + '&quality=90&tag=' + encodeURIComponent(item.AlbumPrimaryImageTag);
-      return null;
-    }
-    var KIND = { MusicAlbum: 'album', MusicArtist: 'artist', Playlist: 'playlist', Audio: 'track', Folder: 'directory' };
-    function toItem(item) {
-      var kind = KIND[item.Type] || 'music';
-      return {
-        id: item.Id, kind: kind, title: item.Name || '',
-        sub: kind === 'track' ? [(item.Artists || [])[0] || item.AlbumArtist, item.Album].filter(Boolean).join(' · ') : (kind === 'album' ? item.AlbumArtist || '' : ''),
-        canOpen: kind !== 'track', canPlay: true, thumb: image(item, 120), raw: item
-      };
-    }
-    var items = function (res) { return ((res && res.Items) || []).map(toItem); };
-    var u = function () { return '/Users/' + jellyfin.userId; };
-    var LIST = '&Fields=PrimaryImageAspectRatio&ImageTypeLimit=1&EnableTotalRecordCount=false';
-    var tracksOf = function (item) {
-      if (item.kind === 'playlist') return call('/Playlists/' + item.id + '/Items?userId=' + jellyfin.userId + LIST).then(items);
-      if (item.kind === 'artist') return call(u() + '/Items?IncludeItemTypes=Audio&Recursive=true&ArtistIds=' + item.id + '&SortBy=Album,ParentIndexNumber,IndexNumber&Limit=200' + LIST).then(items);
-      return call(u() + '/Items?ParentId=' + item.id + '&IncludeItemTypes=Audio&Recursive=true&SortBy=ParentIndexNumber,IndexNumber,SortName' + LIST).then(items);
-    };
-    var ROOT = [
-      { kind: 'directory', title: T.jfRecent, canOpen: true, path: function () { return u() + '/Items?IncludeItemTypes=MusicAlbum&Recursive=true&SortBy=DateCreated&SortOrder=Descending&Limit=60' + LIST; } },
-      { kind: 'directory', title: T.jfAlbums, canOpen: true, path: function () { return u() + '/Items?IncludeItemTypes=MusicAlbum&Recursive=true&SortBy=SortName&Limit=500' + LIST; } },
-      { kind: 'directory', title: T.jfArtists, canOpen: true, path: function () { return '/Artists/AlbumArtists?userId=' + jellyfin.userId + '&SortBy=SortName&Limit=500' + LIST; } },
-      { kind: 'directory', title: T.jfPlaylists, canOpen: true, path: function () { return u() + '/Items?IncludeItemTypes=Playlist&Recursive=true&SortBy=SortName' + LIST; } },
-      { kind: 'directory', title: T.jfSongs, canOpen: true, path: function () { return u() + '/Items?IncludeItemTypes=Audio&Recursive=true&SortBy=SortName&Limit=500' + LIST; } }
-    ];
-    function signOut() {
-      var token = jellyfin && jellyfin.token;
-      jellyfin = null;
-      if (token) call('/Sessions/Logout', { method: 'POST', token: token }).catch(function () {});
-      return HG.storage.remove('jellyfin').catch(function () {});
-    }
-    return {
-      root: function () { return { title: T.jellyfin, items: ROOT, playAll: false }; },
-      open: function (item) {
-        if (item.path) return call(item.path()).then(function (res) { return { title: item.title, items: items(res), playAll: false }; });
-        if (item.kind === 'artist') {
-          return call(u() + '/Items?IncludeItemTypes=MusicAlbum&Recursive=true&AlbumArtistIds=' + item.id + '&SortBy=ProductionYear,SortName' + LIST)
-            .then(function (res) { return { title: item.title, items: items(res), playAll: false }; });
-        }
-        return tracksOf(item).then(function (tracks) { return { title: item.title, items: tracks, playAll: tracks.length > 0 }; });
-      },
-      // The songs to play for a choice: a song plays with the rest of its list
-      // after it; an album, artist or playlist plays from its first song.
-      tracksFor: function (list, index) {
-        var item = list[index];
-        if (item.kind === 'track') return Promise.resolve(list.slice(index).filter(function (x) { return x.kind === 'track'; }));
-        return tracksOf(item);
-      },
-      search: function (q) {
-        return call(u() + '/Items?searchTerm=' + encodeURIComponent(q) + '&IncludeItemTypes=Audio,MusicAlbum,MusicArtist,Playlist&Recursive=true&Limit=60' + LIST).then(function (res) {
-          var recent = [q].concat(jfRecent.filter(function (r) { return r.toLowerCase() !== q.toLowerCase(); })).slice(0, 8);
-          jfRecent = recent;
-          HG.storage.set('jellyfinRecent', recent).catch(function () {});
-          return { items: items(res), recent: recent };
-        });
-      },
-      recent: function () { return Promise.resolve(jfRecent); },
-      clearRecent: function () { jfRecent = []; return HG.storage.set('jellyfinRecent', []).catch(function () {}); },
-      signIn: function (user, pw) {
-        if (!serverUrl()) return Promise.reject(new Error(T.cannotPlay));
-        return call('/Users/AuthenticateByName', { method: 'POST', anonymous: true, body: { Username: user, Pw: pw } }).then(function (res) {
-          jellyfin = { server: serverUrl(), userId: res.User.Id, name: res.User.Name, token: res.AccessToken, deviceId: deviceId() };
-          return HG.storage.set('jellyfin', jellyfin);
-        });
-      },
-      signOut: signOut,
-      // A song's stream, as MP3, which every speaker plays.
-      streamUrl: function (track) {
-        return serverUrl() + '/Audio/' + track.id + '/stream.mp3?audioCodec=mp3&audioBitRate=320000&deviceId=' + encodeURIComponent(jellyfin.deviceId) + '&api_key=' + encodeURIComponent(jellyfin.token);
-      },
-      cover: function (track) {
-        var raw = track.raw || {};
-        var id = raw.AlbumId && raw.AlbumPrimaryImageTag ? raw.AlbumId : (raw.ImageTags && raw.ImageTags.Primary ? raw.Id : null);
-        return id ? serverUrl() + '/Items/' + id + '/Images/Primary?fillHeight=600&quality=90' : undefined;
-      }
-    };
-  })();
-  var jfRecent = [];
-
-  // Jellyfin songs on a Home Assistant speaker: the first now, the rest
-  // queued, one call each, a little apart (HomeGlow allows 10 a second).
-  function playTracks(tracks) {
-    if (!tracks.length) return;
-    var s = st();
-    var queue = has(s, F.ENQUEUE) ? tracks.slice(0, QUEUE_LIMIT) : tracks.slice(0, 1);
-    var speaker = current;
-    var describe = function (track) {
-      var raw = track.raw || {};
-      return { title: track.title, artist: (raw.Artists || [])[0] || raw.AlbumArtist || '', album: raw.Album || '', image: jellyfinSource.cover(track) };
-    };
-    var first = describe(queue[0]);
-    var sent = { first: queue[0].id, songs: {} };
-    queue.forEach(function (track) { sent.songs[track.id] = describe(track); });
-    nowJellyfin[speaker] = sent;
-    HG.storage.set('playing:' + speaker, sent).catch(function () {});
-    flash(T.starting);
-    act('play_url', Object.assign({ url: jellyfinSource.streamUrl(queue[0]) }, first), { busy: 'play_pause', optimistic: { state: 'playing' } }).then(function () {
-      var rest = queue.slice(1);
-      if (!rest.length) { if (!has(s, F.ENQUEUE) && tracks.length > 1) flash(T.oneAtATime); return; }
-      flash(fmt(T.queued, { n: rest.length }));
-      var i = 0;
-      var retries = 0;
-      (function next() {
-        if (i >= rest.length) return;
-        var track = rest[i];
-        i += 1;
-        HG.homeAssistant.action(speaker, 'play_url', Object.assign({ url: jellyfinSource.streamUrl(track), enqueue: 'add' }, describe(track)))
-          .catch(function (error) { if (error.status === 429 && retries < 5) { retries += 1; i -= 1; } })
-          .then(function () { setTimeout(next, 150); });
-      })();
-    }).catch(function () {});
-  }
-
   // --- Starting -----------------------------------------------------------------------------
 
-  Promise.all([
-    HG.settings.get().then(function (values) { Object.assign(settings, values || {}); }).catch(function () {}),
-    HG.storage.get('jellyfin').catch(function () { return null; }),
-    HG.storage.get('jellyfinRecent').then(function (list) { if (Array.isArray(list)) jfRecent = list; }).catch(function () {})
-  ]).then(function (got) {
-    // A sign-in made for another Jellyfin address doesn't carry over.
-    var saved = got[1];
-    if (saved && saved.token && serverUrl() && saved.server === serverUrl()) jellyfin = saved;
-  }).then(poll).then(function () {
-    // What was last started from Jellyfin on each speaker, for one that only
-    // knows the stream's address.
-    Object.keys(players).forEach(function (id) {
-      HG.storage.get('playing:' + id).then(function (saved) { if (saved && saved.songs) { nowJellyfin[id] = saved; render(); } }).catch(function () {});
-    });
-  });
+  HG.settings.get().then(function (values) { Object.assign(settings, values || {}); }).catch(function () {}).then(poll);
 
   setInterval(poll, POLL_MS);
   document.addEventListener('visibilitychange', function () { if (!document.hidden) poll(); });
