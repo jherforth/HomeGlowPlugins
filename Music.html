@@ -76,6 +76,9 @@
     .who { align-self: flex-start; display: inline-flex; align-items: center; gap: 0.45em; max-width: 100%; min-height: 32px; padding: 0 0.7em 0 0.5em;
       border: 0; border-radius: 999px; background: var(--tile-bg); color: var(--ink-2); font-weight: 650; font-size: clamp(0.74rem, 2.3cqmin, 1rem); cursor: pointer; }
     .who[disabled] { cursor: default; background: transparent; padding-left: 0; }
+    .top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+    .who.browse { color: var(--ink); background: color-mix(in srgb, var(--acc) 18%, transparent); padding: 0 0.85em 0 0.6em; }
+    .who.browse svg { fill: currentColor; stroke: none; }
     .who svg { width: 1.25em; height: 1.25em; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
     .who span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .title { font-family: var(--hg-font-heading, inherit); font-size: clamp(1.1rem, 6.4cqmin, 3.2rem); font-weight: 760; line-height: 1.06; letter-spacing: -0.015em;
@@ -130,9 +133,10 @@
     /* Taller than wide: the cover on top, everything centered under it. */
     @container (max-aspect-ratio: 6/5) {
       .stage { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; justify-items: center; text-align: center; }
-      .sleeve { height: auto; max-height: 100%; width: min(76cqw, 46cqh); }
+      .sleeve { height: min(100%, 76cqw); width: auto; }
       .info { align-items: center; width: 100%; max-width: 560px; }
       .who { align-self: center; }
+      .top { justify-content: center; }
       .ctl { justify-content: center; }
       .vol { width: 100%; }
       #app::after { background: linear-gradient(180deg, color-mix(in srgb, var(--surface, #fff) 18%, transparent), color-mix(in srgb, var(--surface, #fff) 76%, transparent) 52%); }
@@ -185,11 +189,20 @@
     .form { display: flex; flex-direction: column; gap: 8px; padding: 6px 2px; }
     .form p { margin: 0; color: var(--ink-2); font-size: 0.88rem; line-height: 1.4; }
     .row { display: flex; gap: 8px; align-items: center; }
+    /* A large widget: the library stays open beside the player. */
+    #dock { display: none; }
+    @media (min-width: 900px) and (min-height: 400px) {
+      body.docked { display: grid; grid-template-columns: minmax(0, 1fr) minmax(340px, 42%); }
+      body.docked #dock { display: flex; min-height: 0; padding: 10px 10px 10px 0; background: var(--card-bg, #fff); }
+      body.docked #dock > .sheet { width: 100%; height: 100%; max-height: none; box-shadow: none;
+        border: 1px solid color-mix(in srgb, var(--ink) 12%, transparent); }
+    }
     @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
   </style>
 </head>
 <body>
 <div id="app" aria-live="polite"></div>
+<aside id="dock"></aside>
 <script src="/plugin-sdk/v1.js"></script>
 <script>
 (function () {
@@ -204,7 +217,7 @@
 
   var STRINGS = {
     en: {
-      nothing: 'Nothing playing', chooseMusic: 'Choose music', speakers: 'Speakers', library: 'Music', browse: 'Browse', search: 'Search',
+      nothing: 'Nothing playing', playingUntitled: 'Playing', chooseMusic: 'Choose music', speakers: 'Speakers', library: 'Music', browse: 'Browse', search: 'Search',
       searchPlaceholder: 'Song, artist, album…', go: 'Go', recent: 'Recent searches', clear: 'Clear', back: 'Back', close: 'Close',
       play: 'Play', pause: 'Pause', previous: 'Previous', next: 'Next', shuffle: 'Shuffle', volume: 'Volume', position: 'Place in the song',
       open: 'Open', playAll: 'Play all', loading: 'Loading…', empty: 'Nothing here.', noResults: 'Nothing found.', stale: 'That list is out of date; it has been opened again.',
@@ -212,6 +225,7 @@
       noAccess: 'This HomeGlow is too old for the Music plugin. Update HomeGlow to the release after 1.9.1 or later.',
       unreachable: 'Home Assistant can\'t be reached right now.', viewOnly: 'View only on this display',
       cannotBrowse: 'This speaker has no library to browse. Pick music from Jellyfin, or another speaker.',
+      useOther: 'Use {name} ({id}), which has a library', libraryFor: 'Music library',
       cannotPlay: 'This speaker can\'t be sent music.', oneAtATime: 'This speaker plays one song at a time.',
       queued: 'Playing, with {n} more queued', starting: 'Starting…', failed: 'That didn\'t work',
       jellyfin: 'Jellyfin', jfSignIn: 'Sign in to Jellyfin', jfIntro: 'Sign in once for the whole household. The password isn\'t kept; Jellyfin gives HomeGlow a sign-in of its own, which you can revoke in Jellyfin\'s dashboard under Devices.',
@@ -221,7 +235,7 @@
       kind_playlist: 'Playlist', kind_album: 'Album', kind_artist: 'Artist', kind_track: 'Song', kind_music: 'Music', kind_directory: 'Folder', kind_podcast: 'Podcast', kind_channel: 'Station'
     },
     es: {
-      nothing: 'No suena nada', chooseMusic: 'Elegir música', speakers: 'Altavoces', library: 'Música', browse: 'Explorar', search: 'Buscar',
+      nothing: 'No suena nada', playingUntitled: 'Reproduciendo', chooseMusic: 'Elegir música', speakers: 'Altavoces', library: 'Música', browse: 'Explorar', search: 'Buscar',
       searchPlaceholder: 'Canción, artista, álbum…', go: 'Ir', recent: 'Búsquedas recientes', clear: 'Borrar', back: 'Atrás', close: 'Cerrar',
       play: 'Reproducir', pause: 'Pausa', previous: 'Anterior', next: 'Siguiente', shuffle: 'Aleatorio', volume: 'Volumen', position: 'Punto de la canción',
       open: 'Abrir', playAll: 'Reproducir todo', loading: 'Cargando…', empty: 'No hay nada aquí.', noResults: 'No se encontró nada.', stale: 'La lista estaba desactualizada; se ha abierto de nuevo.',
@@ -229,6 +243,7 @@
       noAccess: 'Este HomeGlow es demasiado antiguo para el complemento Música. Actualiza HomeGlow a una versión posterior a la 1.9.1.',
       unreachable: 'No se puede contactar con Home Assistant ahora.', viewOnly: 'Solo lectura en esta pantalla',
       cannotBrowse: 'Este altavoz no tiene biblioteca. Elige música de Jellyfin u otro altavoz.',
+      useOther: 'Usar {name} ({id}), que tiene biblioteca', libraryFor: 'Biblioteca de música',
       cannotPlay: 'A este altavoz no se le puede enviar música.', oneAtATime: 'Este altavoz reproduce una canción cada vez.',
       queued: 'Reproduciendo, con {n} más en cola', starting: 'Empezando…', failed: 'No ha funcionado',
       jellyfin: 'Jellyfin', jfSignIn: 'Iniciar sesión en Jellyfin', jfIntro: 'Inicia sesión una vez para toda la casa. La contraseña no se guarda; Jellyfin da a HomeGlow una sesión propia, que puedes revocar en el panel de Jellyfin, en Dispositivos.',
@@ -307,7 +322,20 @@
     var ids = offered();
     if (current && ids.indexOf(current) !== -1) return;
     var wanted = String(settings.speaker || '').trim();
-    current = ids.indexOf(wanted) !== -1 ? wanted : (ids.find(function (id) { return players[id].state === 'playing'; }) || ids[0] || null);
+    if (ids.indexOf(wanted) !== -1) { current = wanted; return; }
+    var score = function (id) {
+      var p = players[id];
+      return (p.state === 'playing' ? 4 : 0) + (has(p, F.SEARCH) ? 2 : 0) + (has(p, F.BROWSE) ? 1 : 0);
+    };
+    current = ids.slice().sort(function (a, b) { return score(b) - score(a); })[0] || null;
+  }
+
+  // Another speaker, remembered for this display.
+  function chooseSpeaker(id) {
+    current = id;
+    HG.settings.set({ speaker: id }).catch(function () {});
+    settings.speaker = id;
+    render();
   }
 
   function flash(text) {
@@ -373,7 +401,7 @@
     var h = Math.floor(secs / 3600), m = Math.floor((secs % 3600) / 60), s = secs % 60;
     return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(s).padStart(2, '0');
   };
-  var looksLikeAddress = function (text) { return /^https?:\/\//i.test(String(text || '')) || /\/stream\.mp3/.test(String(text || '')); };
+  var looksLikeAddress = function (text) { return /^[a-z][a-z0-9+.-]*:\/\//i.test(String(text || '')) || /\/stream\.mp3/.test(String(text || '')); };
 
   // Which of the Jellyfin songs we sent a speaker it's playing: found by the
   // song's id in its stream address, or by the title we sent with it.
@@ -433,6 +461,8 @@
     }
     var a = s.attributes;
     var now = playing(s);
+    // Playing something it only knows by an address: say so, not "nothing".
+    if (!now.title && (s.state === 'playing' || s.state === 'paused' || s.state === 'buffering')) now.title = T.playingUntitled;
     var idle = !now.title || s.state === 'off' || s.state === 'unavailable';
     var operate = canOperate();
     var many = offered().length > 1;
@@ -440,7 +470,9 @@
     html += '<div class="stage' + (idle ? ' idle' : '') + '">';
     html += '<div class="sleeve">' + (now.art ? '<img alt="" src="' + esc(now.art) + '">' : stroke('music')) + '</div>';
     html += '<div class="info">';
-    html += '<button type="button" class="who" data-speakers' + (many ? ' aria-haspopup="dialog"' : ' disabled') + ' aria-label="' + esc(T.speakers + ': ' + nameOf(current)) + '">' + stroke('speaker') + '<span>' + esc(nameOf(current)) + '</span></button>';
+    html += '<div class="top"><button type="button" class="who" data-speakers' + (many ? ' aria-haspopup="dialog"' : ' disabled') + ' aria-label="' + esc(T.speakers + ': ' + nameOf(current)) + '">' + stroke('speaker') + '<span>' + esc(nameOf(current)) + '</span></button>'
+      + (operate && !dockWanted() ? '<button type="button" class="who browse" data-library aria-haspopup="dialog" aria-label="' + esc(T.chooseMusic) + '">' + glyph('library') + '<span>' + esc(T.browse) + '</span></button>' : '')
+      + '</div>';
     html += '<div class="title">' + esc(idle ? T.nothing : now.title) + '</div>';
     if (!idle && now.artist) html += '<div class="artist">' + esc(now.artist) + '</div>';
     if (!idle && now.album) html += '<div class="album">' + esc(now.album) + '</div>';
@@ -464,7 +496,6 @@
       html += btn('previous', T.previous, 'quiet', has(s, F.PREVIOUS));
       html += btn('play_pause', s.state === 'playing' ? T.pause : T.play, 'lg', has(s, F.PAUSE) || has(s, F.PLAY));
       html += btn('next', T.next, 'quiet', has(s, F.NEXT));
-      html += '<button type="button" class="btn icon quiet" data-library aria-haspopup="dialog" aria-label="' + esc(T.chooseMusic) + '">' + glyph('library') + '</button>';
       html += '</div>';
       if (has(s, F.VOLUME_SET) && a.volume_level != null) {
         var vol = Math.round(a.volume_level * 100);
@@ -477,7 +508,31 @@
     if (hintText) html += '<div class="hint" role="status">' + esc(hintText) + '</div>';
     paint(html);
     tick();
+    syncDock();
   }
+
+  // The docked library: built once per speaker, left alone between polls.
+  var dockQuery = window.matchMedia('(min-width: 900px) and (min-height: 400px)');
+  var dockEl = document.getElementById('dock');
+  var dockedFor = null;
+  function dockWanted() { return dockQuery.matches && canOperate(); }
+  function syncDock() {
+    var want = dockWanted();
+    document.body.classList.toggle('docked', want);
+    if (!want) {
+      if (dockedFor !== null) { dockEl.innerHTML = ''; dockedFor = null; }
+      return;
+    }
+    if (dockedFor === current) return;
+    dockedFor = current;
+    dockEl.innerHTML = '';
+    var pane = document.createElement('div');
+    pane.className = 'sheet';
+    pane.setAttribute('aria-label', T.libraryFor);
+    dockEl.appendChild(pane);
+    buildLibrary(pane, function () {}, true);
+  }
+  dockQuery.addEventListener('change', function () { lastHtml = null; render(); });
 
   // The progress bar, moved every second between polls.
   function tick() {
@@ -591,18 +646,14 @@
           var song = jellyfinSong(id, p);
           var what = song ? song.title : (p.attributes.media_title && !looksLikeAddress(p.attributes.media_title) ? p.attributes.media_title : p.state);
           return '<button type="button" class="item' + (id === current ? ' current' : '') + '" role="option" aria-selected="' + (id === current) + '" data-id="' + esc(id) + '">'
-            + '<span class="thumb">' + stroke('speaker') + '</span><span class="t"><b>' + esc(nameOf(id)) + '</b><span>' + esc(what) + '</span></span></button>';
+            + '<span class="thumb">' + stroke('speaker') + '</span><span class="t"><b>' + esc(nameOf(id)) + '</b><span>' + esc(what + ' · ' + id) + '</span></span></button>';
         }).join('') + '</div>';
       sheet.addEventListener('click', function (event) {
         if (event.target.closest('[data-close]')) { close(); return; }
         var item = event.target.closest('[data-id]');
         if (!item) return;
-        current = item.getAttribute('data-id');
-        // Remembered for this display.
-        HG.settings.set({ speaker: current }).catch(function () {});
-        settings.speaker = current;
         close();
-        render();
+        chooseSpeaker(item.getAttribute('data-id'));
       });
       var first = sheet.querySelector('.current') || sheet.querySelector('[data-id]');
       if (first) first.focus();
@@ -613,6 +664,10 @@
 
   // view: { source: 'speaker'|'jellyfin', tab: 'browse'|'search', stack: [levels], query, results, recent, status }
   function openLibrary() {
+    overlay(function (sheet, close) { buildLibrary(sheet, close, false); });
+  }
+
+  function buildLibrary(sheet, close, docked) {
     var s = st();
     var speakerLibrary = has(s, F.BROWSE) || has(s, F.SEARCH);
     // Most speakers can be browsed; only some (Music Assistant) searched.
@@ -626,13 +681,17 @@
       tab: 'browse', stack: [], query: '', results: null, recent: [], status: null
     };
     view.tab = firstTab();
-    overlay(function (sheet, close) {
+    // Music Assistant's speakers come twice in Home Assistant: its own, with
+    // the library, and the speaker's own integration's, without.
+    var twin = speakerLibrary ? null : offered().filter(function (id) { return id !== current && (has(players[id], F.BROWSE) || has(players[id], F.SEARCH)); })
+      .sort(function (a, b) { return (nameOf(b) === nameOf(current)) - (nameOf(a) === nameOf(current)) || has(players[b], F.SEARCH) - has(players[a], F.SEARCH); })[0];
+    (function () {
       function draw() {
         var top = view.stack[view.stack.length - 1];
         var title = view.tab === 'search' ? T.search : (top && top.title) || T.library;
         var html = '<div class="head">'
           + (view.tab === 'browse' && view.stack.length > 1 ? '<button type="button" class="btn icon quiet" data-back aria-label="' + esc(T.back) + '">' + glyph('back') + '</button>' : '')
-          + '<h2>' + esc(title) + '</h2><button type="button" class="btn icon quiet" data-close aria-label="' + esc(T.close) + '">' + glyph('close') + '</button></div>';
+          + '<h2>' + esc(title) + '</h2>' + (docked ? '' : '<button type="button" class="btn icon quiet" data-close aria-label="' + esc(T.close) + '">' + glyph('close') + '</button>') + '</div>';
         if (serverUrl() && speakerLibrary) {
           html += '<div class="tabs" role="tablist"><button type="button" class="btn' + (view.source === 'speaker' ? ' current' : '') + '" data-source="speaker" role="tab" aria-selected="' + (view.source === 'speaker') + '">' + esc(nameOf(current)) + '</button>'
             + '<button type="button" class="btn' + (view.source === 'jellyfin' ? ' current' : '') + '" data-source="jellyfin" role="tab" aria-selected="' + (view.source === 'jellyfin') + '">' + esc(T.jellyfin) + '</button></div>';
@@ -642,6 +701,8 @@
           html += '<div class="tabs" role="tablist"><button type="button" class="btn' + (view.tab === 'browse' ? ' current' : '') + '" data-tab="browse">' + esc(T.browse) + '</button>'
             + '<button type="button" class="btn' + (view.tab === 'search' ? ' current' : '') + '" data-tab="search">' + esc(T.search) + '</button></div>';
         }
+        // A speaker with no library of its own: offer one that has one.
+        if (twin) html += '<button type="button" class="btn primary" data-switch="' + esc(twin) + '">' + esc(fmt(T.useOther, { name: nameOf(twin), id: twin })) + '</button>';
         html += '<div class="body">';
         if (view.source === 'speaker' && !speakerLibrary) {
           html += '<p class="status">' + esc(T.cannotBrowse) + '</p>';
@@ -667,7 +728,8 @@
         html += '</div>';
         sheet.innerHTML = html;
         var input = sheet.querySelector('input[name=q]');
-        if (input && !view.results && !view.status) input.focus();
+        if (input && !view.results && !view.status && (!docked || view.focusSearch)) input.focus();
+        view.focusSearch = false;
       }
 
       function itemHtml(item, index) {
@@ -727,7 +789,7 @@
       function play(items, index) {
         var item = items[index];
         if (!st() || !has(st(), F.PLAY_MEDIA)) { flash(T.cannotPlay); return; }
-        close();
+        if (!docked) close();
         if (view.source === 'speaker') {
           act('play_media', item.key, { busy: 'play_pause', optimistic: { state: 'playing' } }).catch(function (error) {
             if (error && error.status === 410) flash(T.stale);
@@ -742,11 +804,18 @@
       sheet.addEventListener('click', function (event) {
         var t = event.target;
         if (t.closest('[data-close]')) { close(); return; }
+        var other = t.closest('[data-switch]');
+        if (other) {
+          if (!docked) close();
+          chooseSpeaker(other.getAttribute('data-switch'));
+          if (!docked) openLibrary();
+          return;
+        }
         if (t.closest('[data-back]')) { view.stack.pop(); view.status = null; draw(); return; }
         var src = t.closest('[data-source]');
         if (src) { view.source = src.getAttribute('data-source'); view.tab = firstTab(); view.status = null; openRoot(); return; }
         var tab = t.closest('[data-tab]');
-        if (tab) { view.tab = tab.getAttribute('data-tab'); view.status = null; view.results = null; openRoot(); return; }
+        if (tab) { view.tab = tab.getAttribute('data-tab'); view.focusSearch = true; view.status = null; view.results = null; openRoot(); return; }
         var recent = t.closest('[data-recent]');
         if (recent) { runSearch(recent.getAttribute('data-recent')); return; }
         if (t.closest('[data-clear-recent]')) {
@@ -805,7 +874,7 @@
 
       draw();
       openRoot();
-    });
+    })();
   }
 
   // The speaker's own library, through HomeGlow and Home Assistant.
