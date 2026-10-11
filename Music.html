@@ -319,8 +319,11 @@
     var members = players[id] && players[id].attributes && players[id].attributes.group_members;
     return Array.isArray(members) && members.length > 1 && members.indexOf(id) !== -1 ? members : [id];
   };
+  // Home Assistant lists group_members for every speaker that can be
+  // grouped; a HomeGlow too old to group speakers doesn't pass it on.
   var canGroup = function (id) {
-    return !viewOnlyDisplay && control.indexOf(id) !== -1 && players[id] && players[id].state !== 'unavailable' && has(players[id], F.GROUPING);
+    return !viewOnlyDisplay && control.indexOf(id) !== -1 && players[id] && players[id].state !== 'unavailable'
+      && has(players[id], F.GROUPING) && Array.isArray(players[id].attributes.group_members);
   };
   var refreshSheet = null; // redraws the open speaker list after a poll
 
