@@ -615,10 +615,17 @@
   function openLibrary() {
     var s = st();
     var speakerLibrary = has(s, F.BROWSE) || has(s, F.SEARCH);
+    // Most speakers can be browsed; only some (Music Assistant) searched.
+    var can = function (tab) {
+      if (view.source === 'jellyfin') return true;
+      return has(s, tab === 'search' ? F.SEARCH : F.BROWSE);
+    };
+    var firstTab = function () { return can('browse') ? 'browse' : 'search'; };
     var view = {
       source: speakerLibrary ? 'speaker' : (serverUrl() ? 'jellyfin' : 'speaker'),
       tab: 'browse', stack: [], query: '', results: null, recent: [], status: null
     };
+    view.tab = firstTab();
     overlay(function (sheet, close) {
       function draw() {
         var top = view.stack[view.stack.length - 1];
@@ -631,7 +638,7 @@
             + '<button type="button" class="btn' + (view.source === 'jellyfin' ? ' current' : '') + '" data-source="jellyfin" role="tab" aria-selected="' + (view.source === 'jellyfin') + '">' + esc(T.jellyfin) + '</button></div>';
         }
         var signedOut = view.source === 'jellyfin' && !jellyfin;
-        if (!signedOut) {
+        if (!signedOut && can('browse') && can('search')) {
           html += '<div class="tabs" role="tablist"><button type="button" class="btn' + (view.tab === 'browse' ? ' current' : '') + '" data-tab="browse">' + esc(T.browse) + '</button>'
             + '<button type="button" class="btn' + (view.tab === 'search' ? ' current' : '') + '" data-tab="search">' + esc(T.search) + '</button></div>';
         }
@@ -737,7 +744,7 @@
         if (t.closest('[data-close]')) { close(); return; }
         if (t.closest('[data-back]')) { view.stack.pop(); view.status = null; draw(); return; }
         var src = t.closest('[data-source]');
-        if (src) { view.source = src.getAttribute('data-source'); view.tab = 'browse'; view.status = null; openRoot(); return; }
+        if (src) { view.source = src.getAttribute('data-source'); view.tab = firstTab(); view.status = null; openRoot(); return; }
         var tab = t.closest('[data-tab]');
         if (tab) { view.tab = tab.getAttribute('data-tab'); view.status = null; view.results = null; openRoot(); return; }
         var recent = t.closest('[data-recent]');
