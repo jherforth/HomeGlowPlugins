@@ -9,12 +9,14 @@
     "id": "sports-scores",
     "name": "Sports Scores",
     "author": "HomeGlow",
-    "description": "Scores and schedules for the leagues you pick: NFL, college football, NBA, MLB, NHL, MLS and the Premier League, from TheSportsDB. A free key is built in; you can add your own. Checks every few minutes while a game is on, and about once an hour otherwise.",
+    "description": "Scores and schedules for the leagues you pick: NFL, college football, NBA, MLB, NHL, MLS and the Premier League, from TheSportsDB. Pick favorite teams to see just theirs. A free key is built in; you can add your own. Checks every few minutes while a game is on, and about once an hour otherwise.",
     "category": "news-weather",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "apiVersion": "v1",
     "settings": [
       { "key": "apiKey", "label": "TheSportsDB API key (3 is the free public key)", "type": "string", "default": "3", "scope": "household" },
+      { "key": "teams", "label": "Favorite teams, comma-separated (full names find them best, e.g. Green Bay Packers, Milwaukee Brewers)", "type": "string", "default": "", "scope": "household" },
+      { "key": "teamsOnly", "label": "Show only my teams' games (when favorite teams are set)", "type": "boolean", "default": true, "scope": "household" },
       { "key": "showNfl", "label": "NFL", "type": "boolean", "default": true, "scope": "household" },
       { "key": "showCollegeFootball", "label": "College football", "type": "boolean", "default": false, "scope": "household" },
       { "key": "showNba", "label": "NBA", "type": "boolean", "default": true, "scope": "household" },
@@ -146,6 +148,17 @@
       font-weight: 600;
     }
 
+    .team.fav .name {
+      color: var(--accent, #3a7cc4);
+      font-weight: 750;
+    }
+
+    .team .star {
+      flex: none;
+      color: var(--accent, #3a7cc4);
+      font-size: 0.75rem;
+    }
+
     .team .score {
       min-width: 2ch;
       text-align: right;
@@ -210,6 +223,8 @@
       var IDLE_MS = 30 * 60 * 1000;
       var SOON_MS = 30 * 60 * 1000;
       var MAX_WAIT_MS = 60 * 60 * 1000;
+      var FIND_MS = 24 * 60 * 60 * 1000;
+      var MAX_TEAMS = 8;
 
       var LEAGUES = [
         { id: '4391', name: 'NFL', setting: 'showNfl' },
@@ -220,12 +235,15 @@
         { id: '4346', name: 'MLS', setting: 'showMls' },
         { id: '4328', name: 'Premier League', setting: 'showPremierLeague' }
       ];
+      var LEAGUE_BY_ID = {};
+      LEAGUES.forEach(function (league) { LEAGUE_BY_ID[league.id] = league; });
 
       var DEFAULTS = {
         apiKey: '3',
         showNfl: true, showCollegeFootball: false, showNba: true, showMlb: true,
         showNhl: true, showMls: false, showPremierLeague: false,
-        gamesPerLeague: 4, liveMinutes: 5
+        gamesPerLeague: 4, liveMinutes: 5,
+        teams: '', teamsOnly: true
       };
 
       var LIVE_LABEL = {
@@ -252,6 +270,10 @@
       var checkedAt = 0;
       var live = false;
       var soon = false;
+      var found = {};       // a favorite's name, lower case -> { team: { id, name, leagueId } | null, at }
+      var teamGames = {};   // team id -> { games, error }
+      var favorites = { words: [], ids: {}, teams: [], missing: [] };
+      var teamsAsked = null; // the teams setting the last full refresh was for
 
       function el(tag, className, text) {
         var node = document.createElement(tag);
@@ -301,17 +323,19 @@
         return {
           id: event.idEvent,
           leagueId: event.idLeague,
+          leagueName: event.strLeague || '',
           date: utc(event.strTimestamp),
           status: event.strStatus || '',
           progress: event.strProgress || '',
-          home: side(event.strHomeTeam, event.strHomeTeamBadge, event.intHomeScore),
-          away: side(event.strAwayTeam, event.strAwayTeamBadge, event.intAwayScore),
+          home: side(event.idHomeTeam, event.strHomeTeam, event.strHomeTeamBadge, event.intHomeScore),
+          away: side(event.idAwayTeam, event.strAwayTeam, event.strAwayTeamBadge, event.intAwayScore),
           state: 'pre'
         };
       }
 
-      function side(name, badgeUrl, score) {
+      function side(id, name, badgeUrl, score) {
         return {
+          id: id || '',
           name: name || 'TBD',
           badge: badgeUrl || '',
           score: score === null || score === undefined ? '' : String(score),
@@ -336,10 +360,84 @@
         });
       }
 
+      function favoriteWords() {
+        return String(settings.teams || '').split(',').map(function (w) { return w.trim(); }).filter(Boolean).slice(0, MAX_TEAMS);
+      }
+
+      // A name is looked up once a day, and taken only if it is a current
+      // team in one of the leagues here whose name contains it (a search for
+      // "Packers" alone finds a defunct basketball team).
+      function findTeam(word) {
+        var key = word.toLowerCase();
+        var known = found[key];
+        if (known && Date.now() - known.at < FIND_MS) return Promise.resolve(known.team);
+        return getJson('searchteams.php?t=' + encodeURIComponent(word)).then(function (json) {
+          var team = (json.teams || []).filter(function (t) {
+            return LEAGUE_BY_ID[t.idLeague] && [t.strTeam, t.strTeamShort, t.strTeamAlternate].some(function (n) {
+              return n && String(n).toLowerCase().indexOf(key) !== -1;
+            });
+          })[0];
+          var value = team ? { id: team.idTeam, name: team.strTeam, leagueId: team.idLeague } : null;
+          found[key] = { team: value, at: Date.now() };
+          return value;
+        }, function () {
+          // Not reachable: try again next time, without deciding it is missing.
+          return known ? known.team : undefined;
+        });
+      }
+
+      function fetchTeam(team) {
+        return Promise.all([
+          getJson('eventslast.php?id=' + team.id),
+          getJson('eventsnext.php?id=' + team.id)
+        ]).then(function (lists) {
+          return [].concat(lists[0].results || [], lists[1].events || []).map(toGame);
+        });
+      }
+
+      function refreshTeams() {
+        var words = favoriteWords();
+        teamsAsked = settings.teams || '';
+        return Promise.all(words.map(findTeam)).then(function (teams) {
+          var ids = {};
+          var mine = [];
+          teams.forEach(function (team) {
+            if (team && !ids[team.id]) { ids[team.id] = true; mine.push(team); }
+          });
+          favorites = {
+            words: words.map(function (w) { return w.toLowerCase(); }),
+            ids: ids,
+            teams: mine,
+            // Not found, and not part of a team that was ("Packers" beside
+            // "Green Bay Packers").
+            missing: words.filter(function (w, i) {
+              return teams[i] === null && !mine.some(function (t) { return t.name.toLowerCase().indexOf(w.toLowerCase()) !== -1; });
+            })
+          };
+          return Promise.all(mine.map(function (team) {
+            return fetchTeam(team).then(function (games) {
+              teamGames[team.id] = { games: games, error: false };
+            }, function () {
+              teamGames[team.id] = { games: (teamGames[team.id] || { games: [] }).games, error: true };
+            });
+          }));
+        });
+      }
+
+      // A favorite's game: one of the teams found, or a name containing one
+      // of the words.
+      function isFavorite(team) {
+        if (team.id && favorites.ids[team.id]) return true;
+        var name = String(team.name || '').toLowerCase();
+        return favorites.words.some(function (w) { return name.indexOf(w) !== -1; });
+      }
+      function favoriteGame(game) { return isFavorite(game.home) || isFavorite(game.away); }
+
       function fetchLive() {
         return getJson('livescore.php').then(function (json) {
           var rows = {};
           var wanted = enabledLeagues();
+          favorites.teams.forEach(function (team) { wanted[team.leagueId] = true; });
           (json.livescore || []).forEach(function (row) {
             // The feed also lists games that have not started and some that
             // have finished; only an in-progress status counts as live.
@@ -389,6 +487,10 @@
           if (!result) return;
           result.games.forEach(function (game) { byId[game.id] = game; });
         });
+        favorites.teams.forEach(function (team) {
+          var result = teamGames[team.id];
+          if (result) result.games.forEach(function (game) { byId[game.id] = game; });
+        });
         Object.keys(liveRows).forEach(function (id) {
           var row = liveRows[id];
           var game = byId[id] || toGame(row);
@@ -410,6 +512,8 @@
       function ordered(games) {
         var rank = { in: 0, pre: 1, post: 2 };
         return games.slice().sort(function (a, b) {
+          var fa = favoriteGame(a), fb = favoriteGame(b);
+          if (fa !== fb) return fa ? -1 : 1;
           if (rank[a.state] !== rank[b.state]) return rank[a.state] - rank[b.state];
           return a.state === 'post' ? b.date - a.date : a.date - b.date;
         });
@@ -430,7 +534,8 @@
       }
 
       function teamLine(team, done, started) {
-        var line = el('div', 'team' + (done && !team.winner ? ' loser' : ''));
+        var fav = isFavorite(team);
+        var line = el('div', 'team' + (done && !team.winner ? ' loser' : '') + (fav ? ' fav' : ''));
         if (team.badge) {
           var img = el('img');
           img.src = team.badge;
@@ -439,6 +544,11 @@
           line.appendChild(img);
         }
         line.appendChild(el('span', 'name', team.name));
+        if (fav) {
+          var star = el('span', 'star', '★');
+          star.setAttribute('aria-label', 'favorite');
+          line.appendChild(star);
+        }
         line.appendChild(el('span', 'score', started ? team.score : ''));
         return line;
       }
@@ -470,12 +580,35 @@
         title.appendChild(badge);
         root.appendChild(title);
 
-        if (!enabled.length) {
+        var onlyMine = settings.teamsOnly && favorites.words.length > 0;
+        if (favorites.missing.length) {
+          root.appendChild(note('Not found: ' + favorites.missing.join(', ') + '. The full team name finds it, e.g. Green Bay Packers; meanwhile it picks out games already shown.'));
+        }
+
+        if (onlyMine) {
+          // Only the favorites' games, under their leagues.
+          var picked = games.filter(favoriteGame);
+          var leagueIds = [];
+          picked.forEach(function (g) { if (leagueIds.indexOf(g.leagueId) === -1) leagueIds.push(g.leagueId); });
+          if (!picked.length) {
+            var teamFailed = favorites.teams.some(function (t) { return teamGames[t.id] && teamGames[t.id].error; });
+            root.appendChild(note(teamFailed ? 'Could not load your teams\' games. Trying again soon.' : 'No games for your teams on the schedule.'));
+          }
+          leagueIds.forEach(function (id) {
+            var section = el('section', 'league');
+            var name = LEAGUE_BY_ID[id] ? LEAGUE_BY_ID[id].name : (picked.filter(function (g) { return g.leagueId === id; })[0].leagueName || 'Other');
+            section.appendChild(el('h2', 'league-name', name));
+            ordered(picked.filter(function (g) { return g.leagueId === id; })).slice(0, settings.gamesPerLeague).forEach(function (game) {
+              section.appendChild(gameRow(game));
+            });
+            root.appendChild(section);
+          });
+        } else if (!enabled.length) {
           root.appendChild(note('No leagues are turned on. Choose them under Plugin Options.'));
           return;
         }
 
-        enabled.forEach(function (league) {
+        if (!onlyMine) enabled.forEach(function (league) {
           var result = full[league.id] || { games: [] };
           var mine = games.filter(function (g) { return g.leagueId === league.id; });
           var section = el('section', 'league');
@@ -513,6 +646,7 @@
         loadSettings().then(function (values) {
           settings = values;
           var enabled = LEAGUES.filter(function (league) { return settings[league.setting]; });
+          if ((settings.teams || '') !== teamsAsked) needFull = true;
           var previouslyLive = Object.keys(liveRows);
           return fetchLive().then(function (rows) {
             // A game that was live and has left the live feed has finished:
@@ -525,8 +659,8 @@
           }, function () {
             liveError = true;
           }).then(function () {
-            if (!enabled.length || (!needFull && Date.now() - lastFull < FULL_MS)) return enabled;
-            return refreshFull(enabled).then(function () { return enabled; });
+            if (!needFull && Date.now() - lastFull < FULL_MS) return enabled;
+            return Promise.all([refreshFull(enabled), refreshTeams()]).then(function () { return enabled; });
           });
         }).then(function (enabled) {
           checkedAt = Date.now();
@@ -534,13 +668,14 @@
           enabled.forEach(function (league) {
             if (full[league.id] && full[league.id].error) failed += 1;
           });
-          var allFailed = (enabled.length && failed === enabled.length) && liveError;
+          var allFailed = (!enabled.length || failed === enabled.length) && liveError;
           failures = allFailed ? failures + 1 : 0;
 
           var byId = merge(enabled);
           var games = Object.keys(byId).map(function (id) { return byId[id]; });
-          live = games.some(function (g) { return g.state === 'in'; });
-          soon = games.some(function (g) {
+          var watched = settings.teamsOnly && favorites.words.length ? games.filter(favoriteGame) : games;
+          live = watched.some(function (g) { return g.state === 'in'; });
+          soon = watched.some(function (g) {
             return g.state === 'pre' && g.date > checkedAt && g.date - checkedAt < SOON_MS;
           });
           render(enabled, games);
