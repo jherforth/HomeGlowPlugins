@@ -11,7 +11,7 @@
     "author": "HomeGlow",
     "description": "Scores and schedules for the leagues you pick: NFL, college football, NBA, MLB, NHL, MLS and the Premier League, from TheSportsDB. Pick favorite teams to see just theirs. A free key is built in; you can add your own. Checks every few minutes while a game is on, and about once an hour otherwise.",
     "category": "news-weather",
-    "version": "1.2.0",
+    "version": "1.2.1",
     "apiVersion": "v1",
     "settings": [
       { "key": "apiKey", "label": "TheSportsDB API key (3 is the free public key)", "type": "string", "default": "3", "scope": "household" },
@@ -272,7 +272,7 @@
       var soon = false;
       var found = {};       // a favorite's name, lower case -> { team: { id, name, leagueId } | null, at }
       var teamGames = {};   // team id -> { games, error }
-      var favorites = { words: [], ids: {}, teams: [], missing: [] };
+      var favorites = { words: [], ids: {}, teams: [], missing: [], elsewhere: [] };
       var teamsAsked = null; // the teams setting the last full refresh was for
 
       function el(tag, className, text) {
@@ -399,20 +399,28 @@
         var words = favoriteWords();
         teamsAsked = settings.teams || '';
         return Promise.all(words.map(findTeam)).then(function (teams) {
+          // Only the leagues turned on count: "Bruins" finds UCLA (college
+          // football) on the free key, which mustn't bring college football
+          // back when it is turned off.
+          var on = enabledLeagues();
           var ids = {};
           var mine = [];
-          teams.forEach(function (team) {
-            if (team && !ids[team.id]) { ids[team.id] = true; mine.push(team); }
+          var elsewhere = [];
+          teams.forEach(function (team, i) {
+            if (!team) return;
+            if (!on[team.leagueId]) { elsewhere.push({ word: words[i], team: team }); return; }
+            if (!ids[team.id]) { ids[team.id] = true; mine.push(team); }
           });
+          var covered = function (w) { return mine.some(function (t) { return t.name.toLowerCase().indexOf(w.toLowerCase()) !== -1; }); };
           favorites = {
             words: words.map(function (w) { return w.toLowerCase(); }),
             ids: ids,
             teams: mine,
             // Not found, and not part of a team that was ("Packers" beside
             // "Green Bay Packers").
-            missing: words.filter(function (w, i) {
-              return teams[i] === null && !mine.some(function (t) { return t.name.toLowerCase().indexOf(w.toLowerCase()) !== -1; });
-            })
+            missing: words.filter(function (w, i) { return teams[i] === null && !covered(w); }),
+            // Found only in a league that is turned off.
+            elsewhere: elsewhere.filter(function (e) { return !covered(e.word); })
           };
           return Promise.all(mine.map(function (team) {
             return fetchTeam(team).then(function (games) {
@@ -431,7 +439,10 @@
         var name = String(team.name || '').toLowerCase();
         return favorites.words.some(function (w) { return name.indexOf(w) !== -1; });
       }
-      function favoriteGame(game) { return isFavorite(game.home) || isFavorite(game.away); }
+      function favoriteGame(game) {
+        if (!settings[(LEAGUE_BY_ID[game.leagueId] || {}).setting] && !(favorites.ids[game.home.id] || favorites.ids[game.away.id])) return false;
+        return isFavorite(game.home) || isFavorite(game.away);
+      }
 
       function fetchLive() {
         return getJson('livescore.php').then(function (json) {
@@ -584,6 +595,10 @@
         if (favorites.missing.length) {
           root.appendChild(note('Not found: ' + favorites.missing.join(', ') + '. The full team name finds it, e.g. Green Bay Packers; meanwhile it picks out games already shown.'));
         }
+        favorites.elsewhere.forEach(function (e) {
+          var league = LEAGUE_BY_ID[e.team.leagueId];
+          root.appendChild(note(e.word + ' found only ' + e.team.name + ', in ' + (league ? league.name : 'a league') + ', which is turned off. Type the full name of the team you mean.'));
+        });
 
         if (onlyMine) {
           // Only the favorites' games, under their leagues.
