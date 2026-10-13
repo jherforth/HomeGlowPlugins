@@ -10,11 +10,12 @@
     "manifestVersion": 1,
     "id": "chore-metrics",
     "name": "Chore Metrics",
-    "version": "1.0.0",
-    "description": "Turns HomeGlow's chore history into charts: an activity heatmap, per-person completion counts, rates and streaks, the chores done most often, and clams earned against clams spent over the last 7, 30 or 90 days.",
+    "version": "1.1.0",
+    "description": "Turns HomeGlow's chore history into charts: an activity heatmap, per-person completion counts, rates and streaks, how each chore is going for each person, the chores done most often, and clams earned against clams spent over the last 7, 30 or 90 days.",
     "category": "chores-rewards",
     "author": "HomeGlow",
     "apiVersion": "v1",
+    "storage": true,
     "settings": [
       { "key": "defaultRange", "label": "Time range (days)", "type": "select",
         "options": ["7", "30", "90"], "default": "30", "scope": "device" },
@@ -22,6 +23,9 @@
         "default": true, "scope": "device" },
       { "key": "showSpending", "label": "Show clams earned vs spent", "type": "boolean",
         "default": true, "scope": "household" }
+    ],
+    "hideableControls": [
+      { "id": "peopleSettings", "label": "Choose who is shown" }
     ],
     "events": ["chore.completed", "chore.uncompleted", "clam.deposited", "clam.withdrawn"]
   }
@@ -31,36 +35,78 @@
     /* Color strategy: the host accent is user-configurable, so nothing here
        depends on distinguishing two saturated hues. Magnitude = one hue
        (accent) stepped by alpha; the second series (spent) is a texture-striped
-       neutral — identity is carried by pattern + legend, never color alone. */
-    :root { color-scheme: light dark; }
+       neutral — identity is carried by pattern + legend, never color alone.
+
+       Type, borders, corners, buttons and the bars read the theme's roles
+       (docs/guides/plugin-development.md), each falling back to the look from
+       before themes. Borders read --border, which the dashboard sends;
+       --card-border never reached plugins. Quiet text takes --text-secondary
+       rather than an opacity.
+
+       No color-scheme of our own. The dashboard declares none, and a frame
+       whose scheme differs from the page around it is painted opaque: with
+       "light dark", a computer in dark mode got a black tile on a light theme.
+       No background either: the dashboard's frame draws it. */
     * { box-sizing: border-box; }
     body {
       margin: 0;
       padding: 14px;
-      background: var(--card-bg, #fff);
       color: var(--text, #333);
-      font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+      font-family: var(--hg-font-body, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif);
       font-size: 14px;
     }
-    h2 { margin: 0; font-size: 1.05rem; }
-    .header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
-    .header select {
-      background: transparent; color: inherit;
-      border: 1px solid var(--card-border, rgba(127,127,127,.35));
-      border-radius: 6px; padding: 3px 6px; font: inherit; font-size: .8rem;
+    h2 {
+      margin: 0; font-size: 1.05rem;
+      font-family: var(--hg-font-heading, inherit);
+      text-transform: var(--hg-heading-transform, none);
+      letter-spacing: var(--hg-heading-letter-spacing, normal);
     }
+    .quiet { color: var(--text-secondary, color-mix(in srgb, currentColor 65%, transparent)); }
+    .header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; position: relative; }
+    .header .tools { display: flex; align-items: center; gap: 6px; }
+    .header select { height: 28px; }
+    .header select, .chore-filter {
+      background: transparent; color: inherit;
+      border: 1px solid var(--border, var(--card-border, rgba(127,127,127,.35)));
+      border-radius: var(--hg-radius-sm, 6px); padding: 3px 6px; font: inherit; font-size: .8rem;
+    }
+    /* A drawn gear rather than the ⚙ character: a glyph sits on the text
+       baseline and lands off-center by a different amount in every theme's
+       font. */
+    .gear {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 28px; height: 28px; padding: 0;
+      background: transparent; color: inherit; cursor: pointer;
+      border: 1px solid var(--hg-button-quiet-border, var(--border, var(--card-border, rgba(127,127,127,.35))));
+      border-radius: var(--hg-button-radius, 6px);
+    }
+    .gear svg { width: 16px; height: 16px; display: block; }
+    .gear[aria-expanded="true"] { background: rgba(var(--accent-rgb, 110,68,255), .14); }
+    .people-panel {
+      position: absolute; right: 0; top: calc(100% + 6px); z-index: 2; min-width: 190px;
+      background: var(--surface, var(--card-bg, #fff));
+      border: 1px solid var(--border, var(--card-border, rgba(127,127,127,.35)));
+      border-radius: var(--hg-radius-md, 10px); padding: 10px 12px;
+      box-shadow: 0 6px 20px rgba(0,0,0,.18);
+    }
+    .people-panel[hidden] { display: none; }
+    .people-panel .panel-title { font-size: .72rem; font-weight: 600; margin-bottom: 6px; }
+    .people-panel label { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: .85rem; cursor: pointer; }
+    .people-panel input { width: 16px; height: 16px; accent-color: rgb(var(--accent-rgb, 110,68,255)); }
     .section-title {
       font-size: .72rem; font-weight: 600; letter-spacing: .06em;
-      text-transform: uppercase; opacity: .6; margin: 16px 0 8px;
+      text-transform: uppercase; margin: 16px 0 8px;
+      font-family: var(--hg-font-heading, inherit);
+      color: var(--text-secondary, color-mix(in srgb, currentColor 60%, transparent));
     }
-    .muted { opacity: .6; }
-    .empty { opacity: .6; font-size: .85rem; padding: 12px 0; }
+    .muted { color: var(--text-secondary, color-mix(in srgb, currentColor 60%, transparent)); }
+    .empty { color: var(--text-secondary, color-mix(in srgb, currentColor 60%, transparent)); font-size: .85rem; padding: 12px 0; }
 
     /* Stat tiles */
     .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
     .tile {
-      border: 1px solid var(--card-border, rgba(127,127,127,.25));
-      border-radius: 10px; padding: 10px 12px;
+      border: 1px solid var(--border, var(--card-border, rgba(127,127,127,.25)));
+      border-radius: var(--hg-radius-md, 10px); padding: 10px 12px;
     }
     .tile .kid { font-weight: 700; font-size: .85rem; margin-bottom: 6px; display: flex; align-items: center; gap: 6px; }
     .tile .kid::before {
@@ -81,23 +127,24 @@
     }
     .vacation-note {
       display: inline-flex; align-items: center; gap: 6px; margin-top: 12px; margin-left: 8px;
-      border: 1px solid var(--card-border, rgba(127,127,127,.3));
-      border-radius: 999px; padding: 4px 12px; font-size: .78rem; opacity: .75;
+      border: 1px solid var(--border, var(--card-border, rgba(127,127,127,.3)));
+      border-radius: 999px; padding: 4px 12px; font-size: .78rem;
+      color: var(--text-secondary, color-mix(in srgb, currentColor 75%, transparent));
     }
 
     /* Heatmap: sequential single hue, 2px cell gaps, rounded cells */
     .heatmap { display: flex; gap: 8px; align-items: flex-start; overflow-x: auto; padding-bottom: 4px; }
     .heatmap svg { display: block; }
-    .heatmap-legend { display: flex; align-items: center; gap: 3px; font-size: .68rem; opacity: .7; margin-top: 4px; }
+    .heatmap-legend { display: flex; align-items: center; gap: 3px; font-size: .68rem; margin-top: 4px; color: var(--text-secondary, color-mix(in srgb, currentColor 70%, transparent)); }
     .heatmap-legend .cell { width: 10px; height: 10px; border-radius: 2px; }
 
     /* Bar lists: thin marks, rounded data end, 2px gaps, value labels in ink */
     .bar-row { display: grid; grid-template-columns: minmax(70px, 30%) 1fr auto; gap: 8px; align-items: center; margin-bottom: 6px; font-size: .8rem; }
     .bar-row .label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .bar-track { height: 12px; display: flex; align-items: center; }
+    .bar-track { min-height: 12px; display: flex; align-items: center; }
     .bar-fill {
-      height: 10px; border-radius: 0 4px 4px 0; min-width: 2px;
-      background: rgba(var(--accent-rgb, 110,68,255), .9);
+      height: var(--hg-meter-thickness, 10px); border-radius: 0 4px 4px 0; min-width: 2px;
+      background: var(--hg-meter-fill, rgba(var(--accent-rgb, 110,68,255), .9));
     }
     .bar-fill.spent {
       background: repeating-linear-gradient(45deg,
@@ -106,9 +153,9 @@
     }
     .bar-row .value { font-variant-numeric: tabular-nums; font-weight: 600; font-size: .76rem; }
 
-    .legend { display: flex; gap: 14px; font-size: .72rem; opacity: .8; margin-bottom: 8px; }
+    .legend { display: flex; gap: 14px; font-size: .72rem; margin-bottom: 8px; color: var(--text-secondary, color-mix(in srgb, currentColor 80%, transparent)); }
     .legend .swatch { display: inline-block; width: 12px; height: 10px; border-radius: 2px; vertical-align: -1px; margin-right: 4px; }
-    .legend .swatch.earned { background: rgba(var(--accent-rgb, 110,68,255), .9); }
+    .legend .swatch.earned { background: var(--hg-meter-fill, rgba(var(--accent-rgb, 110,68,255), .9)); }
     .legend .swatch.spent {
       background: repeating-linear-gradient(45deg, currentColor 0 3px, transparent 3px 6px);
       opacity: .55;
@@ -116,24 +163,58 @@
 
     /* Accessible table view */
     details.table-view { margin-top: 14px; font-size: .78rem; }
-    details.table-view summary { cursor: pointer; opacity: .7; }
+    details.table-view summary { cursor: pointer; color: var(--text-secondary, color-mix(in srgb, currentColor 70%, transparent)); }
     details.table-view table { border-collapse: collapse; margin-top: 8px; width: 100%; }
     details.table-view th, details.table-view td {
-      text-align: left; padding: 3px 8px; border-bottom: 1px solid var(--card-border, rgba(127,127,127,.2));
+      text-align: left; padding: 3px 8px; border-bottom: 1px solid var(--border, var(--card-border, rgba(127,127,127,.2)));
       font-variant-numeric: tabular-nums;
     }
-    details.table-view th { font-weight: 600; opacity: .7; }
+    details.table-view th { font-weight: 600; color: var(--text-secondary, color-mix(in srgb, currentColor 70%, transparent)); }
+
+    /* By chore: one block per chore, a line per person. Done is a filled dot,
+       missed a hollow ring, so the two never rely on color alone. */
+    .by-chore-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 16px 0 8px; }
+    .by-chore-head .section-title { margin: 0; }
+    .chore-block { margin-bottom: 12px; }
+    .chore-name { font-weight: 600; font-size: .85rem; margin-bottom: 4px; }
+    .chore-row { display: grid; grid-template-columns: minmax(60px, 22%) 1fr; gap: 4px 10px; align-items: center; font-size: .8rem; padding: 2px 0; }
+    .chore-row .who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .chore-row .what { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+    .dots { display: inline-flex; flex-wrap: wrap; gap: 3px; }
+    .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+    .dot.done { background: var(--hg-meter-fill, rgba(var(--accent-rgb, 110,68,255), .9)); }
+    .dot.missed { border: 1.5px solid var(--text-secondary, color-mix(in srgb, currentColor 55%, transparent)); }
+    .chore-row .stat { font-variant-numeric: tabular-nums; }
+    .chore-row .stat b { font-weight: 600; }
   </style>
 </head>
 <body>
   <div class="header">
     <h2>📊 Chore Metrics</h2>
-    <select id="range" aria-label="Time range">
-      <option value="7">7 days</option>
-      <option value="30">30 days</option>
-      <option value="90">90 days</option>
-    </select>
+    <div class="tools">
+      <select id="range" aria-label="Time range">
+        <option value="7">7 days</option>
+        <option value="30">30 days</option>
+        <option value="90">90 days</option>
+      </select>
+      <button type="button" class="gear" id="people-gear" aria-label="Choose who is shown"
+              aria-expanded="false" aria-controls="people-panel" title="Choose who is shown"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="9" stroke-width="3.2" stroke-dasharray="3.53 3.53"/><circle cx="12" cy="12" r="5.6" stroke-width="3"/></svg></button>
+    </div>
+    <div class="people-panel" id="people-panel" hidden></div>
   </div>
+  <script>
+    // Control limits: drop the people gear at parse time, before it paints,
+    // when this display hides it. No hide param means hide nothing.
+    (function () {
+      var hidden = (new URLSearchParams(location.search).get('hide') || '').split(',');
+      if (hidden.indexOf('peopleSettings') !== -1) {
+        var gear = document.getElementById('people-gear');
+        var panel = document.getElementById('people-panel');
+        if (gear) gear.remove();
+        if (panel) panel.remove();
+      }
+    })();
+  </script>
 
   <div id="content"><div class="empty">Loading…</div></div>
 
@@ -142,7 +223,17 @@
   (function () {
     'use strict';
 
-    var state = { users: [], history: [], rangeDays: 30, settings: null, hasKind: false, vacation: null };
+    var state = {
+      users: [], history: [], schedules: [], rangeDays: 30, settings: null, hasKind: false, vacation: null,
+      // User ids hidden on this display. Kept as the chore widget keeps its
+      // own: ids, so a rename changes nothing, set only from the gear, and
+      // not a declared setting, which the Admin Panel would show as a raw
+      // field. Stored per display in the plugin's storage (peopleKey).
+      // Hidden rather than shown, so someone added later appears without a
+      // visit to the gear.
+      hiddenPeople: [],
+      choreFilter: ''
+    };
     var refetchTimer = null;
 
     // ---------- utilities ----------
@@ -173,6 +264,30 @@
       return 'completion';
     }
 
+    function isShown(userId) { return state.hiddenPeople.indexOf(Number(userId)) === -1; }
+
+    // This display's storage key. Storage keys allow only A-Za-z0-9 : _ . -
+    // and 128 characters, and display names are free text, so anything else
+    // (and "_" itself) is written as _ and its UTF-8 bytes in hex. A name too
+    // long for that is hashed. No device (a direct load): nothing is saved.
+    var deviceName = new URLSearchParams(location.search).get('device') || '';
+    function peopleKey() {
+      if (!deviceName) return null;
+      var enc = Array.prototype.map.call(unescape(encodeURIComponent(deviceName)), function (ch) {
+        return /[A-Za-z0-9.-]/.test(ch) ? ch : '_' + ('0' + ch.charCodeAt(0).toString(16)).slice(-2);
+      }).join('');
+      var key = 'people:' + enc;
+      if (key.length <= 128) return key;
+      var h = 2166136261;
+      for (var i = 0; i < deviceName.length; i++) { h ^= deviceName.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
+      return 'people:#' + h.toString(16);
+    }
+    // People this display shows, in the household's order. The bonus
+    // pseudo-user (id 0) is never a person.
+    function shownUsers() {
+      return state.users.filter(function (u) { return u.id !== 0 && isShown(u.id); });
+    }
+
     // Vacation days (issues #121/#72): the household `vacation_mode` setting.
     // While active, the server skips missed logging and this plugin treats the
     // days as NEUTRAL for streaks — they neither extend nor break a run.
@@ -189,8 +304,7 @@
     // ---------- metrics ----------
     function computeMetrics() {
       var perKid = {};
-      state.users.forEach(function (u) {
-        if (u.id === 0) return; // bonus pseudo-user
+      shownUsers().forEach(function (u) {
         perKid[u.id] = {
           name: u.username, completions: 0, missed: 0,
           bonusDates: [], earned: 0, spent: 0,
@@ -322,7 +436,7 @@
     function renderTopChores() {
       var counts = {};
       state.history.forEach(function (row) {
-        if (kindOf(row) !== 'completion' || !row.title) return;
+        if (kindOf(row) !== 'completion' || !row.title || !isShown(row.user_id)) return;
         counts[row.title] = (counts[row.title] || 0) + 1;
       });
       var top = Object.entries(counts).sort(function (a, b) { return b[1] - a[1]; }).slice(0, 5);
@@ -374,6 +488,176 @@
         ' (+' + best.delta + ' vs earlier)</div>';
     }
 
+    // ---------- by chore ----------
+    // How each chore is going for each person, from the same history rows.
+    // The server's nightly job writes a missed row only for an assigned,
+    // no-clam chore that was due that day, so the history itself says which
+    // days counted:
+    //  - A recurring chore keeps one schedule, with a done or missed row for
+    //    each day it was due. In date order those rows are its scheduled
+    //    days, so a streak is the trailing run of completions and a day it
+    //    wasn't due can never break one.
+    //  - Until-done, one-time and follow-up chores are one-time schedules,
+    //    with a missed row for every day left open and a done row when
+    //    finished. Each schedule is one occurrence, counted once.
+    //  - Paid and unassigned chores get no missed rows, so only completions
+    //    can be shown for them.
+    // Done one-time schedules are deleted overnight, and their rows lose their
+    // schedule id. Those rows are read as occurrences in date order: each
+    // completion closes one, after however many days it was missed. Without
+    // the schedule, chores are grouped by title, so a renamed chore shows as
+    // two.
+    function computeByChore() {
+      var schedulesById = {};
+      state.schedules.forEach(function (sc) { schedulesById[sc.id] = sc; });
+
+      // A deleted schedule with more than one completion was recurring: a
+      // one-time schedule is done at most once.
+      var completionsBySchedule = {};
+      state.history.forEach(function (row) {
+        if (kindOf(row) === 'completion' && row.chore_schedule_id != null) {
+          completionsBySchedule[row.chore_schedule_id] = (completionsBySchedule[row.chore_schedule_id] || 0) + 1;
+        }
+      });
+      function isRecurring(scheduleId) {
+        var sc = schedulesById[scheduleId];
+        if (sc) return sc.crontab != null;
+        return (completionsBySchedule[scheduleId] || 0) > 1;
+      }
+
+      var chores = {};
+      state.history.forEach(function (row) {
+        var kind = kindOf(row);
+        if (kind !== 'completion' && kind !== 'missed') return;
+        if (!row.title || !isShown(row.user_id)) return;
+        var title = String(row.title).trim();
+        var chore = chores[title] || (chores[title] = { title: title, people: {} });
+        var person = chore.people[row.user_id] ||
+          (chore.people[row.user_id] = { userId: row.user_id, days: [], occurrences: {}, loose: [], tracked: false });
+        // Misses are tracked when the server logs them: an assigned chore
+        // with no clams. A missed row proves it even after its schedule is
+        // gone; a chore never missed in the range proves it by its schedule.
+        var sc = row.chore_schedule_id != null ? schedulesById[row.chore_schedule_id] : null;
+        if (kind === 'missed' || (sc && Number(sc.clam_value) === 0 && sc.user_id != null)) person.tracked = true;
+        var sid = row.chore_schedule_id;
+        if (sid == null) {
+          person.loose.push({ date: row.date, done: kind === 'completion' });
+        } else if (!isRecurring(sid)) {
+          var occ = person.occurrences[sid] || (person.occurrences[sid] = { done: false, daysLate: 0, open: false });
+          if (kind === 'completion') occ.done = true; else occ.daysLate++;
+        } else {
+          person.days.push({ date: row.date, done: kind === 'completion' });
+        }
+      });
+
+      // An occurrence still on the board, not yet done, is open.
+      Object.keys(chores).forEach(function (title) {
+        Object.keys(chores[title].people).forEach(function (uid) {
+          var person = chores[title].people[uid];
+          Object.keys(person.occurrences).forEach(function (sid) {
+            var occ = person.occurrences[sid];
+            if (!occ.done && schedulesById[sid]) occ.open = true;
+          });
+          person.days.sort(byDate);
+          // Rows whose schedule is gone: a completion closes an occurrence;
+          // misses with no completion after them ended undone.
+          var late = 0, n = 0;
+          person.loose.sort(byDate).forEach(function (row) {
+            if (row.done) { person.occurrences['gone' + (n++)] = { done: true, daysLate: late, open: false }; late = 0; }
+            else late++;
+          });
+          if (late) person.occurrences['gone' + n] = { done: false, daysLate: late, open: false };
+        });
+      });
+      return chores;
+    }
+
+    function byDate(a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; }
+
+    function dayStats(days) {
+      var done = 0, missed = 0, run = 0, best = 0;
+      days.forEach(function (d) {
+        if (d.done) { done++; run++; if (run > best) best = run; } else { missed++; run = 0; }
+      });
+      return { done: done, missed: missed, current: run, best: best };
+    }
+
+    function median(values) {
+      if (!values.length) return 0;
+      var v = values.slice().sort(function (a, b) { return a - b; });
+      return v[Math.floor((v.length - 1) / 2)];
+    }
+
+    var MAX_DOTS = 20;
+    function renderPersonRow(name, person) {
+      var parts = [];
+      // Without missed rows (paid or unassigned chores, or an older server)
+      // a rate or a lateness would read as perfect, so show completions only.
+      var tracked = state.hasKind && person.tracked;
+      if (person.days.length) {
+        var st = dayStats(person.days);
+        var shown = person.days.slice(-MAX_DOTS);
+        var dots = shown.map(function (d) {
+          return '<span class="dot ' + (d.done ? 'done' : 'missed') + '" title="' + esc(d.date) + ': ' +
+            (d.done ? 'done' : 'missed') + '"></span>';
+        }).join('');
+        parts.push('<span class="dots" role="img" aria-label="' + st.done + ' done, ' + st.missed +
+          ' missed">' + dots + '</span>');
+        if (tracked) {
+          parts.push('<span class="stat"><b>' + st.done + '</b> of ' + (st.done + st.missed) + '</span>');
+          parts.push('<span class="stat">🔥 ' + st.current + ' <span class="quiet">(best ' + st.best + ')</span></span>');
+        } else {
+          parts.push('<span class="stat"><b>' + st.done + '</b> done <span class="quiet">(misses aren\u2019t tracked for this chore)</span></span>');
+        }
+      }
+      var occs = Object.keys(person.occurrences).map(function (k) { return person.occurrences[k]; });
+      if (occs.length) {
+        var done = occs.filter(function (o) { return o.done; });
+        var open = occs.filter(function (o) { return o.open; }).length;
+        var undone = occs.length - done.length - open;
+        var text = '<b>' + done.length + '</b> done';
+        if (open) text += ' · ' + open + ' open';
+        if (undone) text += ' · ' + undone + ' not done';
+        // Lateness comes from missed rows, so only where misses are logged.
+        if (!tracked) {
+          text += ' <span class="quiet">(misses aren\u2019t tracked for this chore)</span>';
+        } else if (done.length) {
+          var late = median(done.map(function (o) { return o.daysLate; }));
+          text += ' <span class="quiet">(' + (late === 0 ? 'usually on time' :
+            'usually ' + late + ' day' + (late === 1 ? '' : 's') + ' late') + ')</span>';
+        }
+        parts.push('<span class="stat">' + text + '</span>');
+      }
+      return '<div class="chore-row"><span class="who">' + esc(name) + '</span><span class="what">' +
+        parts.join('') + '</span></div>';
+    }
+
+    function renderByChore() {
+      var chores = computeByChore();
+      var titles = Object.keys(chores).sort(function (a, b) { return a.localeCompare(b); });
+      if (state.choreFilter && titles.indexOf(state.choreFilter) === -1) state.choreFilter = '';
+      var options = '<option value="">All chores</option>' + titles.map(function (t) {
+        return '<option value="' + esc(t) + '"' + (t === state.choreFilter ? ' selected' : '') + '>' + esc(t) + '</option>';
+      }).join('');
+      var head = '<div class="by-chore-head"><div class="section-title">By chore</div>' +
+        (titles.length ? '<select class="chore-filter" id="chore-filter" aria-label="Chore">' + options + '</select>' : '') +
+        '</div>';
+      if (!titles.length) return head + '<div class="empty">No chores done or missed in this period.</div>';
+
+      var names = {};
+      state.users.forEach(function (u) { names[u.id] = u.username; });
+      var order = {};
+      state.users.forEach(function (u, i) { order[u.id] = i; });
+      var shownTitles = state.choreFilter ? [state.choreFilter] : titles;
+      return head + shownTitles.map(function (title) {
+        var people = chores[title].people;
+        var ids = Object.keys(people).sort(function (a, b) { return (order[a] || 0) - (order[b] || 0); });
+        return '<div class="chore-block"><div class="chore-name">' + esc(title) + '</div>' +
+          ids.map(function (id) { return renderPersonRow(names[id] || ('#' + id), people[id]); }).join('') +
+          '</div>';
+      }).join('');
+    }
+
     function renderVacationNote() {
       var today = dateStr(daysAgo(0));
       if (!isVacationDay(today)) return '';
@@ -398,6 +682,12 @@
     }
 
     function render() {
+      if (state.users.length && !shownUsers().length) {
+        document.getElementById('content').innerHTML =
+          '<div class="empty">Everyone is hidden on this display.' +
+          (document.getElementById('people-gear') ? ' Use the gear to choose who is shown.' : '') + '</div>';
+        return;
+      }
       var metrics = computeMetrics();
       var showHeatmap = !state.settings || state.settings.showHeatmap !== false;
       var showSpending = !state.settings || state.settings.showSpending !== false;
@@ -409,12 +699,22 @@
         html += '<div class="section-title">Activity — last ' + state.rangeDays + ' days</div>';
         html += renderHeatmap(metrics.byDayHousehold);
       }
+      html += renderByChore();
       html += '<div class="section-title">Top chores</div>' + renderTopChores();
       if (showSpending && state.hasKind) {
         html += '<div class="section-title">Clams earned vs spent</div>' + renderSpending(metrics.perKid);
       }
       html += renderTable(metrics.perKid);
       document.getElementById('content').innerHTML = html;
+      var filter = document.getElementById('chore-filter');
+      if (filter) {
+        filter.addEventListener('change', function () {
+          state.choreFilter = filter.value;
+          render();
+          var again = document.getElementById('chore-filter');
+          if (again) again.focus();
+        });
+      }
     }
 
     // ---------- data ----------
@@ -424,10 +724,12 @@
       return Promise.all([
         fetchJson('/api/users'),
         fetchJson('/api/chore-history?date_from=' + from + '&date_to=' + to),
-        fetchJson('/api/settings').catch(function () { return {}; })
+        fetchJson('/api/settings').catch(function () { return {}; }),
+        fetchJson('/api/chore-schedules').catch(function () { return []; })
       ]).then(function (results) {
         state.users = results[0] || [];
         state.history = results[1] || [];
+        state.schedules = Array.isArray(results[3]) ? results[3] : [];
         state.hasKind = state.history.length === 0 || state.history.some(function (r) { return r.kind !== undefined; });
         state.vacation = null;
         try {
@@ -437,10 +739,56 @@
           if (vm && typeof vm === 'object') state.vacation = vm;
         } catch (e) { state.vacation = null; }
         render();
+        renderPeoplePanel();
       }).catch(function (error) {
         document.getElementById('content').innerHTML =
           '<div class="empty">Could not load chore data (' + esc(error.message) + ')</div>';
       });
+    }
+
+    // ---------- people gear ----------
+    // Ids of people who no longer exist are dropped as they're saved, as the
+    // chore widget's pruneHiddenUserIds does.
+    function prunedHiddenPeople() {
+      var known = {};
+      state.users.forEach(function (u) { known[u.id] = true; });
+      return state.hiddenPeople.filter(function (id) { return known[id]; });
+    }
+
+    function renderPeoplePanel() {
+      var panel = document.getElementById('people-panel');
+      if (!panel) return;
+      var people = state.users.filter(function (u) { return u.id !== 0; });
+      panel.innerHTML = '<div class="panel-title">Show on this display</div>' +
+        (people.length ? people.map(function (u) {
+          return '<label><input type="checkbox" data-user="' + u.id + '"' + (isShown(u.id) ? ' checked' : '') +
+            '>' + esc(u.username) + '</label>';
+        }).join('') : '<div class="empty">No family members yet.</div>');
+      Array.prototype.forEach.call(panel.querySelectorAll('input[data-user]'), function (box) {
+        box.addEventListener('change', function () {
+          var id = Number(box.getAttribute('data-user'));
+          state.hiddenPeople = state.hiddenPeople.filter(function (h) { return h !== id; });
+          if (!box.checked) state.hiddenPeople.push(id);
+          state.hiddenPeople = prunedHiddenPeople();
+          render();
+          var key = peopleKey();
+          if (key && window.HomeGlow && window.HomeGlow.pluginId) {
+            window.HomeGlow.storage.set(key, { hidden: state.hiddenPeople }).catch(function () {});
+          }
+        });
+      });
+    }
+
+    function setPanelOpen(open) {
+      var gear = document.getElementById('people-gear');
+      var panel = document.getElementById('people-panel');
+      if (!gear || !panel) return;
+      panel.hidden = !open;
+      gear.setAttribute('aria-expanded', open ? 'true' : 'false');
+      if (open) {
+        var first = panel.querySelector('input');
+        if (first) first.focus();
+      }
     }
 
     function scheduleRefetch() {
@@ -455,8 +803,21 @@
       if (theme === 'dark' || theme === 'light') {
         document.documentElement.setAttribute('data-theme', theme);
       }
-      if (params.get('transparent') === 'true') {
-        document.body.style.background = 'transparent';
+      var gear = document.getElementById('people-gear');
+      if (gear) {
+        gear.addEventListener('click', function () {
+          setPanelOpen(document.getElementById('people-panel').hidden);
+        });
+        document.addEventListener('click', function (event) {
+          var panel = document.getElementById('people-panel');
+          if (panel && !panel.hidden && !panel.contains(event.target) && event.target !== gear) setPanelOpen(false);
+        });
+        document.addEventListener('keydown', function (event) {
+          if (event.key === 'Escape' && !document.getElementById('people-panel').hidden) {
+            setPanelOpen(false);
+            gear.focus();
+          }
+        });
       }
 
       var rangeSelect = document.getElementById('range');
@@ -471,14 +832,20 @@
 
       var start = Promise.resolve();
       if (window.HomeGlow && window.HomeGlow.pluginId) {
-        start = window.HomeGlow.settings.get().then(function (settings) {
+        var key = peopleKey();
+        var people = key ? window.HomeGlow.storage.get(key).then(function (doc) {
+          if (doc && Array.isArray(doc.hidden)) {
+            state.hiddenPeople = doc.hidden.map(Number).filter(function (n) { return Number.isFinite(n); });
+          }
+        }).catch(function () {}) : Promise.resolve();
+        start = Promise.all([people, window.HomeGlow.settings.get().then(function (settings) {
           state.settings = settings;
           var range = parseInt(settings.defaultRange, 10);
           if (range === 7 || range === 30 || range === 90) {
             state.rangeDays = range;
             rangeSelect.value = String(range);
           }
-        }).catch(function () {});
+        }).catch(function () {})]);
 
         ['chore.completed', 'chore.uncompleted', 'clam.deposited', 'clam.withdrawn'].forEach(function (event) {
           window.HomeGlow.on(event, scheduleRefetch);
