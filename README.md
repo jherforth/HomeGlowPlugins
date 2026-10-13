@@ -33,6 +33,7 @@ describe it:
   "manifestVersion": 1,
   "id": "guest-wifi",
   "name": "Guest Wi-Fi",
+  "version": "1.0.0",
   "description": "One or two sentences on what the widget does and what it needs."
 }
 </script>
@@ -44,6 +45,22 @@ describe it:
 - `description` is optional and capped at 300 characters. It renders as the
   subtitle on the plugin card in the Admin Panel.
 - `name` replaces the filename-derived label in the plugin list.
+- `version` is the plugin's version, `major.minor.patch` (see Versions below).
 
 The block is plain JSON in a non-executing `<script>` tag, so it is inert in the
 browser and ignored by HomeGlow versions that predate manifest support.
+
+## Versions
+
+Every plugin has a `version`. They all started at `1.0.0` (HomeGlow issue
+#273). **Raise it in every change to a plugin**, in the same commit:
+
+- `1.0.0` → `1.0.1` for a fix;
+- `1.0.0` → `1.1.0` for something new (a setting, a feature);
+- `1.0.0` → `2.0.0` for a change that drops or renames a setting, or needs a
+  newer HomeGlow.
+
+HomeGlow's plugin list shows each plugin's version, and next to an installed
+plugin says **Up to date** or **Update to 1.1.0**. It compares the installed
+copy with this repo's file itself, so an update shows even if the version was
+forgotten. The version is what tells people what they are getting.
