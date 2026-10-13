@@ -10,7 +10,7 @@
     "manifestVersion": 1,
     "id": "chore-metrics",
     "name": "Chore Metrics",
-    "version": "1.1.0",
+    "version": "1.1.1",
     "description": "Turns HomeGlow's chore history into charts: an activity heatmap, per-person completion counts, rates and streaks, how each chore is going for each person, the chores done most often, and clams earned against clams spent over the last 7, 30 or 90 days.",
     "category": "chores-rewards",
     "author": "HomeGlow",
@@ -810,7 +810,10 @@
         });
         document.addEventListener('click', function (event) {
           var panel = document.getElementById('people-panel');
-          if (panel && !panel.hidden && !panel.contains(event.target) && event.target !== gear) setPanelOpen(false);
+          // The click lands on the gear's drawing, not the button itself, so
+          // test containment: an equality test closed the panel the moment
+          // the gear opened it.
+          if (panel && !panel.hidden && !panel.contains(event.target) && !gear.contains(event.target)) setPanelOpen(false);
         });
         document.addEventListener('keydown', function (event) {
           if (event.key === 'Escape' && !document.getElementById('people-panel').hidden) {
