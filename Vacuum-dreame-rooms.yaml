@@ -1,0 +1,68 @@
+blueprint:
+  name: Vacuum clean rooms by name (Dreame, HomeGlow)
+  author: jasonstantler
+  description: >-
+    A room button for the HomeGlow Vacuum card, for vacuums using the Dreame
+    Vacuum custom integration. Cleans the rooms you name, using the room
+    names from the Dreame app and whatever mode and suction the card is set
+    to. Make one script per room, such as script.vacuum_kitchen.
+
+
+    If no room matches, you get a notification in Home Assistant instead.
+  domain: script
+  source_url: https://github.com/jherforth/HomeGlowPlugins/blob/main/Vacuum-dreame-rooms.yaml
+  input:
+    vacuum:
+      name: Vacuum
+      selector:
+        entity:
+          filter:
+            - integration: dreame_vacuum
+              domain: vacuum
+    rooms:
+      name: Rooms
+      description: Room names exactly as they appear in the Dreame app. Add more than one to clean several in one go.
+      selector:
+        text:
+          multiple: true
+
+mode: single
+icon: mdi:floor-plan
+
+variables:
+  vac: !input vacuum
+  rooms: !input rooms
+  want: >-
+    {%- set r = [rooms] if rooms is string else rooms -%}
+    {{ r | map('string') | map('trim') | map('lower') | list }}
+  ids: >-
+    {%- set maps = state_attr(vac, 'rooms') or {} -%}
+    {%- set sel = state_attr(vac, 'selected_map') -%}
+    {%- set lists = [maps[sel]] if sel in maps else maps.values() | list -%}
+    {%- set ns = namespace(ids=[]) -%}
+    {%- for name in want -%}
+      {%- for l in lists -%}
+        {%- for room in l if room.name is defined and (room.name | string | trim | lower) == name and room.id not in ns.ids -%}
+          {%- set ns.ids = ns.ids + [room.id] -%}
+        {%- endfor -%}
+      {%- endfor -%}
+    {%- endfor -%}
+    {{ ns.ids }}
+
+sequence:
+  - if:
+      - condition: template
+        value_template: "{{ ids | count == 0 }}"
+    then:
+      - action: persistent_notification.create
+        data:
+          title: Vacuum
+          message: >-
+            No room named {{ want | join(' or ') }} on the vacuum's map. Check
+            the room names in the Dreame app, then fix them in this script.
+      - stop: Room not found
+  - action: dreame_vacuum.vacuum_clean_segment
+    target:
+      entity_id: "{{ vac }}"
+    data:
+      segments: "{{ ids }}"
