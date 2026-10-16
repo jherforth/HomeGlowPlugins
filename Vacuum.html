@@ -29,7 +29,7 @@
     { "key": "battery", "label": "Battery (sensor entity; blank finds it)", "type": "string", "default": "" },
     { "key": "roomSwitch", "label": "Per-room settings switch, like Dreame's Customized Cleaning (blank finds it, - hides it)", "type": "string", "default": "" },
     { "key": "presets", "label": "Clean buttons: Name = script, separated by semicolons. Add a short note after a | (Quick vacuum | Vacuum · Standard = script.vacuum_quick)", "type": "string",
-      "default": "Quick vacuum | Vacuum · Standard = script.vacuum_quick; Deep clean | Vacuum, then mop · Max = script.vacuum_deep_clean" },
+      "default": "Quick vacuum = script.vacuum_quick; Deep clean = script.vacuum_deep_clean" },
     { "key": "showRooms", "label": "Show room buttons", "type": "boolean", "default": false },
     { "key": "rooms", "label": "Room buttons: Room = script, separated by semicolons (Kitchen = script.vacuum_kitchen)", "type": "string", "default": "" },
     { "key": "showMap", "label": "Show the map when the tile is wide enough", "type": "boolean", "default": true, "scope": "device" }
@@ -323,7 +323,9 @@ svg{flex:none}
   function runPreset(p, room){
     var v = vac();
     lastPreset = {label: p.label, at: Date.now(), room: !!room};
-    acting = {text: room ? 'Heading to the ' + p.label.toLowerCase() + '…' : 'Starting ' + p.label.toLowerCase() + '…', until: Date.now() + 15000, from: v ? v.state : ''};
+    // A room keeps the household's own spelling ("Emma's room"), and gets no
+    // "the" it may not want ("Upstairs").
+    acting = {text: room ? 'Cleaning ' + p.label + '…' : 'Starting ' + p.label.toLowerCase() + '…', until: Date.now() + 15000, from: v ? v.state : ''};
     sheetOpen = false; render();
     ha.action(p.entity, 'run').then(poll).catch(function(e){ acting = null; lastPreset = null; problem(e); });
   }
@@ -395,8 +397,8 @@ svg{flex:none}
   }
   function settingsHTML(){
     var sw = pick('roomSwitch'), hasSwitch = !!(sw && ent(sw)), on = perRoom();
-    if (on) return '<div class="notice"><span>Each room uses its own mode and suction from the Dreame app.</span><button data-rooms="0">Use one setting</button></div>';
-    var chip = hasSwitch ? '<button class="chip" data-rooms="1" aria-pressed="false" title="Use each room’s own settings from the Dreame app">Per room</button>' : '';
+    if (on) return '<div class="notice"><span>Each room uses its own mode and suction from the vacuum’s app.</span><button data-rooms="0">Use one setting</button></div>';
+    var chip = hasSwitch ? '<button class="chip" data-rooms="1" aria-pressed="false" title="Use each room’s own settings from the vacuum’s app">Per room</button>' : '';
     return selField('Mode', 'modeSelect', chip) + selField('Suction', 'suctionSelect');
   }
   var PIN = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-6.5-5.6-6.5-11A6.5 6.5 0 0 1 18.5 10c0 5.4-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.3"/></svg>';

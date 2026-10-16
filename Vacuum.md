@@ -23,7 +23,12 @@ Mode and suction show only when your vacuum's integration has them as **select**
 1. In HomeGlow, go to **Admin → Plugins**, find **Vacuum** under Household, and install it. Approve the Home Assistant access it asks for.
 2. Add the **Vacuum** widget to your dashboard.
 
-**Map (optional).** HomeGlow only shows a camera that the plugin names, and this one names `camera.vacuum_map`. If your map camera has another name, download [`Vacuum.html`](Vacuum.html), open it in a text editor, change `"camera.vacuum_map"` near the top to your camera, such as `"camera.robot_map"`, and upload that file in **Admin → Plugins** instead.
+**Map (optional).** HomeGlow only shows a camera that the plugin names, and this one names `camera.vacuum_map`. Either of these gets your map on the card:
+
+- In Home Assistant, rename your map camera's entity ID to `camera.vacuum_map` (open the camera, then ⋮ → **Settings**). Nothing else changes.
+- Or download [`Vacuum.html`](Vacuum.html), open it in a text editor, change `"camera.vacuum_map"` near the top to your camera, such as `"camera.robot_map"`, and upload that file in **Admin → Plugins** instead.
+
+The map has to be a **camera** entity, as the Dreame integration and Xiaomi Cloud Map Extractor provide. Integrations that provide the map as an **image** entity instead, like Home Assistant's built-in Roborock integration, can't show it on the card yet. Everything else works without a map.
 
 **About the access it asks for.** The card controls your vacuum and its selects, and runs scripts for the clean and room buttons. HomeGlow grants these by type, so it asks for all vacuums, selects, switches and scripts, plus sensors to read. The card only touches the vacuum, its settings and the scripts you list.
 
@@ -46,7 +51,7 @@ The easy way is the blueprint. Click the button, then in Home Assistant make a s
 2. Pick your vacuum, and the mode and suction to use. Leave anything your vacuum doesn't have empty.
 3. Save it, and set the **Entity ID** (in ⋮ → **Settings**) to `script.vacuum_quick`. Repeat for `script.vacuum_deep_clean`.
 
-To change the buttons, edit **Clean buttons** in Plugin Options: `Name | note = script`, separated by semicolons. For example:
+To change the buttons, edit **Clean buttons** in Plugin Options: `Name = script`, separated by semicolons. A short note after a `|` shows under the name, so it can say what that script does. For example:
 
 ```
 Quick vacuum | Vacuum · Standard = script.vacuum_quick; Deep clean | Vacuum, then mop · Max = script.vacuum_deep_clean
