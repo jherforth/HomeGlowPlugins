@@ -10,28 +10,28 @@
   "id": "ha-vacuum-card",
   "name": "Vacuum",
   "version": "3.0.0",
-  "description": "A robot vacuum from Home Assistant on one tile: start, pause, dock, mode, suction, clean and room buttons, last clean, station alerts and the map. Finds your vacuum and its settings on its own. Clean and room buttons run scripts: see Vacuum.md.",
+  "description": "A robot vacuum from Home Assistant on one tile: start, pause, dock, mode, suction, clean and room buttons, last clean, station alerts and the map. Finds your vacuums and their settings on its own; with more than one, each gets a tab, and a vacuum with a map per floor gets a floor picker. Clean and room buttons run scripts: see Vacuum.md.",
   "category": "household",
   "author": "jasonstantler",
   "apiVersion": "v1",
   "storage": true,
   "homeAssistant": {
     "domains": ["vacuum", "select", "sensor", "binary_sensor", "switch", "script"],
-    "entities": ["camera.vacuum_map"],
+    "entities": ["camera.vacuum_map", "camera.vacuum_map_2"],
     "control": true
   },
   "events": ["ha.state"],
   "settings": [
-    { "key": "vacuum", "label": "Vacuum (vacuum entity; blank finds it)", "type": "string", "default": "" },
-    { "key": "title", "label": "Name on the card (blank uses Home Assistant's name)", "type": "string", "default": "" },
+    { "key": "vacuum", "label": "Vacuums: blank shows every vacuum, a page each. Or list them, with a name if you like: Upstairs = vacuum.robot_up; Downstairs = vacuum.robot_down", "type": "string", "default": "" },
+    { "key": "floorSelect", "label": "Floor, for vacuums with a map per floor (select entity; blank finds it, - hides it)", "type": "string", "default": "" },
     { "key": "modeSelect", "label": "Cleaning mode (select entity; blank finds it, - hides it)", "type": "string", "default": "" },
     { "key": "suctionSelect", "label": "Suction (select entity; blank finds it, - hides it)", "type": "string", "default": "" },
     { "key": "battery", "label": "Battery (sensor entity; blank finds it)", "type": "string", "default": "" },
     { "key": "roomSwitch", "label": "Per-room settings switch, like Dreame's Customized Cleaning (blank finds it, - hides it)", "type": "string", "default": "" },
-    { "key": "presets", "label": "Clean buttons: Name = script, separated by semicolons. Add a short note after a | (Quick vacuum | Vacuum · Standard = script.vacuum_quick)", "type": "string",
+    { "key": "presets", "label": "Clean buttons: Name = script, separated by semicolons. Add a short note after a | (Quick vacuum | Standard = script.vacuum_quick). Start with a vacuum's or floor's name and a colon to show it only there (Downstairs: Quick vacuum = script.vacuum_down_quick)", "type": "string",
       "default": "Quick vacuum = script.vacuum_quick; Deep clean = script.vacuum_deep_clean" },
     { "key": "showRooms", "label": "Show room buttons", "type": "boolean", "default": false },
-    { "key": "rooms", "label": "Room buttons: Room = script, separated by semicolons (Kitchen = script.vacuum_kitchen)", "type": "string", "default": "" },
+    { "key": "rooms", "label": "Room buttons: Room = script, separated by semicolons (Kitchen = script.vacuum_kitchen). Start with a vacuum's or floor's name and a colon to show it only there (Upstairs: Bedroom = script.vacuum_bedroom)", "type": "string", "default": "" },
     { "key": "showMap", "label": "Show the map when the tile is wide enough", "type": "boolean", "default": true, "scope": "device" }
   ]
 }
@@ -64,11 +64,25 @@ button:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 button:disabled{opacity:.4;cursor:default}
 svg{flex:none}
 
-#app{position:relative;height:100%;background:linear-gradient(var(--card-bg,#FBFAF8),var(--card-bg,#FBFAF8)),#FBFAF8;padding:clamp(10px,3.4cqh,16px) clamp(10px,3.4cqw,16px);container-type:size}
+#app{position:relative;height:100%;touch-action:pan-y;background:linear-gradient(var(--card-bg,#FBFAF8),var(--card-bg,#FBFAF8)),#FBFAF8;padding:clamp(10px,3.4cqh,16px) clamp(10px,3.4cqw,16px);container-type:size}
 .card{height:100%;display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr);gap:16px;min-height:0}
 .card.side{grid-template-columns:minmax(0,1.4fr) minmax(0,1fr)}
 .card.below{grid-template-rows:auto minmax(0,1fr)}
 .main{display:flex;flex-direction:column;gap:clamp(8px,3cqh,14px);min-height:0;min-width:0;container:main / inline-size}
+
+/* Pages: one per vacuum, when there is more than one. Each tab carries its
+   vacuum's state dot, so the other one's cleaning shows without switching. */
+.pages{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;flex:none;margin-bottom:-2px}
+.pages::-webkit-scrollbar{display:none}
+.pages button{flex:none;display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 11px;border-radius:999px;background:var(--track);
+  font-weight:600;font-size:.76rem;color:var(--muted);white-space:nowrap;max-width:14em;overflow:hidden;text-overflow:ellipsis}
+.pages button span{overflow:hidden;text-overflow:ellipsis}
+.pages button[aria-selected="true"]{background:var(--raised);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08),0 0 0 1px var(--line)}
+.pages i{flex:none;width:7px;height:7px;border-radius:50%;background:color-mix(in srgb, var(--ink) 30%, transparent)}
+.pages i.docked{background:var(--ok)}
+.pages i.cleaning,.pages i.returning{background:var(--acc)}
+.pages i.error{background:var(--warn)}
+@container (max-height: 230px){ .pages button{height:24px;font-size:.7rem} }
 
 /* Header */
 .head{display:flex;align-items:center;gap:12px;min-width:0}
@@ -233,17 +247,43 @@ svg{flex:none}
   // ---------- Settings ----------
   var settings = Object.assign({}, DEFAULTS);
   function clean(s){ return String(s == null ? '' : s).trim(); }
+  function lower(s){ return clean(s).toLowerCase(); }
+  function splitList(text){ return clean(text).split(/[;\n]+/).map(clean).filter(Boolean); }
+
+  // A button may start with a vacuum's or a floor's name and a colon
+  // ("Downstairs: Kitchen = script.x"): it then shows only on that vacuum's
+  // page, or while that floor is chosen. A colon before anything else is
+  // just part of the button's name.
+  function scopeOf(q){
+    q = lower(q);
+    var hit = null;
+    vacuumList().forEach(function(v){ if (!hit && (lower(v.name) === q || lower(v.id) === q)) hit = {vac: v.id}; });
+    if (hit) return hit;
+    vacuumList().forEach(function(v){
+      floorOptions(v.id).forEach(function(o){ if (!hit && (lower(o) === q || lower(nice(o)) === q)) hit = {floor: q}; });
+    });
+    return hit;
+  }
   function scriptList(text){
-    return clean(text).split(/[;\n]+/).map(function(p){
+    return splitList(text).map(function(p){
       var i = p.lastIndexOf('='); if (i < 1) return null;
-      var label = clean(p.slice(0, i)), id = clean(p.slice(i + 1)), note = '', bar = label.indexOf('|');
+      var label = clean(p.slice(0, i)), id = clean(p.slice(i + 1)), note = '', only = [], m, sc;
+      while ((m = /^([^:|]+):\s*(.+)$/.exec(label)) && (sc = scopeOf(m[1]))){ only.push(sc); label = clean(m[2]); }
+      var bar = label.indexOf('|');
       if (bar >= 0){ note = clean(label.slice(bar + 1)); label = clean(label.slice(0, bar)); }
-      return label && /^[a-z_]+\.[a-z0-9_]+$/.test(id) ? {label: label, note: note, entity: id} : null;
+      return label && /^[a-z_]+\.[a-z0-9_]+$/.test(id) ? {label: label, note: note, entity: id, only: only} : null;
     }).filter(Boolean);
   }
-  // Only the buttons whose script exists in Home Assistant.
-  function presets(){ return scriptList(settings.presets).filter(function(p){ return !!ent(p.entity); }); }
-  function roomList(){ return settings.showRooms ? scriptList(settings.rooms).filter(function(p){ return !!ent(p.entity); }) : []; }
+  // A button shows when its script exists in Home Assistant, and any vacuum
+  // or floor it names is the one on screen.
+  function here(p){
+    var vid = vacId(), floor = floorNow(vid);
+    return !!ent(p.entity) && p.only.every(function(sc){
+      return sc.vac ? sc.vac === vid : !!floor && (lower(floor) === sc.floor || lower(nice(floor)) === sc.floor);
+    });
+  }
+  function presets(){ return scriptList(settings.presets).filter(here); }
+  function roomList(){ return settings.showRooms ? scriptList(settings.rooms).filter(here) : []; }
   function loadSettings(){
     if (!live) return Promise.resolve();
     return HG.settings.get().then(function(s){ settings = Object.assign({}, DEFAULTS, s || {}); }).catch(function(){});
@@ -252,9 +292,9 @@ svg{flex:none}
   // ---------- State from Home Assistant ----------
   var ents = {}, srcs = {}, haError = '', loaded = false;
   var pend = {};        // entity -> {val, until}: a choice shown before Home Assistant confirms it
-  var acting = null;    // {text, until, from}: "Starting…" until the vacuum's state changes
+  var acting = null;    // {vac, text, until, from}: "Starting…" until that vacuum's state changes
   var flash = null;     // {text, until}: a problem to show for a few seconds
-  var lastPreset = null;// {label, at}
+  var lastPreset = {};  // vacuum -> {label, at, room}
   function ent(id){ id = clean(id); return id ? ents[id] : undefined; }
   function poll(){
     return ha.state().then(function(r){
@@ -262,30 +302,71 @@ svg{flex:none}
     }).catch(function(e){ haError = (e && e.message) || 'HomeGlow could not be reached'; loaded = true; render(); });
   }
 
-  // ---------- Finding the vacuum and its parts ----------
-  // Blank settings find things on their own: the vacuum, then the selects,
-  // sensors and switch on the same Home Assistant device. "-" hides one.
+  // ---------- Finding the vacuums and their parts ----------
+  // Blank settings find things on their own: every vacuum, then the selects,
+  // sensors and switch on each one's Home Assistant device. "-" hides one.
   function deviceOf(id){ var s = srcs[id]; return s && s.device ? s.device : ''; }
-  function vacId(){
-    var id = clean(settings.vacuum); if (id) return id;
-    return Object.keys(ents).filter(function(k){ return k.indexOf('vacuum.') === 0; }).sort()[0] || '';
+  // The vacuums, a page each: the ones listed in Plugin Options, with any
+  // names given there, or else every vacuum Home Assistant has.
+  function vacuumList(){
+    var listed = splitList(settings.vacuum).map(function(p){
+      var i = p.lastIndexOf('='), id = clean(i > 0 ? p.slice(i + 1) : p);
+      return /^vacuum\.[a-z0-9_]+$/.test(id) ? {id: id, name: i > 0 ? clean(p.slice(0, i)) : ''} : null;
+    }).filter(Boolean);
+    if (!listed.length) listed = Object.keys(ents).filter(function(k){ return k.indexOf('vacuum.') === 0; }).sort().map(function(id){ return {id: id, name: ''}; });
+    return listed.map(function(v){
+      var a = (ents[v.id] || {}).attributes || {};
+      return {id: v.id, name: v.name || undouble(a.friendly_name) || humanize(v.id.split('.')[1])};
+    });
   }
-  function onDevice(domain){
-    var dev = deviceOf(vacId()); if (!dev) return [];
+  // The page on screen. Each display remembers its own, by vacuum, so a
+  // display by the upstairs vacuum keeps showing that one.
+  var PAGE_KEY = 'homeglow.vacuum.page', page = 0, savedPage = '';
+  try { savedPage = localStorage.getItem(PAGE_KEY) || ''; } catch(e){}
+  function vacId(){
+    var list = vacuumList(); if (!list.length) return '';
+    if (savedPage){
+      var at = list.map(function(v){ return v.id; }).indexOf(savedPage);
+      if (at >= 0) page = at;
+      savedPage = '';
+    }
+    if (page >= list.length) page = 0;
+    return list[page].id;
+  }
+  function goPage(i){
+    var list = vacuumList(); if (list.length < 2) return;
+    page = (i + list.length) % list.length;
+    try { localStorage.setItem(PAGE_KEY, list[page].id); } catch(e){}
+    sheetOpen = false; mapOpen = false; resetMap(); lastHTML = ''; render();
+  }
+  function onDevice(domain, vid){
+    var dev = deviceOf(vid || vacId()); if (!dev) return [];
     return Object.keys(ents).filter(function(k){ return k.indexOf(domain + '.') === 0 && deviceOf(k) === dev; }).sort();
   }
   var FIND = {
-    modeSelect: function(){ return onDevice('select').filter(function(k){ return /clean(ing)?_?mode|_mode$/.test(k) && !/mop_?pad|water|dock|carpet|self|empty|wash|dry|route|map/.test(k); })[0]; },
-    suctionSelect: function(){ return onDevice('select').filter(function(k){ return /suction|fan_?speed|vacuum_?power|power_?level/.test(k); })[0]; },
-    battery: function(){ return onDevice('sensor').filter(function(k){ return (ents[k].attributes || {}).device_class === 'battery'; })[0]; },
-    roomSwitch: function(){ return onDevice('switch').filter(function(k){ return /customi[sz]ed_?clean/.test(k); })[0]; }
+    floorSelect: function(vid){ return onDevice('select', vid).filter(function(k){ return /selected_?map|current_?map|_floor$|floor_?select/.test(k); })[0]; },
+    modeSelect: function(vid){ return onDevice('select', vid).filter(function(k){ return /clean(ing)?_?mode|_mode$/.test(k) && !/mop_?pad|water|dock|carpet|self|empty|wash|dry|route|map/.test(k); })[0]; },
+    suctionSelect: function(vid){ return onDevice('select', vid).filter(function(k){ return /suction|fan_?speed|vacuum_?power|power_?level/.test(k); })[0]; },
+    battery: function(vid){ return onDevice('sensor', vid).filter(function(k){ return (ents[k].attributes || {}).device_class === 'battery'; })[0]; },
+    roomSwitch: function(vid){ return onDevice('switch', vid).filter(function(k){ return /customi[sz]ed_?clean/.test(k); })[0]; }
   };
-  function pick(key){
-    var v = clean(settings[key]);
-    if (v === '-' || /^none$/i.test(v)) return '';
-    if (v) return v;
-    return (FIND[key] && FIND[key]()) || '';
+  // A setting may name one entity per vacuum ("select.up_mode; select.down_mode"):
+  // each vacuum takes the one on its own device. With one vacuum, the first
+  // one named. "-" hides that row for every vacuum.
+  function pickFor(vid, key){
+    var vals = splitList(settings[key]);
+    if (vals.some(function(v){ return v === '-' || /^none$/i.test(v); })) return '';
+    var dev = deviceOf(vid), own = vals.filter(function(v){ return dev && deviceOf(v) === dev; })[0];
+    if (own) return own;
+    if (vals.length && vacuumList().length < 2) return vals[0];
+    return (FIND[key] && FIND[key](vid)) || '';
   }
+  function pick(key){ return pickFor(vacId(), key); }
+  function floorOptions(vid){
+    var s = ent(pickFor(vid, 'floorSelect'));
+    return ((s && s.attributes && s.attributes.options) || []).filter(function(o){ return !/^(unavailable|unknown)$/i.test(o); });
+  }
+  function floorNow(vid){ var id = pickFor(vid, 'floorSelect'); return id && ent(id) ? String(current(id)) : ''; }
 
   function vac(){
     var v = ent(vacId());
@@ -304,11 +385,11 @@ svg{flex:none}
     flash = {text: m, until: Date.now() + 6000}; render();
   }
   function act(what){
-    var v = vac(); if (!v) return;
-    acting = {text: what === 'start' ? (v.state === 'paused' ? 'Resuming…' : 'Starting…') : what === 'pause' ? 'Pausing…' : 'Heading to the dock…', until: Date.now() + 10000, from: v.state};
-    if (what === 'start' && v.state !== 'paused') lastPreset = null;
+    var v = vac(), vid = vacId(); if (!v) return;
+    acting = {vac: vid, text: what === 'start' ? (v.state === 'paused' ? 'Resuming…' : 'Starting…') : what === 'pause' ? 'Pausing…' : 'Heading to the dock…', until: Date.now() + 10000, from: v.state};
+    if (what === 'start' && v.state !== 'paused') delete lastPreset[vid];
     render();
-    ha.action(vacId(), what).then(poll).catch(function(e){ acting = null; problem(e); });
+    ha.action(vid, what).then(poll).catch(function(e){ acting = null; problem(e); });
   }
   function choose(which, val){
     var id = pick(which); if (!id) return;
@@ -321,29 +402,33 @@ svg{flex:none}
     ha.action(id, on ? 'turn_on' : 'turn_off').then(poll).catch(function(e){ delete pend[id]; problem(e); });
   }
   function runPreset(p, room){
-    var v = vac();
-    lastPreset = {label: p.label, at: Date.now(), room: !!room};
+    var v = vac(), vid = vacId();
+    lastPreset[vid] = {label: p.label, at: Date.now(), room: !!room};
     // A room keeps the household's own spelling ("Emma's room"), and gets no
     // "the" it may not want ("Upstairs").
-    acting = {text: room ? 'Cleaning ' + p.label + '…' : 'Starting ' + p.label.toLowerCase() + '…', until: Date.now() + 15000, from: v ? v.state : ''};
+    acting = {vac: vid, text: room ? 'Cleaning ' + p.label + '…' : 'Starting ' + p.label.toLowerCase() + '…', until: Date.now() + 15000, from: v ? v.state : ''};
     sheetOpen = false; render();
-    ha.action(p.entity, 'run').then(poll).catch(function(e){ acting = null; lastPreset = null; problem(e); });
+    ha.action(p.entity, 'run').then(poll).catch(function(e){ acting = null; delete lastPreset[vid]; problem(e); });
   }
 
   // ---------- Map ----------
   var mapImg = null, mapTimer = null, mapShown = false, mapBroken = false, lastMapAt = 0;
+  function resetMap(){ mapImg = null; mapBroken = false; mapShown = false; lastMapAt = 0; }
   function mapId(){
     if (settings.showMap === false) return '';
     var cams = Object.keys(ents).filter(function(k){ return k.indexOf('camera.') === 0; }), dev = deviceOf(vacId());
-    return cams.filter(function(k){ return dev && deviceOf(k) === dev; })[0] || cams[0] || '';
+    // Each vacuum's own map camera. A camera on no vacuum's device only
+    // stands in when there is one vacuum, so a page never shows the other's map.
+    return cams.filter(function(k){ return dev && deviceOf(k) === dev; })[0] || (vacuumList().length < 2 ? cams[0] : '') || '';
   }
   function loadMap(){
     var id = mapId(); if (!id || !mapShown || document.hidden) return;
     lastMapAt = Date.now();
     var img = new Image();
     img.alt = 'Vacuum map';
-    img.onload = function(){ mapBroken = false; if (mapImg && mapImg.parentNode) mapImg.parentNode.replaceChild(img, mapImg); mapImg = img; placeMap(); };
-    img.onerror = function(){ mapBroken = true; placeMap(); };
+    // A map that arrives after the page changed belongs to the other vacuum.
+    img.onload = function(){ if (id !== mapId()) return; mapBroken = false; if (mapImg && mapImg.parentNode) mapImg.parentNode.replaceChild(img, mapImg); mapImg = img; placeMap(); };
+    img.onerror = function(){ if (id !== mapId()) return; mapBroken = true; placeMap(); };
     img.src = ha.cameraUrl(id);
   }
   function placeMap(){
@@ -387,7 +472,7 @@ svg{flex:none}
     if (off && which === 'suctionSelect' && /^mop(ping)?$/.test(String(current(pick('modeSelect')))))
       return '<div class="field">' + head + '<div class="hint">No suction while only mopping</div></div>';
     if (off) return '<div class="field">' + head + '<div class="hint">Can’t be changed right now</div></div>';
-    if (!opts.length) return '';
+    if (!opts.length || (which === 'floorSelect' && opts.length < 2)) return '';
     var cur = current(id);
     return '<div class="field">' + head + '<div class="seg" role="group" aria-label="' + esc(label) + '">' +
       opts.map(function(o, i){
@@ -396,10 +481,10 @@ svg{flex:none}
       }).join('') + '</div></div>';
   }
   function settingsHTML(){
-    var sw = pick('roomSwitch'), hasSwitch = !!(sw && ent(sw)), on = perRoom();
-    if (on) return '<div class="notice"><span>Each room uses its own mode and suction from the vacuum’s app.</span><button data-rooms="0">Use one setting</button></div>';
+    var sw = pick('roomSwitch'), hasSwitch = !!(sw && ent(sw)), on = perRoom(), floor = selField('Floor', 'floorSelect');
+    if (on) return floor + '<div class="notice"><span>Each room uses its own mode and suction from the vacuum’s app.</span><button data-rooms="0">Use one setting</button></div>';
     var chip = hasSwitch ? '<button class="chip" data-rooms="1" aria-pressed="false" title="Use each room’s own settings from the vacuum’s app">Per room</button>' : '';
-    return selField('Mode', 'modeSelect', chip) + selField('Suction', 'suctionSelect');
+    return floor + selField('Mode', 'modeSelect', chip) + selField('Suction', 'suctionSelect');
   }
   var PIN = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-6.5-5.6-6.5-11A6.5 6.5 0 0 1 18.5 10c0 5.4-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.3"/></svg>';
   function roomsHTML(v){
@@ -407,37 +492,40 @@ svg{flex:none}
     var list = roomList();
     var head = '<div class="label"><span>Rooms</span></div>';
     if (!list.length) return '<div class="field">' + head + '<div class="hint">Add rooms in Plugin Options: Kitchen = script.vacuum_kitchen</div></div>';
-    var busy = v && /cleaning|paused/.test(v.state), on = lastPreset && lastPreset.room && busy ? lastPreset.label : '';
+    var lp = lastPreset[vacId()], busy = v && /cleaning|paused/.test(v.state), on = lp && lp.room && busy ? lp.label : '';
     return '<div class="field">' + head + '<div class="rooms">' + list.map(function(p, i){
       return '<button data-room="' + i + '" class="' + (p.label === on ? 'on' : '') + '">' + PIN + esc(p.label) + '</button>';
     }).join('') + '</div></div>';
   }
 
   // ---------- Last clean, and what the station needs ----------
-  var lastClean = null;     // {end, minutes, area, unit}, kept by the card
-  var wasBusy = null;
+  var lastClean = {};       // vacuum -> {end, minutes, area, unit}, kept by the card
+  var wasBusy = {};         // vacuum -> busy at the last look
   function num(x){ var n = parseFloat(x); return isFinite(n) ? n : null; }
-  function deviceSensors(){ return onDevice('sensor').concat(onDevice('binary_sensor')); }
-  function findSensor(re, not){
-    return deviceSensors().filter(function(k){ return k.indexOf('sensor.') === 0 && re.test(k) && !(not && not.test(k)); })[0] || '';
+  function deviceSensors(vid){ return onDevice('sensor', vid).concat(onDevice('binary_sensor', vid)); }
+  function findSensor(re, not, vid){
+    return deviceSensors(vid).filter(function(k){ return k.indexOf('sensor.') === 0 && re.test(k) && !(not && not.test(k)); })[0] || '';
   }
-  function areaNow(){ var id = findSensor(/cleaned_?area|clean(ing)?_?area/, /total|history/), s = ent(id); var n = s && num(s.state);
+  function areaNow(vid){ var id = findSensor(/cleaned_?area|clean(ing)?_?area/, /total|history/, vid), s = ent(id); var n = s && num(s.state);
     return n === null || n === undefined ? null : {value: n, unit: ((s.attributes || {}).unit_of_measurement || 'm²')}; }
-  function minutesNow(){ var id = findSensor(/clean(ing)?_?time|cleaning_?duration/, /total|history|estimat/), s = ent(id); return s ? num(s.state) : null; }
+  function minutesNow(vid){ var id = findSensor(/clean(ing)?_?time|cleaning_?duration/, /total|history|estimat/, vid), s = ent(id); return s ? num(s.state) : null; }
   function lastCleanTime(){
     var id = deviceSensors().filter(function(k){ var a = ents[k].attributes || {}; return a.device_class === 'timestamp' && /last|clean/.test(k) && !/first|next|schedul/.test(k); })[0];
     var t = id ? Date.parse(ents[id].state) : NaN; return isFinite(t) ? t : null;
   }
-  // Remember a clean when the vacuum comes back from one, for brands with no "last clean" sensor.
+  // Remember a clean when a vacuum comes back from one, for brands with no
+  // "last clean" sensor. Every vacuum, not just the one on screen.
   function noteClean(){
-    var v = vac(); if (!v) return;
-    var busy = /cleaning|paused|returning/.test(v.state);
-    if (wasBusy && !busy && v.state !== 'unavailable'){
-      var a = areaNow();
-      lastClean = {end: Date.now(), minutes: minutesNow(), area: a ? a.value : null, unit: a ? a.unit : ''};
-      if (live && HG.storage) HG.storage.set('lastClean', lastClean).catch(function(){});
-    }
-    wasBusy = busy;
+    vacuumList().forEach(function(x){
+      var s = ents[x.id]; if (!s) return;
+      var st = String(s.state || ''), busy = /cleaning|paused|returning/.test(st);
+      if (wasBusy[x.id] && !busy && st !== 'unavailable'){
+        var a = areaNow(x.id);
+        lastClean[x.id] = {end: Date.now(), minutes: minutesNow(x.id), area: a ? a.value : null, unit: a ? a.unit : ''};
+        if (live && HG.storage) HG.storage.set('lastClean:' + x.id, lastClean[x.id]).catch(function(){});
+      }
+      wasBusy[x.id] = busy;
+    });
   }
   function ago(t){
     var m = Math.max(0, Math.round((Date.now() - t) / 60000));
@@ -453,7 +541,7 @@ svg{flex:none}
       if (mins) bits.push(Math.round(mins) + ' min');
       return bits.length ? 'So far: ' + bits.join(' · ') : '';
     }
-    var end = lastCleanTime(), lc = lastClean;
+    var end = lastCleanTime(), lc = lastClean[vacId()];
     if (!end && lc) end = lc.end;
     if (!end) return '';
     bits.push('Last clean ' + ago(end));
@@ -488,7 +576,7 @@ svg{flex:none}
   }
   function presetsHTML(v){
     var list = presets(); if (!list.length) return '';
-    var busy = v && /cleaning|paused/.test(v.state), on = lastPreset && !lastPreset.room && busy ? lastPreset.label : '';
+    var lp = lastPreset[vacId()], busy = v && /cleaning|paused/.test(v.state), on = lp && !lp.room && busy ? lp.label : '';
     return '<div class="presets' + (list.length === 1 ? ' one' : '') + '">' + list.map(function(p, i){
       return '<button class="preset' + (p.label === on ? ' on' : '') + '" data-preset="' + i + '">' +
         '<span class="ico">' + presetIcon(p) + '</span><span class="txt"><b>' + esc(p.label) + '</b>' +
@@ -498,12 +586,13 @@ svg{flex:none}
   function statusText(v, batt){
     if (flash && Date.now() < flash.until) return {text: flash.text, warn: true};
     flash = null;
-    if (acting && (Date.now() > acting.until || v.state !== acting.from)) acting = null;
-    if (acting) return {text: acting.text};
+    if (acting && acting.vac === vacId() && (Date.now() > acting.until || v.state !== acting.from)) acting = null;
+    if (acting && acting.vac === vacId()) return {text: acting.text};
     var t = v.a.status ? humanize(v.a.status) : (STATE_TEXT[v.state] || humanize(v.state));
     if (!v.a.status && v.state === 'docked' && batt != null && batt < 100) t = 'Charging';
     if (v.a.status && v.state === 'docked' && !/dock|charg|station|wash|dry|empty/i.test(v.a.status)) t = 'Docked · ' + t;
-    if (lastPreset && /cleaning|paused/.test(v.state)) t += ' · ' + lastPreset.label;
+    var lp = lastPreset[vacId()];
+    if (lp && /cleaning|paused/.test(v.state)) t += ' · ' + lp.label;
     return {text: t, warn: v.state === 'error'};
   }
   function batteryHTML(v, batt){
@@ -517,19 +606,26 @@ svg{flex:none}
   function render(){
     var app = document.getElementById('app'), html;
     var v = vac();
-    if (v && !/cleaning|paused|returning/.test(v.state) && lastPreset && Date.now() - lastPreset.at > 30000) lastPreset = null;
+    var lp = lastPreset[vacId()];
+    if (v && !/cleaning|paused|returning/.test(v.state) && lp && Date.now() - lp.at > 30000) delete lastPreset[vacId()];
+    // A tab per vacuum, each with its state dot, when there is more than one.
+    var list = vacuumList();
+    var tabs = list.length > 1 ? '<div class="pages" role="tablist" aria-label="Vacuums">' + list.map(function(x, i){
+      var s = ents[x.id], dot = s ? String(s.state).replace(/[^a-z]/g, '') : 'unavailable';
+      return '<button role="tab" data-page="' + i + '" aria-selected="' + (i === page) + '"><i class="' + dot + '"></i><span>' + esc(x.name) + '</span></button>';
+    }).join('') + '</div>' : '';
     if (!loaded) html = '';
     else if (!v){
       var why = haError ? 'Home Assistant: ' + haError
-        : !clean(settings.vacuum) ? 'No robot vacuum found in Home Assistant. Add it to Home Assistant, or type its entity in this widget’s Plugin Options.'
-        : clean(settings.vacuum) + ' wasn’t found in Home Assistant. Check the entity in this widget’s Plugin Options.';
-      html = '<p class="note">' + esc(why) + '</p>';
+        : !list.length ? 'No robot vacuum found in Home Assistant. Add it to Home Assistant, or type its entity in this widget’s Plugin Options.'
+        : vacId() + ' wasn’t found in Home Assistant. Check the entity in this widget’s Plugin Options.';
+      html = '<div class="main">' + tabs + '<p class="note">' + esc(why) + '</p></div>';
     } else {
       var w = app.clientWidth, h = app.clientHeight, hasMap = !!mapId();
       var side = hasMap && w >= 640 && h >= 220, below = hasMap && !side && h >= 560 && w >= 300;
       if (side || below) mapOpen = false;
       var batt = battery(v), st = statusText(v, batt), al = alerts(), meta = metaText(v);
-      var name = clean(settings.title) || undouble(v.a.friendly_name) || 'Vacuum';
+      var name = (list[page] && list[page].name) || 'Vacuum';
       var b = [];
       if (v.state !== 'cleaning' && can(v, 'start')) b.push('<button class="primary" data-act="start">' + PLAY + (v.state === 'paused' ? 'Resume' : 'Start') + '</button>');
       if (v.state === 'cleaning' && can(v, 'pause')) b.push('<button class="primary" data-act="pause">' + PAUSE + 'Pause</button>');
@@ -537,13 +633,13 @@ svg{flex:none}
       var opts = settingsHTML() + roomsHTML(v) + presetsHTML(v);
       var stateCls = 'is-' + String(v.state).replace(/[^a-z]/g, '');
       var mapBtn = hasMap && !side && !below ? '<button class="icon-btn" data-map="1" aria-pressed="' + mapOpen + '" aria-label="Show the map">' + MAP_ICON + '</button>' : '';
-      html = '<div class="card ' + stateCls + (side ? ' side' : '') + (below ? ' below' : '') + '"><div class="main">' +
+      html = '<div class="card ' + stateCls + (side ? ' side' : '') + (below ? ' below' : '') + '"><div class="main">' + tabs +
         '<div class="head"><div class="disc">' + ROBOT + '</div><div class="who"><div class="name">' + esc(name) + '</div>' +
           '<div class="status' + (st.warn ? ' warn' : '') + '" role="status"><i></i><span>' + esc(st.text) + '</span></div>' +
           (al.length ? '<div class="meta alert" title="' + esc(al.join(' · ')) + '">' + esc(al.join(' · ')) + '</div>' : meta ? '<div class="meta">' + esc(meta) + '</div>' : '') + '</div>' +
           batteryHTML(v, batt) + mapBtn + '</div>' +
         '<div class="go">' + b.join('') + '</div>' +
-        (opts ? '<div class="opts">' + opts + '</div><button class="more" data-more="1">Mode, suction and rooms</button>' : '') + '</div>' +
+        (opts ? '<div class="opts">' + opts + '</div><button class="more" data-more="1">' + (pick('floorSelect') ? 'Floor, mode and suction' : 'Mode, suction and rooms') + '</button>' : '') + '</div>' +
         (side || below ? '<div class="map"><span class="tag"></span></div>' : '') + '</div>' +
         (opts ? '<div class="sheet' + (sheetOpen ? ' open' : '') + '"><div class="top">Settings<button data-close="1">Done</button></div>' + opts + '</div>' : '') +
         (mapBtn ? '<div class="mapview' + (mapOpen ? ' open' : '') + ' ' + stateCls + '"><div class="top"><button class="icon-btn" data-map="0" aria-label="Back">' + BACK + '</button><b>Map</b><span>' + esc(st.text) + '</span></div>' +
@@ -555,9 +651,23 @@ svg{flex:none}
   }
 
   // ---------- Taps ----------
+  var swipe = null, swiped = false;
+  document.addEventListener('pointerdown', function(e){
+    swipe = e.target.closest('.pages, .sheet.open, .mapview.open') ? null : {x: e.clientX, y: e.clientY};
+  });
+  document.addEventListener('pointerup', function(e){
+    if (!swipe) return;
+    var dx = e.clientX - swipe.x, dy = e.clientY - swipe.y; swipe = null;
+    if (Math.abs(dx) > 60 && Math.abs(dy) < 40 && vacuumList().length > 1){
+      swiped = true; setTimeout(function(){ swiped = false; }, 0);
+      goPage(page + (dx < 0 ? 1 : -1));
+    }
+  });
   document.addEventListener('click', function(e){
+    if (swiped){ swiped = false; e.preventDefault(); return; }
     var t = e.target.closest('button'); if (!t || t.disabled) return;
-    if (t.dataset.act) act(t.dataset.act);
+    if (t.dataset.page !== undefined) goPage(+t.dataset.page);
+    else if (t.dataset.act) act(t.dataset.act);
     else if (t.dataset.set){ choose(t.dataset.set, t.dataset.val); }
     else if (t.dataset.rooms){ setPerRoom(t.dataset.rooms === '1'); }
     else if (t.dataset.preset){ var p = presets()[+t.dataset.preset]; if (p) runPreset(p); }
@@ -578,7 +688,9 @@ svg{flex:none}
       if (demo.theme) document.documentElement.setAttribute('data-theme', demo.theme);
       if (demo.text) document.documentElement.style.setProperty('--text-color', demo.text);
       if (demo.mapOpen) mapOpen = true;
-      if (demo.rooms) settings.showRooms = true, settings.rooms = 'Kitchen = script.vacuum_kitchen; Living room = script.vacuum_living_room';
+      if (demo.rooms) settings.showRooms = true, settings.rooms = 'Kitchen = script.vacuum_kitchen; Living room = script.vacuum_living_room' +
+        (demo.two ? '; Upstairs: Bedroom = script.vacuum_bedroom; Basement: Laundry = script.vacuum_laundry' : '');
+      if (demo.page) try { localStorage.setItem(PAGE_KEY, demo.page); savedPage = demo.page; } catch(e){}
     } catch(e){}
   }
   window.addEventListener('message', function(e){
@@ -591,7 +703,9 @@ svg{flex:none}
   // ---------- Start ----------
   var nudge = null;
   if (live) HG.on('ha.state', function(){ clearTimeout(nudge); nudge = setTimeout(poll, 150); });
-  var remembered = live && HG.storage ? HG.storage.get('lastClean').then(function(v){ if (v && v.end) lastClean = v; }).catch(function(){}) : Promise.resolve();
+  var remembered = live && HG.storage ? HG.storage.list().then(function(all){
+    Object.keys(all || {}).forEach(function(k){ if (k.indexOf('lastClean:') === 0 && all[k] && all[k].end) lastClean[k.slice(10)] = all[k]; });
+  }).catch(function(){}) : Promise.resolve();
   Promise.all([loadSettings(), remembered]).then(poll);
   setInterval(function(){ if (!document.hidden) { poll(); mapTick(); } }, 2000);
   setInterval(loadSettings, 60000);
@@ -601,8 +715,10 @@ svg{flex:none}
   function sampleHA(){
     var cfgName = ''; try { if (String(window.name).indexOf('hgdemo:') === 0) cfgName = JSON.parse(window.name.slice(7)).name || ''; } catch(e){}
     var s = {state: 'docked', battery: 100, mode: 'sweeping', suction: 'standard', steps: 0, status: ''};
-    try { if (String(window.name).indexOf('hgdemo:') === 0) { var dj = JSON.parse(window.name.slice(7)); s.alert = !!dj.alert; if (dj.cleaning) { s.state = 'cleaning'; s.steps = 12; } } } catch(e){}
-    var SCRIPTS = ['script.vacuum_quick', 'script.vacuum_deep_clean', 'script.vacuum_kitchen', 'script.vacuum_living_room'];
+    var two = false, floors = false, up = {state: 'cleaning', battery: 64};
+    try { if (String(window.name).indexOf('hgdemo:') === 0) { var dj = JSON.parse(window.name.slice(7)); s.alert = !!dj.alert; two = !!dj.two; floors = !!dj.two; if (dj.cleaning) { s.state = 'cleaning'; s.steps = 12; } } } catch(e){}
+    s.floor = 'Ground floor';
+    var SCRIPTS = ['script.vacuum_quick', 'script.vacuum_deep_clean', 'script.vacuum_kitchen', 'script.vacuum_living_room', 'script.vacuum_bedroom', 'script.vacuum_laundry'];
     setInterval(function(){
       if (s.state === 'cleaning'){ s.steps++; if (s.steps % 2 === 0) s.battery = Math.max(5, s.battery - 1); if (s.steps > 30) s.state = 'returning'; }
       else if (s.state === 'returning'){ s.steps++; if (s.steps > 34) { s.state = 'docked'; s.steps = 0; } }
@@ -610,7 +726,7 @@ svg{flex:none}
     }, 1000);
     function build(){
       var e = {}, src = {};
-      function put(id, st, attrs){ e[id] = {state: st, attributes: attrs || {}}; src[id] = {integration: 'sample', device: 'robot'}; }
+      function put(id, st, attrs, dev){ e[id] = {state: st, attributes: attrs || {}}; src[id] = {integration: 'sample', device: dev || 'robot'}; }
       put('vacuum.robot', s.state, {friendly_name: cfgName || 'Robot vacuum', battery_level: s.battery, supported_features: 8192 | 4 | 16});
       put('select.robot_cleaning_mode', s.perRoom ? 'unavailable' : s.mode, s.perRoom ? {} : {options: ['sweeping', 'mopping', 'sweeping_and_mopping', 'mopping_after_sweeping']});
       put('select.robot_suction_level', s.perRoom ? 'unavailable' : s.suction, s.perRoom ? {} : {options: ['quiet', 'standard', 'strong', 'turbo']});
@@ -621,6 +737,13 @@ svg{flex:none}
       put('sensor.robot_last_clean', new Date(Date.now() - 2 * 3600000).toISOString(), {device_class: 'timestamp'});
       put('sensor.robot_clean_water_tank_status', s.alert ? 'empty' : 'installed', {friendly_name: (cfgName || 'Robot vacuum') + ' Clean water tank status'});
       put('camera.vacuum_map', 'idle', {});
+      if (floors) put('select.robot_selected_map', s.floor, {options: ['Ground floor', 'Basement']});
+      if (two){
+        put('vacuum.robot_upstairs', up.state, {friendly_name: 'Upstairs', battery_level: up.battery, supported_features: 8192 | 4 | 16}, 'robot2');
+        put('select.robot_upstairs_suction_level', 'quiet', {options: ['quiet', 'standard', 'strong', 'turbo']}, 'robot2');
+        put('sensor.robot_upstairs_battery', String(up.battery), {unit_of_measurement: '%', device_class: 'battery'}, 'robot2');
+        put('camera.vacuum_map_2', 'idle', {}, 'robot2');
+      }
       SCRIPTS.forEach(function(id){ e[id] = {state: 'off', attributes: {}}; src[id] = {integration: 'script'}; });
       return {entities: e, sources: src};
     }
@@ -634,7 +757,8 @@ svg{flex:none}
       cameraUrl: function(){ return MAP; },
       action: function(id, what, val){
         if (id.indexOf('switch.') === 0){ s.perRoom = what === 'turn_on'; }
-        else if (id.indexOf('select.') === 0){ if (/mode/.test(id)) s.mode = val; else s.suction = val; }
+        else if (id === 'vacuum.robot_upstairs'){ up.state = what === 'start' ? 'cleaning' : what === 'pause' ? 'paused' : 'returning'; }
+        else if (id.indexOf('select.') === 0){ if (/selected_map/.test(id)) s.floor = val; else if (/mode/.test(id)) s.mode = val; else if (/upstairs/.test(id)) {} else s.suction = val; }
         else if (id.indexOf('script.') === 0 || what === 'start'){ if (s.state !== 'paused') s.steps = 0; s.state = 'cleaning'; }
         else if (what === 'pause') s.state = 'paused';
         else if (what === 'dock'){ s.state = 'returning'; s.steps = 31; }
