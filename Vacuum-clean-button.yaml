@@ -1,0 +1,101 @@
+blueprint:
+  name: Vacuum clean button (HomeGlow)
+  author: jasonstantler
+  description: >-
+    One clean button for the HomeGlow Vacuum card. Sets the cleaning mode and
+    suction (if your vacuum has them as select entities), then starts a full
+    clean. Make one script per button, such as script.vacuum_quick and
+    script.vacuum_deep_clean.
+
+
+    Leave a mode or suction field empty to skip it. Option names must match
+    the select's options exactly, as listed under the entity's attributes in
+    Developer tools, States.
+  domain: script
+  source_url: https://github.com/jherforth/HomeGlowPlugins/blob/main/Vacuum-clean-button.yaml
+  input:
+    vacuum:
+      name: Vacuum
+      selector:
+        entity:
+          filter:
+            - domain: vacuum
+    mode_select:
+      name: Cleaning mode select (optional)
+      default: ""
+      selector:
+        entity:
+          filter:
+            - domain: select
+    mode_option:
+      name: Cleaning mode to use
+      description: For example sweeping, mopping, or mopping_after_sweeping.
+      default: ""
+      selector:
+        text:
+    suction_select:
+      name: Suction select (optional)
+      default: ""
+      selector:
+        entity:
+          filter:
+            - domain: select
+    suction_option:
+      name: Suction to use
+      description: For example quiet, standard, strong or turbo.
+      default: ""
+      selector:
+        text:
+    room_switch:
+      name: Per-room settings switch (optional)
+      description: >-
+        Dreame's Customized Cleaning, or a similar switch. It's turned off so
+        the mode and suction above apply to every room.
+      default: ""
+      selector:
+        entity:
+          filter:
+            - domain: switch
+
+mode: single
+icon: mdi:robot-vacuum
+
+variables:
+  vac: !input vacuum
+  mode_select: !input mode_select
+  mode_option: !input mode_option
+  suction_select: !input suction_select
+  suction_option: !input suction_option
+  room_switch: !input room_switch
+
+sequence:
+  - if:
+      - condition: template
+        value_template: "{{ room_switch | length > 0 }}"
+    then:
+      - action: switch.turn_off
+        target:
+          entity_id: "{{ room_switch }}"
+      - delay: 2
+  - if:
+      - condition: template
+        value_template: "{{ mode_select | length > 0 and mode_option | length > 0 }}"
+    then:
+      - action: select.select_option
+        target:
+          entity_id: "{{ mode_select }}"
+        data:
+          option: "{{ mode_option }}"
+  - if:
+      - condition: template
+        value_template: "{{ suction_select | length > 0 and suction_option | length > 0 }}"
+    then:
+      - action: select.select_option
+        target:
+          entity_id: "{{ suction_select }}"
+        data:
+          option: "{{ suction_option }}"
+  - delay: 2
+  - action: vacuum.start
+    target:
+      entity_id: "{{ vac }}"

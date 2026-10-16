@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vacuum</title>
+<script type="application/json" id="homeglow-manifest">
+{
+  "manifestVersion": 1,
+  "id": "ha-vacuum-card",
+  "name": "Vacuum",
+  "version": "3.0.0",
+  "description": "A robot vacuum from Home Assistant on one tile: start, pause, dock, mode, suction, clean and room buttons, last clean, station alerts and the map. Finds your vacuums and their settings on its own; with more than one, each gets a tab, and a vacuum with a map per floor gets a floor picker. Clean and room buttons run scripts: see Vacuum.md.",
+  "category": "household",
+  "author": "jasonstantler",
+  "apiVersion": "v1",
+  "storage": true,
+  "homeAssistant": {
+    "domains": ["vacuum", "select", "sensor", "binary_sensor", "switch", "script"],
+    "entities": ["camera.vacuum_map", "camera.vacuum_map_2"],
+    "control": true
+  },
+  "events": ["ha.state"],
+  "settings": [
+    { "key": "vacuum", "label": "Vacuums: blank shows every vacuum, a page each. Or list them, with a name if you like: Upstairs = vacuum.robot_up; Downstairs = vacuum.robot_down", "type": "string", "default": "" },
+    { "key": "floorSelect", "label": "Floor, for vacuums with a map per floor (select entity; blank finds it, - hides it)", "type": "string", "default": "" },
+    { "key": "modeSelect", "label": "Cleaning mode (select entity; blank finds it, - hides it)", "type": "string", "default": "" },
+    { "key": "suctionSelect", "label": "Suction (select entity; blank finds it, - hides it)", "type": "string", "default": "" },
+    { "key": "battery", "label": "Battery (sensor entity; blank finds it)", "type": "string", "default": "" },
+    { "key": "roomSwitch", "label": "Per-room settings switch, like Dreame's Customized Cleaning (blank finds it, - hides it)", "type": "string", "default": "" },
+    { "key": "presets", "label": "Clean buttons: Name = script, separated by semicolons. Add a short note after a | (Quick vacuum | Standard = script.vacuum_quick). Start with a vacuum's or floor's name and a colon to show it only there (Downstairs: Quick vacuum = script.vacuum_down_quick)", "type": "string",
+      "default": "Quick vacuum = script.vacuum_quick; Deep clean = script.vacuum_deep_clean" },
+    { "key": "showRooms", "label": "Show room buttons", "type": "boolean", "default": false },
+    { "key": "rooms", "label": "Room buttons: Room = script, separated by semicolons (Kitchen = script.vacuum_kitchen). Start with a vacuum's or floor's name and a colon to show it only there (Upstairs: Bedroom = script.vacuum_bedroom)", "type": "string", "default": "" },
+    { "key": "showMap", "label": "Show the map when the tile is wide enough", "type": "boolean", "default": true, "scope": "device" }
+  ]
+}
+</script>
+<style>
+/* Layout: a header (robot, status, battery, map), the main action, two segmented settings, and the
+   clean buttons. Wide tiles add the map beside; tall tiles add it below; any tile can flip to it. */
+:root{
+  --ink:var(--text-color,var(--text,#1F2421));
+  --acc:var(--accent,#4F7A5E);
+  --muted:color-mix(in srgb, var(--ink) 58%, transparent);
+  --line:color-mix(in srgb, var(--ink) 10%, transparent);
+  --track:color-mix(in srgb, var(--ink) 6%, transparent);
+  --raised:#FFFFFF;
+  --tint:color-mix(in srgb, var(--acc) 12%, transparent);
+  --warn:#C2410C;
+  --ok:#15803D;
+  --font:var(--hg-font-body,"Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,Roboto,sans-serif);
+}
+[data-theme="dark"] #app{background:linear-gradient(var(--card-bg,#2C2A26),var(--card-bg,#2C2A26)),#2C2A26}
+[data-theme="dark"]{--raised:#34322E;--track:color-mix(in srgb, var(--ink) 9%, transparent);--warn:#FB923C;--ok:#4ADE80}
+*{box-sizing:border-box}
+/* HomeGlow's /index.css styles its own page's body (bottom padding for its dock, its font and line
+   spacing). Undo that here so the widget fills its frame. */
+html,body{margin:0;padding:0;height:100%;min-height:0;line-height:normal;font-family:var(--font)}
+html[data-theme] body,body{background:transparent !important;background-image:none !important}
+body{color:var(--ink);-webkit-font-smoothing:antialiased;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;overflow:hidden;font-variant-numeric:tabular-nums}
+button{appearance:none;-webkit-appearance:none;border:0;margin:0;background:none;font:inherit;color:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+button:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+button:disabled{opacity:.4;cursor:default}
+svg{flex:none}
+
+#app{position:relative;height:100%;touch-action:pan-y;background:linear-gradient(var(--card-bg,#FBFAF8),var(--card-bg,#FBFAF8)),#FBFAF8;padding:clamp(10px,3.4cqh,16px) clamp(10px,3.4cqw,16px);container-type:size}
+.card{height:100%;display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr);gap:16px;min-height:0}
+.card.side{grid-template-columns:minmax(0,1.4fr) minmax(0,1fr)}
+.card.below{grid-template-rows:auto minmax(0,1fr)}
+.main{display:flex;flex-direction:column;gap:clamp(8px,3cqh,14px);min-height:0;min-width:0;container:main / inline-size}
+
+/* Pages: one per vacuum, when there is more than one. Each tab carries its
+   vacuum's state dot, so the other one's cleaning shows without switching. */
+.pages{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;flex:none;margin-bottom:-2px}
+.pages::-webkit-scrollbar{display:none}
+.pages button{flex:none;display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 11px;border-radius:999px;background:var(--track);
+  font-weight:600;font-size:.76rem;color:var(--muted);white-space:nowrap;max-width:14em;overflow:hidden;text-overflow:ellipsis}
+.pages button span{overflow:hidden;text-overflow:ellipsis}
+.pages button[aria-selected="true"]{background:var(--raised);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08),0 0 0 1px var(--line)}
+.pages i{flex:none;width:7px;height:7px;border-radius:50%;background:color-mix(in srgb, var(--ink) 30%, transparent)}
+.pages i.docked{background:var(--ok)}
+.pages i.cleaning,.pages i.returning{background:var(--acc)}
+.pages i.error{background:var(--warn)}
+@container (max-height: 230px){ .pages button{height:24px;font-size:.7rem} }
+
+/* Header */
+.head{display:flex;align-items:center;gap:12px;min-width:0}
+.disc{position:relative;flex:none;width:clamp(36px,12cqh,44px);aspect-ratio:1;border-radius:50%;display:grid;place-items:center;background:var(--tint);color:var(--acc)}
+.disc svg{width:58%;height:58%;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.disc::after{content:"";position:absolute;inset:-3px;border-radius:50%;border:2.5px solid transparent;border-top-color:var(--acc);opacity:0}
+.is-cleaning .disc::after,.is-returning .disc::after{opacity:1;animation:orbit 1.1s linear infinite}
+.is-error .disc{background:color-mix(in srgb, var(--warn) 14%, transparent);color:var(--warn)}
+@keyframes orbit{to{transform:rotate(360deg)}}
+.who{flex:1;min-width:0}
+.name{font-weight:650;font-size:clamp(.95rem,5.2cqh,1.15rem);letter-spacing:-.01em;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.status{display:flex;align-items:center;gap:6px;margin-top:2px;font-size:clamp(.74rem,3.8cqh,.84rem);font-weight:550;color:var(--muted);white-space:nowrap;overflow:hidden}
+.status span{overflow:hidden;text-overflow:ellipsis}
+.status i{flex:none;width:7px;height:7px;border-radius:50%;background:color-mix(in srgb, var(--ink) 30%, transparent)}
+.is-docked .status i{background:var(--ok)}
+.is-cleaning .status i,.is-returning .status i{background:var(--acc);box-shadow:0 0 0 3px var(--tint)}
+.is-cleaning .status,.is-returning .status{color:var(--ink)}
+.status.warn,.is-error .status{color:var(--warn)}
+.status.warn i,.is-error .status i{background:var(--warn)}
+.meta{margin-top:2px;font-size:clamp(.68rem,3.4cqh,.78rem);font-weight:550;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.meta.alert{color:var(--warn);font-weight:650}
+@container (max-height: 230px){ .meta:not(.alert){display:none} }
+.rooms{display:flex;flex-wrap:wrap;gap:6px}
+.rooms button{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 12px 0 10px;border-radius:999px;background:var(--raised);border:1px solid var(--line);
+  font-weight:600;font-size:clamp(.74rem,3.8cqh,.84rem);box-shadow:0 1px 2px rgba(0,0,0,.04);transition:transform .12s}
+.rooms button svg{width:15px;height:15px;fill:none;stroke:var(--acc);stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.rooms button:active{transform:scale(.97)}
+.rooms button.on{border-color:var(--acc);box-shadow:0 0 0 1px var(--acc);color:var(--acc)}
+.batt{flex:none;display:flex;align-items:center;gap:6px;height:30px;padding:0 10px;border-radius:999px;background:var(--track);font-weight:650;font-size:.8rem}
+.batt svg{width:22px;height:12px}
+.batt .shell{fill:none;stroke:currentColor;stroke-width:1.4;opacity:.7}
+.batt .level{fill:var(--ok)}
+.batt.low .level{fill:var(--warn)}
+.batt .bolt{fill:var(--ok)}
+.icon-btn{flex:none;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:var(--track)}
+.icon-btn svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.icon-btn[aria-pressed="true"]{background:var(--acc);color:#fff}
+
+/* Main action */
+.go{display:flex;gap:8px}
+.go button{flex:1;height:clamp(40px,13cqh,48px);border-radius:12px;display:flex;align-items:center;justify-content:center;gap:8px;
+  font-weight:650;font-size:clamp(.88rem,4.6cqh,1rem);background:var(--track);transition:transform .12s ease,filter .12s ease}
+.go button.primary{flex:2;background:var(--acc);color:#fff;box-shadow:0 1px 2px rgba(0,0,0,.08),0 4px 12px color-mix(in srgb, var(--acc) 28%, transparent)}
+.go button:active{transform:scale(.98);filter:brightness(.95)}
+.go svg{width:18px;height:18px;fill:currentColor}
+
+/* Settings */
+.opts{display:flex;flex-direction:column;gap:clamp(8px,2.8cqh,12px);min-height:0}
+.field{display:flex;flex-direction:column;gap:6px;min-width:0}
+.label{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:.7rem;font-weight:650;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.seg{display:flex;gap:2px;padding:3px;border-radius:12px;background:var(--track);min-width:0}
+.seg button{flex:1 1 0;min-width:0;height:clamp(32px,10.5cqh,38px);border-radius:9px;display:flex;align-items:center;justify-content:center;gap:6px;padding:0 4px;
+  font-weight:550;font-size:clamp(.74rem,3.9cqh,.86rem);color:var(--muted);white-space:nowrap;overflow:hidden;transition:background .15s,color .15s,box-shadow .15s}
+.seg button span{overflow:hidden;text-overflow:ellipsis}
+.seg button svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.seg button svg .f{fill:currentColor;stroke:none}
+.seg button svg .e{fill:currentColor;stroke:none;opacity:.22}
+.seg button svg .gt{opacity:.25}
+.seg button svg .hub{fill:currentColor;stroke:none}
+.seg button[aria-pressed="true"]{background:var(--raised);color:var(--acc);font-weight:650;box-shadow:0 1px 2px rgba(0,0,0,.08),0 2px 6px rgba(0,0,0,.06)}
+.notice{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border-radius:12px;background:var(--track);font-size:.8rem;font-weight:550;color:var(--muted);line-height:1.35}
+.notice button{flex:none;padding:7px 12px;border-radius:9px;background:var(--raised);color:var(--acc);font-weight:650;font-size:.78rem;box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.chip{padding:3px 9px;border-radius:999px;font-size:.66rem;letter-spacing:.04em;font-weight:650;color:var(--muted);background:var(--track)}
+.chip[aria-pressed="true"]{background:var(--tint);color:var(--acc)}
+.hint{font-size:.8rem;font-weight:550;color:var(--muted);padding:9px 12px;border-radius:12px;background:var(--track)}
+
+/* Clean buttons */
+.presets{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.presets.one{grid-template-columns:minmax(0,1fr)}
+@container main (min-width: 600px){ .presets:not(.one){grid-template-columns:repeat(auto-fit,minmax(9.5em,1fr))} }
+.preset{display:flex;align-items:center;gap:10px;min-width:0;padding:8px 12px 8px 8px;border-radius:12px;text-align:left;background:var(--raised);
+  border:1px solid var(--line);box-shadow:0 1px 2px rgba(0,0,0,.04);transition:border-color .15s,transform .12s}
+.preset:active{transform:scale(.98)}
+.preset .ico{flex:none;width:32px;height:32px;border-radius:9px;display:grid;place-items:center;background:var(--tint);color:var(--acc)}
+.preset .ico svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.preset b{display:block;font-weight:650;font-size:clamp(.8rem,4cqh,.9rem);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.preset small{display:block;font-size:.72rem;color:var(--muted);font-weight:550;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.preset.on{border-color:var(--acc);box-shadow:0 0 0 1px var(--acc)}
+.preset .txt{min-width:0}
+
+/* Map */
+.map{position:relative;border-radius:14px;overflow:hidden;background:var(--track);min-height:0}
+.map img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;padding:8px}
+.map .tag{position:absolute;left:12px;bottom:10px;font-size:.72rem;font-weight:600;color:var(--muted)}
+.mapview{position:absolute;inset:0;z-index:6;display:none;flex-direction:column;gap:10px;padding:inherit;background:var(--raised);border-radius:16px}
+.mapview.open{display:flex}
+.mapview .top{display:flex;align-items:center;gap:10px}
+.mapview .top b{flex:1;font-weight:650;font-size:.95rem}
+.mapview .top span{font-size:.8rem;color:var(--muted);font-weight:550}
+.mapview .map{flex:1}
+
+/* Short tiles: settings fold into a sheet */
+.more{display:none;height:36px;border-radius:12px;font-weight:650;font-size:.85rem;background:var(--track)}
+.sheet{position:absolute;inset:0;z-index:5;display:none;flex-direction:column;gap:12px;padding:inherit;background:var(--raised);border-radius:16px;overflow:auto}
+.sheet.open{display:flex}
+.sheet .top{display:flex;justify-content:space-between;align-items:center;font-weight:650}
+.sheet .top button{padding:6px 14px;border-radius:9px;background:var(--track);font-weight:650;font-size:.85rem}
+.note{margin:0;padding:12px 14px;border-radius:12px;background:color-mix(in srgb, var(--warn) 12%, transparent);font-size:.86rem;font-weight:550;line-height:1.4}
+@container (max-height: 300px){ .card:not(.side) .opts{display:none} .card:not(.side) .more{display:block} .card:not(.side) .main{justify-content:space-between} .card:not(.side) .go button{height:clamp(44px,26cqh,64px);font-size:1.05rem} }
+@container main (max-width: 430px){ .seg button{flex-direction:column;gap:2px;height:clamp(44px,15cqh,52px);padding:4px 2px;font-size:.74rem} .seg button svg{width:17px;height:17px} }
+@container main (max-width: 330px){ .seg button{font-size:.74rem} .preset small{display:none} }
+@container main (max-width: 360px){ .preset{padding:6px 8px 6px 6px;gap:8px} .preset .ico{width:26px;height:26px} .preset .ico svg{width:15px;height:15px} .preset b{font-size:.8rem} }
+@container main (max-width: 280px){ .preset{padding:6px;gap:6px} .preset .ico{width:22px;height:22px} .preset b{font-size:.74rem} }
+@container (max-width: 300px){ .batt{padding:0 8px} .batt svg{display:none} }
+@media (prefers-reduced-motion:reduce){ *{animation:none !important;transition:none !important} }
+</style>
+</head>
+<body>
+<main id="app"></main>
+<script src="/plugin-sdk/v1.js"></script>
+<script>
+(function(){
+  'use strict';
+  var MANIFEST = JSON.parse(document.getElementById('homeglow-manifest').textContent);
+  var DEFAULTS = {};
+  MANIFEST.settings.forEach(function(s){ DEFAULTS[s.key] = s.default; });
+
+  // Opened inside HomeGlow, or straight from a file (then it runs on sample data)
+  var live = !!(window.__HOMEGLOW_PLUGIN__ && window.HomeGlow && window.HomeGlow.homeAssistant);
+  var HG = live ? window.HomeGlow : null;
+  var ha = live ? window.HomeGlow.homeAssistant : sampleHA();
+
+  // ---------- Words ----------
+  var STATE_TEXT = {docked: 'Docked', cleaning: 'Cleaning', paused: 'Paused', returning: 'Returning to dock', idle: 'Idle', error: 'Needs help', unavailable: 'Offline', unknown: 'Unknown'};
+  var NICE = {
+    sweeping: 'Vacuum', mopping: 'Mop', sweeping_and_mopping: 'Both', mopping_after_sweeping: 'Mop after',
+    vacuum: 'Vacuum', mop: 'Mop', vacuum_and_mop: 'Both', vacuum_then_mop: 'Mop after',
+    silent: 'Quiet', quiet: 'Quiet', standard: 'Standard', balanced: 'Standard', strong: 'Strong', turbo: 'Max', max: 'Max', max_plus: 'Max+'
+  };
+  // Home Assistant sometimes names it twice ("Robot Robot"): device name + entity name
+  function undouble(n){ var w = String(n || '').trim().split(/\s+/); if (w.length % 2 === 0){ var h = w.length / 2; if (w.slice(0, h).join(' ') === w.slice(h).join(' ')) return w.slice(0, h).join(' '); } return n; }
+  function humanize(s){ s = String(s == null ? '' : s).replace(/_/g, ' ').trim(); return s ? s.charAt(0).toUpperCase() + s.slice(1) : ''; }
+  function nice(o){ var k = String(o).toLowerCase().replace(/[\s-]+/g, '_'); return NICE[k] || humanize(o); }
+  function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+
+  // ---------- Icons ----------
+  var ROBOT = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.6"/><path d="M5.2 8.6a8.6 8.6 0 0 1 13.6 0"/><circle cx="12" cy="12.6" r="2.4"/></svg>';
+  var PLAY = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.8v12.4a.8.8 0 0 0 1.2.7l9.6-6.2a.8.8 0 0 0 0-1.4L9.2 5.1A.8.8 0 0 0 8 5.8z"/></svg>';
+  var PAUSE = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6.5" y="5.5" width="4" height="13" rx="1.2"/><rect x="13.5" y="5.5" width="4" height="13" rx="1.2"/></svg>';
+  var HOME = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11.2 12 4.8l8 6.4V19a1 1 0 0 1-1 1h-4.5v-5h-5v5H5a1 1 0 0 1-1-1z"/></svg>';
+  var MAP_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4.5 3.5 6.5v13L9 17.5l6 2 5.5-2v-13L15 6.5z"/><path d="M9 4.5v13M15 6.5v13"/></svg>';
+  var BACK = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6 8.5 12l6 6"/></svg>';
+  var MODE_ICONS = {
+    sweeping: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 9h10a2.7 2.7 0 1 0-2.7-2.7M3.5 13h14a2.7 2.7 0 1 1-2.7 2.7M3.5 17h6"/></svg>',
+    mopping: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.8c2.9 3.7 5.2 6.3 5.2 9.3a5.2 5.2 0 0 1-10.4 0c0-3 2.3-5.6 5.2-9.3z"/></svg>',
+    sweeping_and_mopping: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.5 3.8c2.1 2.7 3.8 4.6 3.8 6.8a3.8 3.8 0 0 1-7.6 0c0-2.2 1.7-4.1 3.8-6.8zM3.5 15h11M3.5 19h7"/></svg>',
+    mopping_after_sweeping: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10h6M3 14h4M10.5 12h4m-1.6-1.6L14.5 12l-1.6 1.6M19 7.5c1.5 1.9 2.6 3.2 2.6 4.7a2.6 2.6 0 0 1-5.2 0c0-1.5 1.1-2.8 2.6-4.7z"/></svg>'
+  };
+  var BOLT = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 3.5 5.5 13.5H11L10 20.5l7.5-10H12z"/></svg>';
+  var SPARK = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 4l1.6 4.4L17 10l-4.4 1.6L11 16l-1.6-4.4L5 10l4.4-1.6zM18 14.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/></svg>';
+  var DOOR = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20.5V5a1 1 0 0 1 1-1h8v16.5M3.5 20.5h17M14 6.5h3.5a1 1 0 0 1 1 1v13M11 12.5h.01"/></svg>';
+  var ROBOT_S = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="9.3" r="2"/></svg>';
+  function presetIcon(p){
+    var t = (p.label + ' ' + p.entity).toLowerCase();
+    if (/quick|fast|speed/.test(t)) return BOLT;
+    if (/deep|full|thorough|mop/.test(t)) return SPARK;
+    if (/kitchen|room|bath|bed|hall|living|dining|office|entry|foyer|den|laundry/.test(t)) return DOOR;
+    return ROBOT_S;
+  }
+  var FEAT = {pause: 4, dock: 16, start: 8192};
+
+  // ---------- Settings ----------
+  var settings = Object.assign({}, DEFAULTS);
+  function clean(s){ return String(s == null ? '' : s).trim(); }
+  function lower(s){ return clean(s).toLowerCase(); }
+  function splitList(text){ return clean(text).split(/[;\n]+/).map(clean).filter(Boolean); }
+
+  // A button may start with a vacuum's or a floor's name and a colon
+  // ("Downstairs: Kitchen = script.x"): it then shows only on that vacuum's
+  // page, or while that floor is chosen. A colon before anything else is
+  // just part of the button's name.
+  function scopeOf(q){
+    q = lower(q);
+    var hit = null;
+    vacuumList().forEach(function(v){ if (!hit && (lower(v.name) === q || lower(v.id) === q)) hit = {vac: v.id}; });
+    if (hit) return hit;
+    vacuumList().forEach(function(v){
+      floorOptions(v.id).forEach(function(o){ if (!hit && (lower(o) === q || lower(nice(o)) === q)) hit = {floor: q}; });
+    });
+    return hit;
+  }
+  function scriptList(text){
+    return splitList(text).map(function(p){
+      var i = p.lastIndexOf('='); if (i < 1) return null;
+      var label = clean(p.slice(0, i)), id = clean(p.slice(i + 1)), note = '', only = [], m, sc;
+      while ((m = /^([^:|]+):\s*(.+)$/.exec(label)) && (sc = scopeOf(m[1]))){ only.push(sc); label = clean(m[2]); }
+      var bar = label.indexOf('|');
+      if (bar >= 0){ note = clean(label.slice(bar + 1)); label = clean(label.slice(0, bar)); }
+      return label && /^[a-z_]+\.[a-z0-9_]+$/.test(id) ? {label: label, note: note, entity: id, only: only} : null;
+    }).filter(Boolean);
+  }
+  // A button shows when its script exists in Home Assistant, and any vacuum
+  // or floor it names is the one on screen.
+  function here(p){
+    var vid = vacId(), floor = floorNow(vid);
+    return !!ent(p.entity) && p.only.every(function(sc){
+      return sc.vac ? sc.vac === vid : !!floor && (lower(floor) === sc.floor || lower(nice(floor)) === sc.floor);
+    });
+  }
+  function presets(){ return scriptList(settings.presets).filter(here); }
+  function roomList(){ return settings.showRooms ? scriptList(settings.rooms).filter(here) : []; }
+  function loadSettings(){
+    if (!live) return Promise.resolve();
+    return HG.settings.get().then(function(s){ settings = Object.assign({}, DEFAULTS, s || {}); }).catch(function(){});
+  }
+
+  // ---------- State from Home Assistant ----------
+  var ents = {}, srcs = {}, haError = '', loaded = false;
+  var pend = {};        // entity -> {val, until}: a choice shown before Home Assistant confirms it
+  var acting = null;    // {vac, text, until, from}: "Starting…" until that vacuum's state changes
+  var flash = null;     // {text, until}: a problem to show for a few seconds
+  var lastPreset = {};  // vacuum -> {label, at, room}
+  function ent(id){ id = clean(id); return id ? ents[id] : undefined; }
+  function poll(){
+    return ha.state().then(function(r){
+      ents = (r && r.entities) || {}; srcs = (r && r.sources) || {}; haError = (r && r.error) || ''; loaded = true; noteClean(); render();
+    }).catch(function(e){ haError = (e && e.message) || 'HomeGlow could not be reached'; loaded = true; render(); });
+  }
+
+  // ---------- Finding the vacuums and their parts ----------
+  // Blank settings find things on their own: every vacuum, then the selects,
+  // sensors and switch on each one's Home Assistant device. "-" hides one.
+  function deviceOf(id){ var s = srcs[id]; return s && s.device ? s.device : ''; }
+  // The vacuums, a page each: the ones listed in Plugin Options, with any
+  // names given there, or else every vacuum Home Assistant has.
+  function vacuumList(){
+    var listed = splitList(settings.vacuum).map(function(p){
+      var i = p.lastIndexOf('='), id = clean(i > 0 ? p.slice(i + 1) : p);
+      return /^vacuum\.[a-z0-9_]+$/.test(id) ? {id: id, name: i > 0 ? clean(p.slice(0, i)) : ''} : null;
+    }).filter(Boolean);
+    if (!listed.length) listed = Object.keys(ents).filter(function(k){ return k.indexOf('vacuum.') === 0; }).sort().map(function(id){ return {id: id, name: ''}; });
+    return listed.map(function(v){
+      var a = (ents[v.id] || {}).attributes || {};
+      return {id: v.id, name: v.name || undouble(a.friendly_name) || humanize(v.id.split('.')[1])};
+    });
+  }
+  // The page on screen. Each display remembers its own, by vacuum, so a
+  // display by the upstairs vacuum keeps showing that one.
+  var PAGE_KEY = 'homeglow.vacuum.page', page = 0, savedPage = '';
+  try { savedPage = localStorage.getItem(PAGE_KEY) || ''; } catch(e){}
+  function vacId(){
+    var list = vacuumList(); if (!list.length) return '';
+    if (savedPage){
+      var at = list.map(function(v){ return v.id; }).indexOf(savedPage);
+      if (at >= 0) page = at;
+      savedPage = '';
+    }
+    if (page >= list.length) page = 0;
+    return list[page].id;
+  }
+  function goPage(i){
+    var list = vacuumList(); if (list.length < 2) return;
+    page = (i + list.length) % list.length;
+    try { localStorage.setItem(PAGE_KEY, list[page].id); } catch(e){}
+    sheetOpen = false; mapOpen = false; resetMap(); lastHTML = ''; render();
+  }
+  function onDevice(domain, vid){
+    var dev = deviceOf(vid || vacId()); if (!dev) return [];
+    return Object.keys(ents).filter(function(k){ return k.indexOf(domain + '.') === 0 && deviceOf(k) === dev; }).sort();
+  }
+  var FIND = {
+    floorSelect: function(vid){ return onDevice('select', vid).filter(function(k){ return /selected_?map|current_?map|_floor$|floor_?select/.test(k); })[0]; },
+    modeSelect: function(vid){ return onDevice('select', vid).filter(function(k){ return /clean(ing)?_?mode|_mode$/.test(k) && !/mop_?pad|water|dock|carpet|self|empty|wash|dry|route|map/.test(k); })[0]; },
+    suctionSelect: function(vid){ return onDevice('select', vid).filter(function(k){ return /suction|fan_?speed|vacuum_?power|power_?level/.test(k); })[0]; },
+    battery: function(vid){ return onDevice('sensor', vid).filter(function(k){ return (ents[k].attributes || {}).device_class === 'battery'; })[0]; },
+    roomSwitch: function(vid){ return onDevice('switch', vid).filter(function(k){ return /customi[sz]ed_?clean/.test(k); })[0]; }
+  };
+  // A setting may name one entity per vacuum ("select.up_mode; select.down_mode"):
+  // each vacuum takes the one on its own device. With one vacuum, the first
+  // one named. "-" hides that row for every vacuum.
+  function pickFor(vid, key){
+    var vals = splitList(settings[key]);
+    if (vals.some(function(v){ return v === '-' || /^none$/i.test(v); })) return '';
+    var dev = deviceOf(vid), own = vals.filter(function(v){ return dev && deviceOf(v) === dev; })[0];
+    if (own) return own;
+    if (vals.length && vacuumList().length < 2) return vals[0];
+    return (FIND[key] && FIND[key](vid)) || '';
+  }
+  function pick(key){ return pickFor(vacId(), key); }
+  function floorOptions(vid){
+    var s = ent(pickFor(vid, 'floorSelect'));
+    return ((s && s.attributes && s.attributes.options) || []).filter(function(o){ return !/^(unavailable|unknown)$/i.test(o); });
+  }
+  function floorNow(vid){ var id = pickFor(vid, 'floorSelect'); return id && ent(id) ? String(current(id)) : ''; }
+
+  function vac(){
+    var v = ent(vacId());
+    return v ? {state: String(v.state || 'unknown'), a: v.attributes || {}} : null;
+  }
+  function battery(v){
+    var b = ent(pick('battery')), n = b ? parseFloat(b.state) : NaN;
+    if (!isFinite(n) && v) n = parseFloat(v.a.battery_level);
+    return isFinite(n) ? Math.max(0, Math.min(100, Math.round(n))) : null;
+  }
+  function can(v, what){ var f = v && v.a.supported_features; return typeof f !== 'number' || (f & FEAT[what]) !== 0; }
+
+  // ---------- Doing things ----------
+  function problem(e){
+    var m = (e && e.message) || 'That did not work';
+    flash = {text: m, until: Date.now() + 6000}; render();
+  }
+  function act(what){
+    var v = vac(), vid = vacId(); if (!v) return;
+    acting = {vac: vid, text: what === 'start' ? (v.state === 'paused' ? 'Resuming…' : 'Starting…') : what === 'pause' ? 'Pausing…' : 'Heading to the dock…', until: Date.now() + 10000, from: v.state};
+    if (what === 'start' && v.state !== 'paused') delete lastPreset[vid];
+    render();
+    ha.action(vid, what).then(poll).catch(function(e){ acting = null; problem(e); });
+  }
+  function choose(which, val){
+    var id = pick(which); if (!id) return;
+    pend[id] = {val: val, until: Date.now() + 6000}; render();
+    ha.action(id, 'select', val).then(poll).catch(function(e){ delete pend[id]; problem(e); });
+  }
+  function setPerRoom(on){
+    var id = pick('roomSwitch'); if (!id) return;
+    pend[id] = {val: on ? 'on' : 'off', until: Date.now() + 8000}; render();
+    ha.action(id, on ? 'turn_on' : 'turn_off').then(poll).catch(function(e){ delete pend[id]; problem(e); });
+  }
+  function runPreset(p, room){
+    var v = vac(), vid = vacId();
+    lastPreset[vid] = {label: p.label, at: Date.now(), room: !!room};
+    // A room keeps the household's own spelling ("Emma's room"), and gets no
+    // "the" it may not want ("Upstairs").
+    acting = {vac: vid, text: room ? 'Cleaning ' + p.label + '…' : 'Starting ' + p.label.toLowerCase() + '…', until: Date.now() + 15000, from: v ? v.state : ''};
+    sheetOpen = false; render();
+    ha.action(p.entity, 'run').then(poll).catch(function(e){ acting = null; delete lastPreset[vid]; problem(e); });
+  }
+
+  // ---------- Map ----------
+  var mapImg = null, mapTimer = null, mapShown = false, mapBroken = false, lastMapAt = 0;
+  function resetMap(){ mapImg = null; mapBroken = false; mapShown = false; lastMapAt = 0; }
+  function mapId(){
+    if (settings.showMap === false) return '';
+    var cams = Object.keys(ents).filter(function(k){ return k.indexOf('camera.') === 0; }), dev = deviceOf(vacId());
+    // Each vacuum's own map camera. A camera on no vacuum's device only
+    // stands in when there is one vacuum, so a page never shows the other's map.
+    return cams.filter(function(k){ return dev && deviceOf(k) === dev; })[0] || (vacuumList().length < 2 ? cams[0] : '') || '';
+  }
+  function loadMap(){
+    var id = mapId(); if (!id || !mapShown || document.hidden) return;
+    lastMapAt = Date.now();
+    var img = new Image();
+    img.alt = 'Vacuum map';
+    // A map that arrives after the page changed belongs to the other vacuum.
+    img.onload = function(){ if (id !== mapId()) return; mapBroken = false; if (mapImg && mapImg.parentNode) mapImg.parentNode.replaceChild(img, mapImg); mapImg = img; placeMap(); };
+    img.onerror = function(){ if (id !== mapId()) return; mapBroken = true; placeMap(); };
+    img.src = ha.cameraUrl(id);
+  }
+  function placeMap(){
+    var box = document.querySelector('.map'); if (!box) return;
+    if (mapImg && mapImg.parentNode !== box) box.insertBefore(mapImg, box.firstChild);
+    var tag = box.querySelector('.tag'); if (tag) tag.textContent = mapBroken ? 'Map unavailable' : (mapImg ? '' : 'Loading map…');
+  }
+  function mapTick(){
+    var v = vac(), busy = v && /cleaning|returning|paused/.test(v.state);
+    if (mapShown && Date.now() - lastMapAt >= (busy ? 5000 : 60000)) loadMap();
+  }
+
+  // ---------- Render ----------
+  var sheetOpen = false, mapOpen = false, lastHTML = '';
+  function current(id){
+    var s = ent(id); if (!s) return null;
+    var p = pend[id], cur = s.state;
+    if (p && (Date.now() > p.until || p.val === cur)) { delete pend[id]; p = null; }
+    return p ? p.val : cur;
+  }
+  function perRoom(){
+    var id = pick('roomSwitch');
+    return !!(id && ent(id) && current(id) === 'on');
+  }
+  function modeIcon(o){ return MODE_ICONS[String(o).toLowerCase()] || ''; }
+  function levelIcon(i, n){
+    var t = n > 1 ? i / (n - 1) : 1, cx = 12, cy = 18, r = 10;
+    var a = Math.PI * (1 - (0.14 + 0.72 * t));
+    function pt(ang, rad){ return (cx + rad * Math.cos(ang)).toFixed(2) + ' ' + (cy - rad * Math.sin(ang)).toFixed(2); }
+    return '<svg viewBox="0 0 24 24" aria-hidden="true">' +
+      '<path class="gt" d="M' + pt(Math.PI, r) + 'A' + r + ' ' + r + ' 0 0 1 ' + pt(0, r) + '"/>' +
+      '<path d="M' + pt(Math.PI, r) + 'A' + r + ' ' + r + ' 0 0 1 ' + pt(a, r) + '"/>' +
+      '<path d="M' + cx + ' ' + cy + 'L' + pt(a, 7.5) + '"/><circle class="hub" cx="' + cx + '" cy="' + cy + '" r="2"/></svg>';
+  }
+  function selField(label, which, extra){
+    var id = pick(which); if (!id) return '';
+    var s = ent(id); if (!s) return '';
+    var opts = ((s.attributes && s.attributes.options) || []).filter(function(o){ return !/^(unavailable|unknown)$/i.test(o); });
+    var off = s.state === 'unavailable' || s.state === 'unknown';
+    var head = '<div class="label"><span>' + label + '</span>' + (extra || '') + '</div>';
+    if (off && which === 'suctionSelect' && /^mop(ping)?$/.test(String(current(pick('modeSelect')))))
+      return '<div class="field">' + head + '<div class="hint">No suction while only mopping</div></div>';
+    if (off) return '<div class="field">' + head + '<div class="hint">Can’t be changed right now</div></div>';
+    if (!opts.length || (which === 'floorSelect' && opts.length < 2)) return '';
+    var cur = current(id);
+    return '<div class="field">' + head + '<div class="seg" role="group" aria-label="' + esc(label) + '">' +
+      opts.map(function(o, i){
+        var icon = which === 'suctionSelect' ? levelIcon(i, opts.length) : modeIcon(o);
+        return '<button data-set="' + which + '" data-val="' + esc(o) + '" aria-pressed="' + (o === cur) + '" title="' + esc(nice(o)) + '">' + icon + '<span>' + esc(nice(o)) + '</span></button>';
+      }).join('') + '</div></div>';
+  }
+  function settingsHTML(){
+    var sw = pick('roomSwitch'), hasSwitch = !!(sw && ent(sw)), on = perRoom(), floor = selField('Floor', 'floorSelect');
+    if (on) return floor + '<div class="notice"><span>Each room uses its own mode and suction from the vacuum’s app.</span><button data-rooms="0">Use one setting</button></div>';
+    var chip = hasSwitch ? '<button class="chip" data-rooms="1" aria-pressed="false" title="Use each room’s own settings from the vacuum’s app">Per room</button>' : '';
+    return floor + selField('Mode', 'modeSelect', chip) + selField('Suction', 'suctionSelect');
+  }
+  var PIN = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-6.5-5.6-6.5-11A6.5 6.5 0 0 1 18.5 10c0 5.4-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.3"/></svg>';
+  function roomsHTML(v){
+    if (!settings.showRooms) return '';
+    var list = roomList();
+    var head = '<div class="label"><span>Rooms</span></div>';
+    if (!list.length) return '<div class="field">' + head + '<div class="hint">Add rooms in Plugin Options: Kitchen = script.vacuum_kitchen</div></div>';
+    var lp = lastPreset[vacId()], busy = v && /cleaning|paused/.test(v.state), on = lp && lp.room && busy ? lp.label : '';
+    return '<div class="field">' + head + '<div class="rooms">' + list.map(function(p, i){
+      return '<button data-room="' + i + '" class="' + (p.label === on ? 'on' : '') + '">' + PIN + esc(p.label) + '</button>';
+    }).join('') + '</div></div>';
+  }
+
+  // ---------- Last clean, and what the station needs ----------
+  var lastClean = {};       // vacuum -> {end, minutes, area, unit}, kept by the card
+  var wasBusy = {};         // vacuum -> busy at the last look
+  function num(x){ var n = parseFloat(x); return isFinite(n) ? n : null; }
+  function deviceSensors(vid){ return onDevice('sensor', vid).concat(onDevice('binary_sensor', vid)); }
+  function findSensor(re, not, vid){
+    return deviceSensors(vid).filter(function(k){ return k.indexOf('sensor.') === 0 && re.test(k) && !(not && not.test(k)); })[0] || '';
+  }
+  function areaNow(vid){ var id = findSensor(/cleaned_?area|clean(ing)?_?area/, /total|history/, vid), s = ent(id); var n = s && num(s.state);
+    return n === null || n === undefined ? null : {value: n, unit: ((s.attributes || {}).unit_of_measurement || 'm²')}; }
+  function minutesNow(vid){ var id = findSensor(/clean(ing)?_?time|cleaning_?duration/, /total|history|estimat/, vid), s = ent(id); return s ? num(s.state) : null; }
+  function lastCleanTime(){
+    var id = deviceSensors().filter(function(k){ var a = ents[k].attributes || {}; return a.device_class === 'timestamp' && /last|clean/.test(k) && !/first|next|schedul/.test(k); })[0];
+    var t = id ? Date.parse(ents[id].state) : NaN; return isFinite(t) ? t : null;
+  }
+  // Remember a clean when a vacuum comes back from one, for brands with no
+  // "last clean" sensor. Every vacuum, not just the one on screen.
+  function noteClean(){
+    vacuumList().forEach(function(x){
+      var s = ents[x.id]; if (!s) return;
+      var st = String(s.state || ''), busy = /cleaning|paused|returning/.test(st);
+      if (wasBusy[x.id] && !busy && st !== 'unavailable'){
+        var a = areaNow(x.id);
+        lastClean[x.id] = {end: Date.now(), minutes: minutesNow(x.id), area: a ? a.value : null, unit: a ? a.unit : ''};
+        if (live && HG.storage) HG.storage.set('lastClean:' + x.id, lastClean[x.id]).catch(function(){});
+      }
+      wasBusy[x.id] = busy;
+    });
+  }
+  function ago(t){
+    var m = Math.max(0, Math.round((Date.now() - t) / 60000));
+    if (m < 1) return 'just now'; if (m < 60) return m + ' min ago';
+    var h = Math.round(m / 60); if (h < 24) return h + ' h ago';
+    var d = Math.round(h / 24); return d === 1 ? 'yesterday' : d + ' days ago';
+  }
+  function areaText(n, unit){ return Math.round(n) + ' ' + String(unit || 'm²').replace('m2', 'm²').replace('ft2', 'ft²'); }
+  function metaText(v){
+    var a = areaNow(), mins = minutesNow(), bits = [];
+    if (/cleaning|paused/.test(v.state)){
+      if (a && a.value > 0) bits.push(areaText(a.value, a.unit));
+      if (mins) bits.push(Math.round(mins) + ' min');
+      return bits.length ? 'So far: ' + bits.join(' · ') : '';
+    }
+    var end = lastCleanTime(), lc = lastClean[vacId()];
+    if (!end && lc) end = lc.end;
+    if (!end) return '';
+    bits.push('Last clean ' + ago(end));
+    var m = lc && Math.abs(lc.end - end) < 3600000 ? lc.minutes : mins, ar = lc && Math.abs(lc.end - end) < 3600000 && lc.area !== null ? {value: lc.area, unit: lc.unit} : a;
+    if (m) bits.push(Math.round(m) + ' min');
+    if (ar && ar.value > 0) bits.push(areaText(ar.value, ar.unit));
+    return bits.join(' · ');
+  }
+  var BAD = /(full|empty|low|lack|not_?installed|missing|jam|stuck|insufficient|replace|blocked|error|fault|dirty|tangl|clog)/i;
+  var GOOD = /^(no_?error|no_?warning|none|ok|normal|installed|idle|clean|standby|not_?full|unknown|unavailable|off|0|false|completed|charging|.*_ok)$/i;
+  function shortName(id){
+    var full = String((ents[id].attributes || {}).friendly_name || id.split('.')[1].replace(/_/g, ' '));
+    var dev = String(undouble((vac() || {a: {}}).a.friendly_name || '')).trim();
+    if (dev && full.toLowerCase().indexOf(dev.toLowerCase()) === 0) full = full.slice(dev.length).trim();
+    full = full.replace(/\s*status$/i, '');
+    return full ? full.charAt(0).toUpperCase() + full.slice(1) : full;
+  }
+  function alerts(){
+    var out = [];
+    deviceSensors().forEach(function(k){
+      var s = ents[k], a = s.attributes || {}, st = String(s.state || '');
+      if (k.indexOf('binary_sensor.') === 0){ if (a.device_class === 'problem' && st === 'on') out.push(shortName(k)); return; }
+      if (/(brush|filter|mop_?pad|sensor|side_?brush).*(left|life|remaining)/.test(k) && /%/.test(a.unit_of_measurement || '')){
+        var n = num(st); if (n !== null && n <= 5) out.push('Replace the ' + shortName(k).replace(/\s*(left|life|remaining)$/i, '').toLowerCase());
+        return;
+      }
+      if (/(water|tank|bag|detergent|dust|error|warning|station|dock|mop)/.test(k) && !/(left|life|total|count|time|area|history)/.test(k) && BAD.test(st) && !GOOD.test(st)){
+        out.push(shortName(k) + ': ' + humanize(st).toLowerCase());
+      }
+    });
+    return out;
+  }
+  function presetsHTML(v){
+    var list = presets(); if (!list.length) return '';
+    var lp = lastPreset[vacId()], busy = v && /cleaning|paused/.test(v.state), on = lp && !lp.room && busy ? lp.label : '';
+    return '<div class="presets' + (list.length === 1 ? ' one' : '') + '">' + list.map(function(p, i){
+      return '<button class="preset' + (p.label === on ? ' on' : '') + '" data-preset="' + i + '">' +
+        '<span class="ico">' + presetIcon(p) + '</span><span class="txt"><b>' + esc(p.label) + '</b>' +
+        (p.label === on ? '<small>Running</small>' : p.note ? '<small>' + esc(p.note) + '</small>' : '') + '</span></button>';
+    }).join('') + '</div>';
+  }
+  function statusText(v, batt){
+    if (flash && Date.now() < flash.until) return {text: flash.text, warn: true};
+    flash = null;
+    if (acting && acting.vac === vacId() && (Date.now() > acting.until || v.state !== acting.from)) acting = null;
+    if (acting && acting.vac === vacId()) return {text: acting.text};
+    var t = v.a.status ? humanize(v.a.status) : (STATE_TEXT[v.state] || humanize(v.state));
+    if (!v.a.status && v.state === 'docked' && batt != null && batt < 100) t = 'Charging';
+    if (v.a.status && v.state === 'docked' && !/dock|charg|station|wash|dry|empty/i.test(v.a.status)) t = 'Docked · ' + t;
+    var lp = lastPreset[vacId()];
+    if (lp && /cleaning|paused/.test(v.state)) t += ' · ' + lp.label;
+    return {text: t, warn: v.state === 'error'};
+  }
+  function batteryHTML(v, batt){
+    if (batt == null) return '';
+    var charging = batt < 100 && (v.state === 'docked' || /charg/i.test(v.a.status || ''));
+    return '<div class="batt' + (batt < 20 ? ' low' : '') + '" aria-label="Battery ' + batt + '%">' +
+      '<svg viewBox="0 0 22 12" aria-hidden="true"><rect class="shell" x="0.7" y="0.7" width="18" height="10.6" rx="2.6"/><rect class="shell" x="19.6" y="4" width="1.6" height="4" rx=".8" style="fill:currentColor;stroke:none"/>' +
+      '<rect class="level" x="2.3" y="2.3" width="' + (14.8 * batt / 100).toFixed(1) + '" height="7.4" rx="1.4"/></svg>' +
+      (charging ? '<svg viewBox="0 0 12 14" style="width:9px;height:12px" aria-hidden="true"><path class="bolt" d="M7 0 1 8h4l-1 6 6-8H6z"/></svg>' : '') + batt + '%</div>';
+  }
+  function render(){
+    var app = document.getElementById('app'), html;
+    var v = vac();
+    var lp = lastPreset[vacId()];
+    if (v && !/cleaning|paused|returning/.test(v.state) && lp && Date.now() - lp.at > 30000) delete lastPreset[vacId()];
+    // A tab per vacuum, each with its state dot, when there is more than one.
+    var list = vacuumList();
+    var tabs = list.length > 1 ? '<div class="pages" role="tablist" aria-label="Vacuums">' + list.map(function(x, i){
+      var s = ents[x.id], dot = s ? String(s.state).replace(/[^a-z]/g, '') : 'unavailable';
+      return '<button role="tab" data-page="' + i + '" aria-selected="' + (i === page) + '"><i class="' + dot + '"></i><span>' + esc(x.name) + '</span></button>';
+    }).join('') + '</div>' : '';
+    if (!loaded) html = '';
+    else if (!v){
+      var why = haError ? 'Home Assistant: ' + haError
+        : !list.length ? 'No robot vacuum found in Home Assistant. Add it to Home Assistant, or type its entity in this widget’s Plugin Options.'
+        : vacId() + ' wasn’t found in Home Assistant. Check the entity in this widget’s Plugin Options.';
+      html = '<div class="main">' + tabs + '<p class="note">' + esc(why) + '</p></div>';
+    } else {
+      var w = app.clientWidth, h = app.clientHeight, hasMap = !!mapId();
+      var side = hasMap && w >= 640 && h >= 220, below = hasMap && !side && h >= 560 && w >= 300;
+      if (side || below) mapOpen = false;
+      var batt = battery(v), st = statusText(v, batt), al = alerts(), meta = metaText(v);
+      var name = (list[page] && list[page].name) || 'Vacuum';
+      var b = [];
+      if (v.state !== 'cleaning' && can(v, 'start')) b.push('<button class="primary" data-act="start">' + PLAY + (v.state === 'paused' ? 'Resume' : 'Start') + '</button>');
+      if (v.state === 'cleaning' && can(v, 'pause')) b.push('<button class="primary" data-act="pause">' + PAUSE + 'Pause</button>');
+      if (v.state !== 'docked' && can(v, 'dock')) b.push('<button data-act="dock">' + HOME + 'Dock</button>');
+      var opts = settingsHTML() + roomsHTML(v) + presetsHTML(v);
+      var stateCls = 'is-' + String(v.state).replace(/[^a-z]/g, '');
+      var mapBtn = hasMap && !side && !below ? '<button class="icon-btn" data-map="1" aria-pressed="' + mapOpen + '" aria-label="Show the map">' + MAP_ICON + '</button>' : '';
+      html = '<div class="card ' + stateCls + (side ? ' side' : '') + (below ? ' below' : '') + '"><div class="main">' + tabs +
+        '<div class="head"><div class="disc">' + ROBOT + '</div><div class="who"><div class="name">' + esc(name) + '</div>' +
+          '<div class="status' + (st.warn ? ' warn' : '') + '" role="status"><i></i><span>' + esc(st.text) + '</span></div>' +
+          (al.length ? '<div class="meta alert" title="' + esc(al.join(' · ')) + '">' + esc(al.join(' · ')) + '</div>' : meta ? '<div class="meta">' + esc(meta) + '</div>' : '') + '</div>' +
+          batteryHTML(v, batt) + mapBtn + '</div>' +
+        '<div class="go">' + b.join('') + '</div>' +
+        (opts ? '<div class="opts">' + opts + '</div><button class="more" data-more="1">' + (pick('floorSelect') ? 'Floor, mode and suction' : 'Mode, suction and rooms') + '</button>' : '') + '</div>' +
+        (side || below ? '<div class="map"><span class="tag"></span></div>' : '') + '</div>' +
+        (opts ? '<div class="sheet' + (sheetOpen ? ' open' : '') + '"><div class="top">Settings<button data-close="1">Done</button></div>' + opts + '</div>' : '') +
+        (mapBtn ? '<div class="mapview' + (mapOpen ? ' open' : '') + ' ' + stateCls + '"><div class="top"><button class="icon-btn" data-map="0" aria-label="Back">' + BACK + '</button><b>Map</b><span>' + esc(st.text) + '</span></div>' +
+          (mapOpen ? '<div class="map"><span class="tag"></span></div>' : '') + '</div>' : '');
+      var show = side || below || mapOpen, was = mapShown; mapShown = show;
+      if (show && !was) setTimeout(loadMap, 0);
+    }
+    if (html !== lastHTML){ app.innerHTML = html; lastHTML = html; placeMap(); }
+  }
+
+  // ---------- Taps ----------
+  var swipe = null, swiped = false;
+  document.addEventListener('pointerdown', function(e){
+    swipe = e.target.closest('.pages, .sheet.open, .mapview.open') ? null : {x: e.clientX, y: e.clientY};
+  });
+  document.addEventListener('pointerup', function(e){
+    if (!swipe) return;
+    var dx = e.clientX - swipe.x, dy = e.clientY - swipe.y; swipe = null;
+    if (Math.abs(dx) > 60 && Math.abs(dy) < 40 && vacuumList().length > 1){
+      swiped = true; setTimeout(function(){ swiped = false; }, 0);
+      goPage(page + (dx < 0 ? 1 : -1));
+    }
+  });
+  document.addEventListener('click', function(e){
+    if (swiped){ swiped = false; e.preventDefault(); return; }
+    var t = e.target.closest('button'); if (!t || t.disabled) return;
+    if (t.dataset.page !== undefined) goPage(+t.dataset.page);
+    else if (t.dataset.act) act(t.dataset.act);
+    else if (t.dataset.set){ choose(t.dataset.set, t.dataset.val); }
+    else if (t.dataset.rooms){ setPerRoom(t.dataset.rooms === '1'); }
+    else if (t.dataset.preset){ var p = presets()[+t.dataset.preset]; if (p) runPreset(p); }
+    else if (t.dataset.room){ var r = roomList()[+t.dataset.room]; if (r) runPreset(r, true); }
+    else if (t.dataset.map){ mapOpen = t.dataset.map === '1'; render(); }
+    else if (t.dataset.more){ sheetOpen = true; render(); }
+    else if (t.dataset.close){ sheetOpen = false; render(); }
+  });
+  window.addEventListener('resize', function(){ lastHTML = ''; render(); });
+
+  // ---------- Theme (the SDK does this too; this covers a direct load) ----------
+  var th = new URLSearchParams(location.search).get('theme');
+  if (th === 'dark' || th === 'light') document.documentElement.setAttribute('data-theme', th);
+  if (!live){   // preview pages pass a look through the frame's name
+    try {
+      var demo = String(window.name).indexOf('hgdemo:') === 0 ? JSON.parse(window.name.slice(7)) : {};
+      if (demo.accent) document.documentElement.style.setProperty('--accent', demo.accent);
+      if (demo.theme) document.documentElement.setAttribute('data-theme', demo.theme);
+      if (demo.text) document.documentElement.style.setProperty('--text-color', demo.text);
+      if (demo.mapOpen) mapOpen = true;
+      if (demo.rooms) settings.showRooms = true, settings.rooms = 'Kitchen = script.vacuum_kitchen; Living room = script.vacuum_living_room' +
+        (demo.two ? '; Upstairs: Bedroom = script.vacuum_bedroom; Basement: Laundry = script.vacuum_laundry' : '');
+      if (demo.page) try { localStorage.setItem(PAGE_KEY, demo.page); savedPage = demo.page; } catch(e){}
+    } catch(e){}
+  }
+  window.addEventListener('message', function(e){
+    var m = e.data;
+    if (!m || m.type !== 'homeglow:theme') return;
+    if (m.theme === 'dark' || m.theme === 'light') document.documentElement.setAttribute('data-theme', m.theme);
+    if (m.colors && m.colors.accent) document.documentElement.style.setProperty('--accent', m.colors.accent);
+  });
+
+  // ---------- Start ----------
+  var nudge = null;
+  if (live) HG.on('ha.state', function(){ clearTimeout(nudge); nudge = setTimeout(poll, 150); });
+  var remembered = live && HG.storage ? HG.storage.list().then(function(all){
+    Object.keys(all || {}).forEach(function(k){ if (k.indexOf('lastClean:') === 0 && all[k] && all[k].end) lastClean[k.slice(10)] = all[k]; });
+  }).catch(function(){}) : Promise.resolve();
+  Promise.all([loadSettings(), remembered]).then(poll);
+  setInterval(function(){ if (!document.hidden) { poll(); mapTick(); } }, 2000);
+  setInterval(loadSettings, 60000);
+  document.addEventListener('visibilitychange', function(){ if (!document.hidden) { poll(); loadMap(); } });
+
+  // ---------- Sample robot, for opening the file outside HomeGlow ----------
+  function sampleHA(){
+    var cfgName = ''; try { if (String(window.name).indexOf('hgdemo:') === 0) cfgName = JSON.parse(window.name.slice(7)).name || ''; } catch(e){}
+    var s = {state: 'docked', battery: 100, mode: 'sweeping', suction: 'standard', steps: 0, status: ''};
+    var two = false, floors = false, up = {state: 'cleaning', battery: 64};
+    try { if (String(window.name).indexOf('hgdemo:') === 0) { var dj = JSON.parse(window.name.slice(7)); s.alert = !!dj.alert; two = !!dj.two; floors = !!dj.two; if (dj.cleaning) { s.state = 'cleaning'; s.steps = 12; } } } catch(e){}
+    s.floor = 'Ground floor';
+    var SCRIPTS = ['script.vacuum_quick', 'script.vacuum_deep_clean', 'script.vacuum_kitchen', 'script.vacuum_living_room', 'script.vacuum_bedroom', 'script.vacuum_laundry'];
+    setInterval(function(){
+      if (s.state === 'cleaning'){ s.steps++; if (s.steps % 2 === 0) s.battery = Math.max(5, s.battery - 1); if (s.steps > 30) s.state = 'returning'; }
+      else if (s.state === 'returning'){ s.steps++; if (s.steps > 34) { s.state = 'docked'; s.steps = 0; } }
+      else if (s.state === 'docked' && s.battery < 100) s.battery = Math.min(100, s.battery + 1);
+    }, 1000);
+    function build(){
+      var e = {}, src = {};
+      function put(id, st, attrs, dev){ e[id] = {state: st, attributes: attrs || {}}; src[id] = {integration: 'sample', device: dev || 'robot'}; }
+      put('vacuum.robot', s.state, {friendly_name: cfgName || 'Robot vacuum', battery_level: s.battery, supported_features: 8192 | 4 | 16});
+      put('select.robot_cleaning_mode', s.perRoom ? 'unavailable' : s.mode, s.perRoom ? {} : {options: ['sweeping', 'mopping', 'sweeping_and_mopping', 'mopping_after_sweeping']});
+      put('select.robot_suction_level', s.perRoom ? 'unavailable' : s.suction, s.perRoom ? {} : {options: ['quiet', 'standard', 'strong', 'turbo']});
+      put('sensor.robot_battery_level', String(s.battery), {unit_of_measurement: '%', device_class: 'battery'});
+      put('switch.robot_customized_cleaning', s.perRoom ? 'on' : 'off', {friendly_name: 'Customized cleaning'});
+      put('sensor.robot_cleaned_area', String(s.state === 'docked' ? 54 : Math.round(s.steps * 1.6)), {unit_of_measurement: 'm²'});
+      put('sensor.robot_cleaning_time', String(s.state === 'docked' ? 38 : Math.round(s.steps / 2)), {unit_of_measurement: 'min'});
+      put('sensor.robot_last_clean', new Date(Date.now() - 2 * 3600000).toISOString(), {device_class: 'timestamp'});
+      put('sensor.robot_clean_water_tank_status', s.alert ? 'empty' : 'installed', {friendly_name: (cfgName || 'Robot vacuum') + ' Clean water tank status'});
+      put('camera.vacuum_map', 'idle', {});
+      if (floors) put('select.robot_selected_map', s.floor, {options: ['Ground floor', 'Basement']});
+      if (two){
+        put('vacuum.robot_upstairs', up.state, {friendly_name: 'Upstairs', battery_level: up.battery, supported_features: 8192 | 4 | 16}, 'robot2');
+        put('select.robot_upstairs_suction_level', 'quiet', {options: ['quiet', 'standard', 'strong', 'turbo']}, 'robot2');
+        put('sensor.robot_upstairs_battery', String(up.battery), {unit_of_measurement: '%', device_class: 'battery'}, 'robot2');
+        put('camera.vacuum_map_2', 'idle', {}, 'robot2');
+      }
+      SCRIPTS.forEach(function(id){ e[id] = {state: 'off', attributes: {}}; src[id] = {integration: 'script'}; });
+      return {entities: e, sources: src};
+    }
+    var MAP = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 150">' +
+      '<g stroke="#fff" stroke-width="2"><path fill="#9FC5E8" d="M10 10h80v60H10z"/><path fill="#F6C59A" d="M94 10h116v86H94z"/><path fill="#B6D7A8" d="M10 74h80v66H10z"/><path fill="#D5A6BD" d="M94 100h60v40H94z"/><path fill="#FFE599" d="M158 100h52v40h-52z"/></g>' +
+      '<g font-family="Segoe UI,sans-serif" font-size="9" fill="#2b2b2b" opacity=".75"><text x="16" y="24">Kitchen</text><text x="100" y="24">Living room</text><text x="16" y="88">Dining</text><text x="100" y="114">Hall</text><text x="164" y="114">Bath</text></g>' +
+      '<path d="M30 40h40M30 48h40M30 56h40" stroke="#fff" stroke-width="3" opacity=".7"/>' +
+      '<rect x="196" y="128" width="10" height="6" rx="1.5" fill="#444"/><circle cx="201" cy="122" r="5" fill="#fff" stroke="#444" stroke-width="1.5"/></svg>');
+    return {
+      state: function(){ var b = build(); return Promise.resolve({entities: b.entities, sources: b.sources, control: [], unit: '°F'}); },
+      cameraUrl: function(){ return MAP; },
+      action: function(id, what, val){
+        if (id.indexOf('switch.') === 0){ s.perRoom = what === 'turn_on'; }
+        else if (id === 'vacuum.robot_upstairs'){ up.state = what === 'start' ? 'cleaning' : what === 'pause' ? 'paused' : 'returning'; }
+        else if (id.indexOf('select.') === 0){ if (/selected_map/.test(id)) s.floor = val; else if (/mode/.test(id)) s.mode = val; else if (/upstairs/.test(id)) {} else s.suction = val; }
+        else if (id.indexOf('script.') === 0 || what === 'start'){ if (s.state !== 'paused') s.steps = 0; s.state = 'cleaning'; }
+        else if (what === 'pause') s.state = 'paused';
+        else if (what === 'dock'){ s.state = 'returning'; s.steps = 31; }
+        return new Promise(function(r){ setTimeout(r, 300); });
+      }
+    };
+  }
+})();
+</script>
+</body>
+</html>
