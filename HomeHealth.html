@@ -1,0 +1,692 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HomeHealth</title>
+  <link rel="stylesheet" href="/index.css">
+
+  <script type="application/json" id="homeglow-manifest">
+  {
+    "manifestVersion": 1,
+    "id": "home-health",
+    "name": "HomeHealth",
+    "version": "1.0.0",
+    "description": "Which Home Assistant devices are offline, low on battery or on weak Wi-Fi, grouped by Zigbee, Z-Wave, Wi-Fi and more. Tap a network to see all of its devices, and a device for its recent dropouts. Quiet when all is well. Read only.",
+    "category": "household",
+    "author": "jasonstantler",
+    "apiVersion": "v1",
+    "storage": true,
+    "homeAssistant": {
+      "domains": ["sensor", "binary_sensor", "light", "switch", "fan", "climate", "vacuum", "select", "number", "button"],
+      "control": false
+    },
+    "settings": [
+      { "key": "batteryLow", "label": "Warn when a battery is at or below (%)", "type": "number", "default": 20, "min": 1, "max": 90 },
+      { "key": "weakSignal", "label": "Warn when Wi-Fi signal is at or below (dBm)", "type": "number", "default": -80, "min": -100, "max": -40 },
+      { "key": "offlineAfter", "label": "Call a device offline after (minutes)", "type": "number", "default": 5, "min": 0, "max": 1440 }
+    ]
+  }
+  </script>
+
+  <style>
+    /* HomeHealth: a ring for the whole house, a chip per network (tap one
+       for its devices), then only what needs a look, worst first. Theme roles
+       throughout, each with a fallback. No color-scheme: the frame paints the
+       card, and declaring one makes a dark tile under a light theme. */
+    :root {
+      --acc: var(--accent, #3a7cc4);
+      --ink: var(--text, #1e2b3a);
+      --ink-2: var(--text-secondary, #5a6b7d);
+      --line: color-mix(in srgb, var(--ink) 9%, transparent);
+      --soft: color-mix(in srgb, var(--ink) 4.5%, transparent);
+      --err: var(--hg-error, #c2412d);
+      --warn: var(--warning, #b7791f);
+      --ok: var(--success, #3f8f5a);
+      --r: var(--hg-radius-md, 12px);
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; height: 100%; }
+    body {
+      background: var(--card-bg, #fff);
+      color: var(--ink);
+      font-family: var(--hg-font-body, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif);
+      -webkit-font-smoothing: antialiased;
+      overflow: hidden;
+      -webkit-user-select: none; user-select: none;
+    }
+    button { font: inherit; color: inherit; }
+    svg { display: block; }
+
+    /* Always a solid card. HomeGlow clears a plugin's page background and paints
+       its frame at the card opacity, so the card paints its own surface, over a
+       solid base in case the theme's card color is see-through. */
+    #app { height: 100%; container-type: size; position: relative;
+      background: linear-gradient(var(--card-bg, #FBFAF8), var(--card-bg, #FBFAF8)), #FBFAF8; }
+    [data-theme="dark"] #app { background: linear-gradient(var(--card-bg, #2C2A26), var(--card-bg, #2C2A26)), #2C2A26; }
+    .wrap { --pad: clamp(10px, 3.4cqmin, 22px); height: 100%; padding: var(--pad);
+      display: flex; flex-direction: column; gap: clamp(8px, 2.4cqmin, 14px); }
+
+    /* Head: a ring for the whole house, the title, and the verdict under it. */
+    .head { display: flex; align-items: center; gap: clamp(10px, 2.6cqmin, 14px); flex: none; min-width: 0; }
+    .ring { position: relative; flex: none; width: clamp(38px, 10.5cqmin, 54px); height: clamp(38px, 10.5cqmin, 54px); color: var(--ok); }
+    .ring.warn { color: var(--warn); }
+    .ring.bad { color: var(--err); }
+    .ring svg.gauge { width: 100%; height: 100%; transform: rotate(-90deg); }
+    .ring .track { fill: none; stroke: color-mix(in srgb, currentColor 16%, transparent); stroke-width: 3.2; }
+    .ring .fill { fill: none; stroke: currentColor; stroke-width: 3.2; stroke-linecap: round; transition: stroke-dasharray .6s ease; }
+    .ring .mid { position: absolute; inset: 0; display: grid; place-items: center; font-weight: 800; font-variant-numeric: tabular-nums;
+      font-size: clamp(0.85rem, 3.6cqmin, 1.15rem); }
+    .ring .mid svg { width: 44%; height: 44%; fill: none; stroke: currentColor; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
+    .who { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+    .title { font-family: var(--hg-font-heading, inherit); text-transform: var(--hg-heading-transform, none); letter-spacing: var(--hg-heading-letter-spacing, -0.01em);
+      font-weight: 700; font-size: clamp(0.95rem, 4cqmin, 1.3rem); line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .verdict { font-size: clamp(0.72rem, 2.8cqmin, 0.92rem); color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .verdict b { font-weight: 700; }
+    .verdict.bad b { color: var(--err); }
+    .verdict.warn b { color: var(--warn); }
+    .verdict.ok b { color: var(--ok); }
+
+    /* Networks: one chip each, with a count and any trouble; tap for its devices. */
+    .nets { display: flex; flex-wrap: wrap; gap: 6px; flex: none; }
+    .net { appearance: none; border: 1px solid var(--line); background: var(--soft); cursor: pointer; -webkit-tap-highlight-color: transparent;
+      display: inline-flex; align-items: center; gap: 0.42em; padding: 0.32em 0.7em 0.32em 0.5em; border-radius: 999px;
+      font-size: clamp(0.7rem, 2.55cqmin, 0.86rem); font-weight: 600; color: var(--ink-2); white-space: nowrap; transition: background .15s, border-color .15s; }
+    .net svg { width: 1.2em; height: 1.2em; fill: none; stroke: var(--acc); stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+    .net b { color: var(--ink); font-weight: 700; font-variant-numeric: tabular-nums; }
+    .net .n { min-width: 1.45em; height: 1.45em; padding: 0 0.35em; border-radius: 999px; display: inline-grid; place-items: center;
+      font-size: 0.82em; font-weight: 800; color: #fff; background: var(--warn); margin-left: 0.1em; }
+    .net.bad .n { background: var(--err); }
+    .net:hover { background: color-mix(in srgb, var(--acc) 7%, transparent); }
+    .net:active { transform: scale(0.97); }
+    .net:focus-visible { outline: 3px solid var(--acc); outline-offset: 2px; }
+
+    /* Body: problems, and the batteries to change next beside or below. */
+    .body { flex: 1; min-height: 0; display: grid; gap: clamp(10px, 2.8cqmin, 20px); grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+    .body.two { grid-template-rows: minmax(0, 1.5fr) minmax(0, 1fr); }
+    @container (min-width: 600px) and (min-height: 260px) {
+      .body.two { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+    }
+    @container (max-height: 300px) { .body.two { grid-template-rows: minmax(0, 1fr); } .body.two .soon { display: none; } }
+    @container (min-width: 600px) and (min-height: 260px) { .body.two .soon { display: flex; } }
+    section { min-height: 0; display: flex; flex-direction: column; gap: 4px; }
+    h3 { margin: 0 0 2px; font-size: clamp(0.64rem, 2.3cqmin, 0.76rem); font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-2); flex: none; }
+    ul { list-style: none; margin: 0; padding: 0; overflow-y: auto; min-height: 0; display: flex; flex-direction: column;
+      scrollbar-width: thin; overscroll-behavior: contain; }
+
+    /* A row: status icon, name and what's wrong, the network's mark, a chevron. */
+    .row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: clamp(9px, 2.4cqmin, 13px);
+      padding: clamp(6px, 1.8cqmin, 9px) 4px; border: 0; border-bottom: 1px solid var(--line); background: none;
+      width: 100%; text-align: left; cursor: pointer; -webkit-tap-highlight-color: transparent; border-radius: 0; }
+    li:last-child > .row { border-bottom: 0; }
+    .row:active { background: var(--soft); }
+    .row:focus-visible { outline: 3px solid var(--acc); outline-offset: -1px; border-radius: 8px; }
+    .ico { width: clamp(28px, 7.4cqmin, 38px); height: clamp(28px, 7.4cqmin, 38px); border-radius: 50%; display: grid; place-items: center; flex: none; }
+    .ico svg { width: 54%; height: 54%; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+    .ico.off { color: var(--err); background: color-mix(in srgb, var(--err) 12%, transparent); }
+    .ico.bat, .ico.sig { color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, transparent); }
+    .ico.bat.crit { color: var(--err); background: color-mix(in srgb, var(--err) 12%, transparent); }
+    .ico.okay { color: var(--ok); background: color-mix(in srgb, var(--ok) 11%, transparent); }
+    .ico.mute { color: var(--ink-2); background: var(--soft); }
+    .txt { min-width: 0; display: flex; flex-direction: column; gap: 0; }
+    .txt b { font-weight: 650; font-size: clamp(0.8rem, 3cqmin, 1rem); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .txt small { font-size: clamp(0.68rem, 2.5cqmin, 0.85rem); color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    em { font-style: normal; font-weight: 700; }
+    .off-t em { color: var(--err); }
+    .bat-t em, .sig-t em { color: var(--warn); }
+    .end { display: flex; align-items: center; gap: 6px; color: var(--ink-2); }
+    .end .mark svg { width: clamp(14px, 3.6cqmin, 18px); height: clamp(14px, 3.6cqmin, 18px); fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; opacity: .75; }
+    .end .chev svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; opacity: .45; }
+
+    /* A healthy device in a network's list: a dot, its name, its levels. */
+    .row.lite { grid-template-columns: 10px minmax(0, 1fr) auto; padding-top: clamp(5px, 1.4cqmin, 8px); padding-bottom: clamp(5px, 1.4cqmin, 8px); }
+    .row.lite .dotmark { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); justify-self: center; box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 16%, transparent); }
+    .row.lite .dotmark.mute { background: var(--ink-2); box-shadow: 0 0 0 3px var(--soft); }
+    .row.lite .txt b { font-weight: 600; }
+    .row.lite .lvl { font-weight: 600; color: var(--ink-2); }
+    .row.lite .lvl .bar { width: clamp(28px, 7cqmin, 44px); }
+
+    /* Batteries to change next: a slim meter each. */
+    .soon .row { grid-template-columns: minmax(0, 1fr) auto; cursor: default; }
+    .soon .row:active { background: none; }
+    .lvl { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: clamp(0.72rem, 2.6cqmin, 0.88rem); font-variant-numeric: tabular-nums; }
+    .bar { width: clamp(36px, 10cqmin, 64px); height: var(--hg-meter-thickness, 6px); border-radius: 99px; background: var(--hg-meter-track, color-mix(in srgb, var(--ink) 11%, transparent)); overflow: hidden; }
+    .bar span { display: block; height: 100%; border-radius: inherit; background: var(--hg-meter-fill, var(--acc)); }
+    .bar.low span { background: var(--warn); }
+
+    /* All good: centred in whatever room there is. */
+    .calm { min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: clamp(3px, 1.4cqmin, 8px); padding: 4px; }
+    .calm strong { font-size: clamp(0.9rem, 3.6cqmin, 1.15rem); font-weight: 700; color: var(--ok); }
+    .calm span { font-size: clamp(0.72rem, 2.7cqmin, 0.92rem); color: var(--ink-2); }
+
+    .foot { flex: none; display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: clamp(0.64rem, 2.2cqmin, 0.78rem); color: var(--ink-2); }
+    .link { appearance: none; border: 0; background: none; padding: 4px 0; font-weight: 700; color: var(--acc); cursor: pointer; }
+    @container (max-height: 240px) { .foot { display: none; } }
+
+    .msg { margin: auto; max-width: 30em; text-align: center; color: var(--ink-2); font-size: clamp(0.8rem, 3cqmin, 1rem); line-height: 1.4; padding: 12px; }
+
+    /* Sheets: a network's devices, one device, an outage, the ignored list. */
+    .sheet { position: absolute; inset: 0; z-index: 10; background: inherit; display: flex; flex-direction: column;
+      --pad: clamp(10px, 3.4cqmin, 22px); padding: var(--pad); gap: clamp(8px, 2.2cqmin, 12px); animation: rise .18s ease-out; }
+    @keyframes rise { from { opacity: 0; transform: translateY(6px); } }
+    @media (prefers-reduced-motion: reduce) { .sheet { animation: none; } }
+    .sheet .top { display: flex; align-items: center; gap: 12px; flex: none; }
+    .sheet h2 { margin: 0; font-size: clamp(1rem, 4.2cqmin, 1.3rem); font-weight: 700; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      font-family: var(--hg-font-heading, inherit); text-transform: var(--hg-heading-transform, none); }
+    .sheet .sub { color: var(--ink-2); font-size: clamp(0.72rem, 2.7cqmin, 0.9rem); }
+    .sheet .grow { min-width: 0; flex: 1; display: flex; flex-direction: column; }
+    .sheet .ico.big { width: clamp(34px, 9cqmin, 46px); height: clamp(34px, 9cqmin, 46px); }
+    .sheet .ico.netico { color: var(--acc); background: color-mix(in srgb, var(--acc) 11%, transparent); }
+    .sheet .list { flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: thin; overscroll-behavior: contain; display: block; }
+    .sheet .list ul { overflow: visible; }
+    .sheet h3 { margin-top: 6px; }
+    .facts { list-style: none; margin: 0; padding: 0; overflow-y: auto; min-height: 0; flex: 1; display: flex; flex-direction: column; }
+    .facts li { display: flex; justify-content: space-between; gap: 12px; padding: clamp(6px, 1.8cqmin, 10px) 2px; border-bottom: 1px solid var(--line);
+      font-size: clamp(0.76rem, 2.8cqmin, 0.95rem); }
+    .facts li span:first-child { color: var(--ink-2); }
+    .facts li span:last-child { font-weight: 700; text-align: right; white-space: nowrap; }
+    .facts li.dead span:last-child { color: var(--err); }
+    .sheet .scroll { flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: thin; display: flex; flex-direction: column; gap: 6px; }
+    .sheet .scroll .facts { flex: none; overflow: visible; }
+    .sheet .scroll h3 { margin-top: 10px; }
+    .tip { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: var(--r); background: var(--soft); color: var(--ink-2);
+      font-size: clamp(0.72rem, 2.7cqmin, 0.9rem); line-height: 1.35; flex: none; }
+    .acts { display: flex; gap: 8px; justify-content: flex-end; flex: none; flex-wrap: wrap; }
+    .btn { appearance: none; border: 0; min-height: 40px; padding: 0 1.1em; border-radius: var(--hg-button-radius, 999px); cursor: pointer;
+      font-weight: var(--hg-button-weight, 700); font-size: clamp(0.78rem, 2.8cqmin, 0.95rem);
+      background: transparent; color: var(--ink); box-shadow: inset 0 0 0 1px var(--hg-button-quiet-border, var(--line)); }
+    .btn.primary { background: var(--hg-button-bg, var(--acc)); color: var(--hg-button-text, #fff); box-shadow: none; }
+    .x { appearance: none; border: 0; background: var(--soft); width: 36px; height: 36px; border-radius: 50%; cursor: pointer; display: grid; place-items: center; flex: none; }
+    .x svg { width: 16px; height: 16px; stroke: currentColor; stroke-width: 2.2; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+    .pill { font-size: 0.78em; font-weight: 700; padding: 0.1em 0.55em; border-radius: 999px; background: var(--soft); color: var(--ink-2); margin-left: 6px; }
+  </style>
+</head>
+<body>
+  <div id="app"><div class="wrap"><p class="msg">Checking your devices…</p></div></div>
+
+  <script src="/plugin-sdk/v1.js"></script>
+  <script>
+  (function () {
+    'use strict';
+    var HG = window.HomeGlow;
+    var params = new URLSearchParams(location.search);
+    var theme = params.get('theme');
+    if (theme === 'dark' || theme === 'light') document.documentElement.setAttribute('data-theme', theme);
+    if (params.get('transparent') === 'true') document.documentElement.classList.add('transparent');
+
+    var app = document.getElementById('app');
+    // Every sensor changes all day; a health card needs none of that, so it
+    // reads on its own clock rather than on Home Assistant's nudges.
+    var POLL_MS = 20000;
+    var settings = { batteryLow: 20, weakSignal: -80, offlineAfter: 5 };
+    var data = null;          // last state() answer
+    var problem = null;       // a message instead of the card
+    var ignored = [];         // [{ tag, name }]
+    var open = null;          // what the sheet shows: a device tag, 'net:<id>', 'outage:<integration>' or 'ignored'
+    var back = null;          // the network list a device was opened from
+    // Dropouts the card has seen: { since, devices: { tag: [{ off, on }] } }.
+    // HomeGlow doesn't give plugins Home Assistant's history, so the card keeps
+    // its own, while a display shows it.
+    var log = { since: Date.now(), devices: {} };
+    var KEEP_MS = 30 * 24 * 3600000, KEEP_PER_DEVICE = 20, logDirty = false;
+    var lastHtml = '';
+
+    // Which network an integration's devices are on. Anything else with a
+    // device counts under "Other"; services that aren't devices are skipped.
+    var NETWORKS = [
+      { id: 'zigbee', label: 'Zigbee', from: ['zha', 'hue', 'deconz', 'tradfri', 'zigbee2mqtt'] },
+      { id: 'zwave', label: 'Z-Wave', from: ['zwave_js', 'zwave_me'] },
+      { id: 'wifi', label: 'Wi-Fi', from: ['shelly', 'esphome', 'tplink', 'tuya', 'wiz', 'lifx', 'broadlink', 'wyze', 'webostv', 'cast',
+        'dlna_dmr', 'samsungtv', 'roku', 'sonos', 'yeelight', 'govee_light_local', 'meross_lan', 'wled', 'tasmota', 'nest', 'ring', 'tapo',
+        'kasa', 'ecobee', 'myq', 'roomba', 'roborock', 'ecovacs', 'reolink', 'august', 'yale', 'smartthings', 'lg_thinq', 'switcher_kis',
+        'nanoleaf', 'elgato', 'twinkly', 'magic_home', 'flux_led', 'sense', 'emporia_vue', 'rachio', 'bond', 'somfy_mylink',
+        'dreame_vacuum', 'xiaomi_miio', 'androidtv', 'androidtv_remote', 'apple_tv', 'denonavr', 'heos', 'yamaha_musiccast', 'onvif', 'amcrest'] },
+      { id: 'mqtt', label: 'MQTT', from: ['mqtt'] },
+      { id: 'bt', label: 'Bluetooth', from: ['bthome', 'xiaomi_ble', 'switchbot', 'govee_ble', 'inkbird', 'sensorpush', 'yalexs_ble', 'oralb',
+        'led_ble', 'bluemaestro', 'qingping', 'thermopro', 'mopeka', 'airthings_ble'] }
+    ];
+    var OTHER = { id: 'other', label: 'Other' };
+    var NOT_DEVICES = ['mobile_app', 'hassio', 'backup', 'met', 'sun', 'music_assistant', 'cloud', 'template', 'group', 'utility_meter',
+      'derivative', 'integration', 'min_max', 'statistics', 'threshold', 'trend', 'filter', 'history_stats', 'time_date', 'workday',
+      'season', 'moon', 'speedtestdotnet', 'fastdotcom', 'google_translate', 'radio_browser', 'shopping_list', 'local_calendar',
+      'local_todo', 'forecast_solar', 'nws', 'openweathermap', 'accuweather', 'pirateweather', 'waze_travel_time', 'systemmonitor',
+      'uptime', 'version', 'hacs', 'homeassistant_alerts', 'command_line', 'rest', 'scrape', 'ping'];
+    var NAMES = { zha: 'ZHA', zwave_js: 'Z-Wave JS', mqtt: 'MQTT', wyze: 'Wyze', shelly: 'Shelly', esphome: 'ESPHome', tplink: 'TP-Link',
+      tuya: 'Tuya', wiz: 'WiZ', webostv: 'LG webOS', hue: 'Philips Hue', nest: 'Google Nest', ring: 'Ring', broadlink: 'Broadlink',
+      smartthings: 'SmartThings', cast: 'Google Cast', sonos: 'Sonos', tasmota: 'Tasmota', dreame_vacuum: 'Dreame', xiaomi_miio: 'Xiaomi' };
+
+    function networkOf(integration) {
+      for (var i = 0; i < NETWORKS.length; i++) if (NETWORKS[i].from.indexOf(integration) !== -1) return NETWORKS[i];
+      return OTHER;
+    }
+    function networkById(id) {
+      for (var i = 0; i < NETWORKS.length; i++) if (NETWORKS[i].id === id) return NETWORKS[i];
+      return OTHER;
+    }
+    function integrationName(id) {
+      return NAMES[id] || String(id || '').split('_').map(function (w) { return w.charAt(0).toUpperCase() + w.slice(1); }).join(' ');
+    }
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; });
+    }
+    function num(v) { var n = parseFloat(v); return isFinite(n) ? n : null; }
+    function domainOf(id) { return id.split('.')[0]; }
+    function plural(n, one, many) { return n + ' ' + (n === 1 ? one : many); }
+
+    // "Back door contact Battery" -> "Back door contact": the device's own
+    // name is usually its shortest entity name.
+    var SUFFIX = /\s+(battery( level| low)?|signal( strength| level)?|rssi|wi-?fi( signal)?|link ?quality|lqi)$/i;
+    function deviceName(entities) {
+      var names = entities.map(function (e) { return String(e.attrs.friendly_name || e.id); }).sort(function (a, b) { return a.length - b.length; });
+      var name = names[0] || '';
+      var trimmed = name.replace(SUFFIX, '');
+      return trimmed || name;
+    }
+
+    function ago(ms) {
+      var min = Math.max(1, Math.round(ms / 60000));
+      if (min < 60) return min + ' min';
+      var h = Math.round(min / 60);
+      if (h < 48) return h + ' h';
+      return Math.round(h / 24) + ' days';
+    }
+    function clock(t) {
+      var d = new Date(t);
+      var sameDay = new Date().toDateString() === d.toDateString();
+      return (sameDay ? '' : d.toLocaleDateString([], { weekday: 'short' }) + ' ') + d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    }
+
+    // Everything the card shows, from one state() answer.
+    function analyse(now) {
+      var devices = {};
+      var entities = (data && data.entities) || {};
+      var sources = (data && data.sources) || {};
+      Object.keys(entities).forEach(function (id) {
+        var st = entities[id];
+        var src = sources[id];
+        if (!st || !src || !src.device || NOT_DEVICES.indexOf(src.integration) !== -1) return;
+        var d = devices[src.device] || (devices[src.device] = { tag: src.device, integration: src.integration, net: networkOf(src.integration), entities: [] });
+        d.entities.push({ id: id, state: st.state, attrs: st.attributes || {}, changed: Date.parse(st.last_changed) || null });
+      });
+
+      var list = Object.keys(devices).map(function (tag) {
+        var d = devices[tag];
+        d.name = deviceName(d.entities);
+        var dead = d.entities.filter(function (e) { return e.state === 'unavailable'; });
+        d.offlineSince = null;
+        if (dead.length && dead.length === d.entities.length) {
+          d.offlineSince = Math.max.apply(null, dead.map(function (e) { return e.changed || now; }));
+        }
+        d.battery = null; d.batteryLow = false; d.signal = null;
+        d.entities.forEach(function (e) {
+          var cls = e.attrs.device_class;
+          var dom = domainOf(e.id);
+          if (cls === 'battery' && dom === 'sensor') {
+            var lvl = num(e.state);
+            if (lvl !== null && (d.battery === null || lvl < d.battery)) d.battery = lvl;
+          } else if (cls === 'battery' && dom === 'binary_sensor' && e.state === 'on') {
+            d.batteryLow = true;
+          } else if (cls === 'signal_strength' && dom === 'sensor' && /dBm/i.test(e.attrs.unit_of_measurement || '')) {
+            var dbm = num(e.state);
+            if (dbm !== null && (d.signal === null || dbm < d.signal)) d.signal = dbm;
+          }
+        });
+        return d;
+      });
+
+      var ignoredTags = ignored.map(function (i) { return i.tag; });
+      var graceMs = Math.max(0, num(settings.offlineAfter) || 0) * 60000;
+      var lowAt = num(settings.batteryLow); if (lowAt === null) lowAt = 20;
+      var weakAt = num(settings.weakSignal); if (weakAt === null) weakAt = -80;
+
+      list.forEach(function (d) {
+        d.ignored = ignoredTags.indexOf(d.tag) !== -1;
+        d.issue = null;
+        if (d.offlineSince !== null && now - d.offlineSince >= graceMs) d.issue = { kind: 'off', rank: 0, since: d.offlineSince };
+        else if (d.offlineSince === null && (d.batteryLow || (d.battery !== null && d.battery <= lowAt))) d.issue = { kind: 'bat', rank: 1, level: d.battery };
+        else if (d.offlineSince === null && d.signal !== null && d.signal <= weakAt) d.issue = { kind: 'sig', rank: 2, dbm: d.signal };
+      });
+
+      // Every device of one integration offline at once is one problem: the
+      // hub or the service is down, not each device.
+      var byIntegration = {};
+      list.forEach(function (d) { (byIntegration[d.integration] = byIntegration[d.integration] || []).push(d); });
+      var outages = [];
+      Object.keys(byIntegration).forEach(function (integ) {
+        var all = byIntegration[integ];
+        var down = all.filter(function (d) { return d.issue && d.issue.kind === 'off' && !d.ignored; });
+        if (down.length >= 3 && down.length === all.length) {
+          down.forEach(function (d) { d.inOutage = true; });
+          outages.push({ outage: true, integration: integ, count: down.length, net: all[0].net,
+            since: Math.min.apply(null, down.map(function (d) { return d.issue.since; })), rank: -1 });
+        }
+      });
+
+      var issues = list.filter(function (d) { return d.issue && !d.ignored && !d.inOutage; });
+      issues.sort(byWorst);
+      issues = outages.concat(issues);
+
+      var soon = list.filter(function (d) { return !d.issue && !d.ignored && d.battery !== null && d.battery <= 50; })
+        .sort(function (a, b) { return a.battery - b.battery; }).slice(0, 6);
+
+      var nets = NETWORKS.concat([OTHER]).map(function (n) {
+        var mine = list.filter(function (d) { return d.net.id === n.id; });
+        var bad = mine.filter(function (d) { return d.issue && !d.ignored; });
+        var worst = 9;
+        bad.forEach(function (d) { if (d.issue.rank < worst) worst = d.issue.rank; });
+        return { id: n.id, label: n.label, count: mine.length, issues: bad.length, state: worst === 0 ? 'bad' : worst < 9 ? 'warn' : '' };
+      }).filter(function (n) { return n.count > 0; });
+
+      var watched = list.filter(function (d) { return !d.ignored; });
+      var offline = watched.filter(function (d) { return d.issue && d.issue.kind === 'off'; }).length;
+      return { list: list, issues: issues, soon: soon, nets: nets, total: list.length, watched: watched.length, offlineDevices: offline,
+        ignoredCount: list.length - watched.length, offline: issues.filter(function (i) { return i.outage || i.issue.kind === 'off'; }).length };
+    }
+    function byWorst(a, b) {
+      if (a.issue.rank !== b.issue.rank) return a.issue.rank - b.issue.rank;
+      if (a.issue.kind === 'off') return a.issue.since - b.issue.since;
+      if (a.issue.kind === 'bat') return (a.issue.level === null ? -1 : a.issue.level) - (b.issue.level === null ? -1 : b.issue.level);
+      return a.issue.dbm - b.issue.dbm;
+    }
+
+    var ICONS = {
+      off: '<svg viewBox="0 0 24 24"><path d="M3 3l18 18"/><path d="M8.5 16.5a5 5 0 0 1 7 0"/><path d="M5 12.9a10 10 0 0 1 4.2-2.5M19 12.9a10 10 0 0 0-2.1-1.6"/><path d="M2 9.2a15 15 0 0 1 4.5-2.9M22 9.2A15 15 0 0 0 11 5.1"/><circle cx="12" cy="20" r="0.6"/></svg>',
+      sig: '<svg viewBox="0 0 24 24"><path d="M5 20v-2"/><path d="M10 20v-6"/><path d="M15 20V10" opacity=".35"/><path d="M20 20V5" opacity=".35"/></svg>',
+      check: '<svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
+      close: '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>',
+      back: '<svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg>',
+      chev: '<svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg>',
+      hub: '<svg viewBox="0 0 24 24"><rect x="4" y="9" width="16" height="9" rx="2"/><path d="M8 9V6M16 9V6"/><path d="M3 3l18 18"/></svg>',
+      dot: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2" fill="currentColor" stroke="none"/></svg>',
+      info: '<svg viewBox="0 0 24 24" style="width:18px;height:18px;flex:none;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.6v.1"/></svg>'
+    };
+    // A small mark for each network, used on its chip, its rows and its list.
+    var NET_ICONS = {
+      zigbee: '<svg viewBox="0 0 24 24"><path d="M12 2.8 20 7.4v9.2L12 21.2 4 16.6V7.4z"/><path d="M8.6 9h6.8l-6.8 6h6.8"/></svg>',
+      zwave: '<svg viewBox="0 0 24 24"><path d="M3 9c2.2-2.4 4.4-2.4 6.6 0s4.4 2.4 6.6 0 3.6-2 4.8-1"/><path d="M3 15c2.2-2.4 4.4-2.4 6.6 0s4.4 2.4 6.6 0 3.6-2 4.8-1"/></svg>',
+      wifi: '<svg viewBox="0 0 24 24"><path d="M2.5 9a14 14 0 0 1 19 0"/><path d="M5.8 12.5a9.2 9.2 0 0 1 12.4 0"/><path d="M9.1 16a4.4 4.4 0 0 1 5.8 0"/><circle cx="12" cy="19.2" r="0.9" fill="currentColor"/></svg>',
+      mqtt: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="2.6"/><circle cx="4.8" cy="6" r="1.8"/><circle cx="19.2" cy="6" r="1.8"/><circle cx="12" cy="20.2" r="1.8"/><path d="M6.3 7.2l3.6 3.1M17.7 7.2l-3.6 3.1M12 14.6v3.8"/></svg>',
+      bt: '<svg viewBox="0 0 24 24"><path d="M7 7.5l10 9-5 4.5v-18l5 4.5-10 9"/></svg>',
+      other: '<svg viewBox="0 0 24 24"><rect x="4" y="4" width="6.5" height="6.5" rx="1.6"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.6"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.6"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.6"/></svg>'
+    };
+    function netIcon(id) { return NET_ICONS[id] || NET_ICONS.other; }
+    function batteryIcon(level) {
+      var w = level === null ? 2 : Math.max(1.2, Math.min(12, (level / 100) * 12));
+      return '<svg viewBox="0 0 24 24"><rect x="3" y="7.5" width="16" height="9" rx="2"/><path d="M21 10.5v3"/><rect x="5" y="9.5" width="' + w.toFixed(1) + '" height="5" rx="0.8" fill="currentColor" stroke="none"/></svg>';
+    }
+
+    // One device's status: the icon class and icon, and its line of text.
+    function status(d, now) {
+      var i = d.issue;
+      if (i && i.kind === 'off') return { cls: 'off', ico: ICONS.off, t: 'off-t', line: '<em>Offline for ' + ago(now - i.since) + '</em>' };
+      if (i && i.kind === 'bat') return { cls: 'bat' + (i.level !== null && i.level <= 10 ? ' crit' : ''), ico: batteryIcon(i.level), t: 'bat-t',
+        line: '<em>' + (i.level === null ? 'Battery low' : 'Battery ' + Math.round(i.level) + '%') + '</em> · time to change it' };
+      if (i && i.kind === 'sig') return { cls: 'sig', ico: ICONS.sig, t: 'sig-t', line: '<em>Weak Wi-Fi</em> · ' + Math.round(i.dbm) + ' dBm' };
+      if (d.offlineSince !== null) return { cls: 'mute', ico: ICONS.off, t: '', line: 'Just dropped off · ' + ago(now - d.offlineSince) };
+      var bits = ['Online'];
+      if (d.battery !== null) bits.push('battery ' + Math.round(d.battery) + '%');
+      if (d.signal !== null) bits.push(Math.round(d.signal) + ' dBm');
+      return { cls: 'okay', ico: ICONS.dot, t: '', line: bits.join(' · ') };
+    }
+
+    function levels(d) {
+      var out = '';
+      if (d.battery !== null) out += '<span class="bar' + (d.battery <= 30 ? ' low' : '') + '"><span style="width:' + Math.max(4, Math.min(100, d.battery)) + '%"></span></span>' + Math.round(d.battery) + '%';
+      else if (d.signal !== null) out += Math.round(d.signal) + ' dBm';
+      return out ? '<span class="lvl">' + out + '</span>' : '';
+    }
+
+    function deviceRow(d, now, opts) {
+      var s = status(d, now);
+      if (opts && opts.fromNet && !(d.issue && !d.ignored)) {
+        var quiet = d.ignored || d.offlineSince !== null;
+        return '<li><button type="button" class="row lite" data-tag="' + esc(d.tag) + '" data-from="' + esc(opts.fromNet) + '">'
+          + '<span class="dotmark' + (quiet ? ' mute' : '') + '"></span>'
+          + '<span class="txt"><b>' + esc(d.name) + (d.ignored ? '<span class="pill">Ignored</span>' : '') + '</b>'
+          + (d.offlineSince !== null ? '<small>' + s.line + '</small>' : '') + '</span>'
+          + '<span class="end">' + levels(d) + '<span class="chev">' + ICONS.chev + '</span></span></button></li>';
+      }
+      return '<li><button type="button" class="row" data-tag="' + esc(d.tag) + '"' + (opts && opts.fromNet ? ' data-from="' + esc(opts.fromNet) + '"' : '') + '>'
+        + '<span class="ico ' + s.cls + '">' + s.ico + '</span>'
+        + '<span class="txt ' + s.t + '"><b>' + esc(d.name) + (d.ignored ? '<span class="pill">Ignored</span>' : '') + '</b><small>' + s.line + '</small></span>'
+        + '<span class="end">' + (opts && opts.fromNet ? '' : '<span class="mark" title="' + esc(d.net.label) + '">' + netIcon(d.net.id) + '</span>')
+        + '<span class="chev">' + ICONS.chev + '</span></span></button></li>';
+    }
+
+    function issueRow(d, now) {
+      if (d.outage) {
+        return '<li><button type="button" class="row" data-outage="' + esc(d.integration) + '">'
+          + '<span class="ico off">' + ICONS.hub + '</span>'
+          + '<span class="txt off-t"><b>All ' + d.count + ' ' + esc(integrationName(d.integration)) + ' devices</b>'
+          + '<small><em>Offline for ' + ago(now - d.since) + '</em> · the hub or service may be down</small></span>'
+          + '<span class="end"><span class="mark">' + netIcon(d.net.id) + '</span><span class="chev">' + ICONS.chev + '</span></span></button></li>';
+      }
+      return deviceRow(d, now);
+    }
+
+    function soonList(a) {
+      if (!a.soon.length) return '';
+      return '<section class="soon"><h3>Batteries to change next</h3><ul>' + a.soon.map(function (d) {
+        return '<li><div class="row"><span class="txt"><b>' + esc(d.name) + '</b></span>'
+          + '<span class="end"><span class="mark" title="' + esc(d.net.label) + '">' + netIcon(d.net.id) + '</span>' + levels(d) + '</span></div></li>';
+      }).join('') + '</ul></section>';
+    }
+
+    function ringHtml(a) {
+      var n = a.issues.length;
+      var cls = n === 0 ? '' : a.offline ? 'bad' : 'warn';
+      var frac = a.watched ? (a.watched - a.offlineDevices) / a.watched : 1;
+      var C = 2 * Math.PI * 15.5, len = Math.max(0.02, frac) * C;
+      return '<div class="ring ' + cls + '" aria-hidden="true"><svg class="gauge" viewBox="0 0 36 36"><circle class="track" cx="18" cy="18" r="15.5"/>'
+        + '<circle class="fill" cx="18" cy="18" r="15.5" stroke-dasharray="' + len.toFixed(1) + ' ' + C.toFixed(1) + '"/></svg>'
+        + '<div class="mid">' + (n ? n : ICONS.check) + '</div></div>';
+    }
+
+    function cardHtml(now) {
+      if (problem) return '<div class="wrap"><p class="msg">' + esc(problem) + '</p></div>';
+      if (!data) return '<div class="wrap"><p class="msg">Checking your devices…</p></div>';
+      var a = analyse(now);
+      if (!a.total) return '<div class="wrap"><p class="msg">No devices found in Home Assistant yet.</p></div>';
+
+      var n = a.issues.length;
+      var online = a.watched - a.offlineDevices;
+      var verdict = n === 0
+        ? '<span class="verdict ok"><b>All good</b> · ' + plural(a.watched, 'device', 'devices') + ' online</span>'
+        : '<span class="verdict ' + (a.offline ? 'bad' : 'warn') + '"><b>' + n + (n === 1 ? ' needs' : ' need') + ' a look</b> · ' + online + ' of ' + a.watched + ' online</span>';
+      var html = '<div class="wrap">'
+        + '<div class="head">' + ringHtml(a) + '<div class="who"><div class="title">HomeHealth</div>' + verdict + '</div></div>'
+        + '<div class="nets">' + a.nets.map(function (x) {
+          var label = x.label + ', ' + plural(x.count, 'device', 'devices') + (x.issues ? ', ' + x.issues + ' need a look' : '') + '. Show its devices';
+          return '<button type="button" class="net ' + x.state + '" data-net="' + esc(x.id) + '" aria-label="' + esc(label) + '">' + netIcon(x.id)
+            + esc(x.label) + ' <b>' + x.count + '</b>' + (x.issues ? '<span class="n">' + x.issues + '</span>' : '') + '</button>';
+        }).join('') + '</div>';
+
+      var soon = soonList(a);
+      html += '<div class="body' + (soon ? ' two' : '') + '">';
+      if (n) {
+        html += '<section class="problems"><h3>Needs a look</h3><ul>' + a.issues.map(function (d) { return issueRow(d, now); }).join('') + '</ul></section>';
+      } else {
+        html += '<div class="calm"><strong>Nothing needs a look</strong>'
+          + '<span>' + plural(a.watched, 'device', 'devices') + ' on ' + plural(a.nets.length, 'network', 'networks') + ' · tap a network to see its devices</span></div>';
+      }
+      html += soon + '</div>';
+
+      html += '<div class="foot"><span>Checked ' + clock(now) + '</span>'
+        + (a.ignoredCount ? '<button type="button" class="link" data-show-ignored>' + a.ignoredCount + ' ignored</button>' : '<span></span>') + '</div>';
+      return html + '</div>';
+    }
+
+    function closeBtn() { return '<button type="button" class="x" data-close aria-label="Close">' + ICONS.close + '</button>'; }
+    function backBtn() { return '<button type="button" class="x" data-back aria-label="Back">' + ICONS.back + '</button>'; }
+
+    // One network's devices: what needs a look first, then the rest by name.
+    function networkSheet(a, id, now) {
+      var net = networkById(id);
+      var mine = a.list.filter(function (d) { return d.net.id === net.id; });
+      if (!mine.length) { open = null; return ''; }
+      var bad = mine.filter(function (d) { return d.issue && !d.ignored; }).sort(byWorst);
+      var rest = mine.filter(function (d) { return bad.indexOf(d) === -1; })
+        .sort(function (x, y) { return (x.ignored - y.ignored) || x.name.localeCompare(y.name); });
+      var integrations = [];
+      mine.forEach(function (d) { var nm = integrationName(d.integration); if (integrations.indexOf(nm) === -1) integrations.push(nm); });
+      var sub = plural(mine.length, 'device', 'devices') + ' · ' + (bad.length ? bad.length + (bad.length === 1 ? ' needs' : ' need') + ' a look' : 'all good')
+        + ' · ' + integrations.slice(0, 3).join(', ') + (integrations.length > 3 ? ' +' + (integrations.length - 3) : '');
+      return '<div class="sheet" role="dialog" aria-label="' + esc(net.label) + ' devices"><div class="top"><span class="ico big netico">' + netIcon(net.id) + '</span>'
+        + '<div class="grow"><h2>' + esc(net.label) + '</h2><div class="sub">' + esc(sub) + '</div></div>' + closeBtn() + '</div>'
+        + '<section class="list">'
+        + (bad.length ? '<h3>Needs a look</h3><ul>' + bad.map(function (d) { return deviceRow(d, now, { fromNet: net.id }); }).join('') + '</ul><h3>All good</h3>' : '')
+        + '<ul>' + rest.map(function (d) { return deviceRow(d, now, { fromNet: net.id }); }).join('') + '</ul></section></div>';
+    }
+
+    function sheetHtml(now) {
+      if (!open) return '';
+      if (open === 'ignored') {
+        return '<div class="sheet"><div class="top"><div class="grow"><h2>Ignored devices</h2><div class="sub">Left out of the card until you watch them again</div></div>' + closeBtn() + '</div>'
+          + '<ul class="facts">' + ignored.map(function (i) {
+            return '<li><span>' + esc(i.name) + '</span><span><button type="button" class="link" data-unignore="' + esc(i.tag) + '">Watch again</button></span></li>';
+          }).join('') + '</ul></div>';
+      }
+      var a = analyse(now);
+      if (open.indexOf('net:') === 0) return networkSheet(a, open.slice(4), now);
+      if (open.indexOf('outage:') === 0) {
+        var integ = open.slice(7);
+        var down = a.list.filter(function (x) { return x.integration === integ && x.inOutage; });
+        if (!down.length) { open = null; return ''; }
+        return '<div class="sheet"><div class="top"><span class="ico big off">' + ICONS.hub + '</span>'
+          + '<div class="grow"><h2>All ' + down.length + ' ' + esc(integrationName(integ)) + ' devices</h2><div class="sub">' + esc(down[0].net.label) + ' · offline together</div></div>'
+          + closeBtn() + '</div>'
+          + '<ul class="facts">' + down.map(function (x) {
+            return '<li class="dead"><span>' + esc(x.name) + '</span><span>' + ago(now - x.offlineSince) + '</span></li>';
+          }).join('') + '</ul>'
+          + '<div class="tip">' + ICONS.info + '<span>When every device from one brand drops at once, check its hub or app, or whether the brand’s service is down, before checking each device.</span></div>'
+          + '<div class="acts"><button type="button" class="btn primary" data-close>Done</button></div></div>';
+      }
+      var d = null;
+      a.list.forEach(function (x) { if (x.tag === open) d = x; });
+      if (!d) { open = null; back = null; return ''; }
+      var s = status(d, now);
+      var facts = [];
+      if (d.offlineSince !== null) facts.push('<li class="dead"><span>Offline since</span><span>' + clock(d.offlineSince) + ' (' + ago(now - d.offlineSince) + ')</span></li>');
+      if (d.battery !== null) facts.push('<li><span>Battery</span><span>' + Math.round(d.battery) + '%</span></li>');
+      else if (d.batteryLow) facts.push('<li><span>Battery</span><span>Low</span></li>');
+      if (d.signal !== null) facts.push('<li><span>Wi-Fi signal</span><span>' + Math.round(d.signal) + ' dBm</span></li>');
+      facts.push('<li><span>Network</span><span>' + esc(d.net.label) + '</span></li>');
+      facts.push('<li><span>Connected through</span><span>' + esc(integrationName(d.integration)) + '</span></li>');
+      facts.push('<li><span>Parts in Home Assistant</span><span>' + d.entities.length + '</span></li>');
+      var tip = d.offlineSince !== null
+        ? (d.net.id === 'wifi' ? 'Check it has power, then that it’s still on your Wi-Fi.' : d.net.id === 'zigbee' || d.net.id === 'zwave' ? 'Check its battery or power. A device far from the others may have lost the mesh.' : 'Check it has power.')
+        : d.issue && d.issue.kind === 'sig' ? 'Moving it or the router closer, or adding a mesh point, would help.'
+        : d.issue && d.issue.kind === 'bat' ? 'Change the battery soon; most devices drop off without warning when it runs out.' : '';
+      return '<div class="sheet" role="dialog" aria-label="' + esc(d.name) + '"><div class="top">' + (back ? backBtn() : '')
+        + '<span class="ico big ' + s.cls + '">' + s.ico + '</span>'
+        + '<div class="grow"><h2>' + esc(d.name) + '</h2><div class="sub ' + s.t + '">' + s.line + '</div></div>'
+        + closeBtn() + '</div>'
+        + '<div class="scroll"><ul class="facts">' + facts.join('') + '</ul>' + historyHtml(d, now) + '</div>'
+        + (tip ? '<div class="tip">' + ICONS.info + '<span>' + esc(tip) + '</span></div>' : '')
+        + '<div class="acts">' + (d.ignored
+          ? '<button type="button" class="btn" data-unignore="' + esc(d.tag) + '">Watch again</button>'
+          : '<button type="button" class="btn" data-ignore="' + esc(d.tag) + '">Ignore this device</button>')
+        + '<button type="button" class="btn primary" data-close>Done</button></div></div>';
+    }
+
+    // Note each device going offline and coming back.
+    function record(now) {
+      if (!data) return;
+      var a = analyse(now);
+      a.list.forEach(function (d) {
+        var ev = log.devices[d.tag] || [];
+        var open = ev.length && !ev[ev.length - 1].on ? ev[ev.length - 1] : null;
+        if (d.offlineSince !== null && !open && now - d.offlineSince >= 60000) {
+          ev.push({ off: d.offlineSince, on: null }); logDirty = true;
+        } else if (d.offlineSince === null && open) {
+          open.on = now; logDirty = true;
+        }
+        if (ev.length) log.devices[d.tag] = ev;
+      });
+      Object.keys(log.devices).forEach(function (tag) {
+        var ev = log.devices[tag].filter(function (e) { return !e.on || now - e.on < KEEP_MS; }).slice(-KEEP_PER_DEVICE);
+        if (ev.length !== log.devices[tag].length) logDirty = true;
+        if (ev.length) log.devices[tag] = ev; else delete log.devices[tag];
+      });
+      if (logDirty && HG && HG.storage) { logDirty = false; HG.storage.set('dropouts', log).catch(function () {}); }
+    }
+
+    function historyHtml(d, now) {
+      var ev = (log.devices[d.tag] || []).slice().reverse();
+      var html = '<h3>Recent dropouts</h3>';
+      if (!ev.length) return html + '<div class="sub">None since ' + esc(new Date(log.since).toLocaleDateString([], { month: 'short', day: 'numeric' })) + '.</div>';
+      var week = ev.filter(function (e) { return now - e.off < 7 * 24 * 3600000; }).length;
+      html += '<div class="sub">' + (week ? 'Dropped off ' + plural(week, 'time', 'times') + ' in the last 7 days' : 'None in the last 7 days') + '</div>';
+      return html + '<ul class="facts hist">' + ev.slice(0, 5).map(function (e) {
+        return '<li' + (e.on ? '' : ' class="dead"') + '><span>' + esc(clock(e.off)) + '</span><span>' + (e.on ? 'offline ' + ago(e.on - e.off) : 'still offline') + '</span></li>';
+      }).join('') + '</ul>';
+    }
+
+    function render() {
+      var now = Date.now();
+      var html = cardHtml(now) + sheetHtml(now);
+      if (html === lastHtml) return;
+      // Keep a scrolled list where it was when the card refreshes.
+      var scroller = app.querySelector('.sheet .list, .problems ul');
+      var keep = scroller ? scroller.scrollTop : 0;
+      lastHtml = html;
+      app.innerHTML = html;
+      var again = app.querySelector('.sheet .list, .problems ul');
+      if (again && keep) again.scrollTop = keep;
+    }
+
+    app.addEventListener('click', function (ev) {
+      var t = ev.target.closest('button');
+      if (!t) return;
+      if (t.hasAttribute('data-close')) { open = null; back = null; }
+      else if (t.hasAttribute('data-back')) { open = back; back = null; }
+      else if (t.dataset.net) { open = 'net:' + t.dataset.net; back = null; }
+      else if (t.dataset.tag) { back = t.dataset.from ? 'net:' + t.dataset.from : null; open = t.dataset.tag; }
+      else if (t.dataset.outage) { open = 'outage:' + t.dataset.outage; back = null; }
+      else if (t.hasAttribute('data-show-ignored')) { open = 'ignored'; back = null; }
+      else if (t.dataset.ignore) {
+        var name = '';
+        analyse(Date.now()).list.forEach(function (d) { if (d.tag === t.dataset.ignore) name = d.name; });
+        ignored = ignored.filter(function (i) { return i.tag !== t.dataset.ignore; }).concat([{ tag: t.dataset.ignore, name: name }]);
+        save(); open = back; back = null;
+      } else if (t.dataset.unignore) {
+        ignored = ignored.filter(function (i) { return i.tag !== t.dataset.unignore; });
+        save();
+        if (open === 'ignored') { if (!ignored.length) open = null; }
+        else { open = back; back = null; }
+      }
+      render();
+    });
+
+    function save() { if (HG && HG.storage) HG.storage.set('ignored', ignored).catch(function () {}); }
+
+    function poll() {
+      if (!HG || !HG.homeAssistant || !HG.homeAssistant.state) {
+        problem = 'This HomeGlow is too old for HomeHealth. Update HomeGlow to the release after 1.9.1 or later.';
+        return render();
+      }
+      HG.homeAssistant.state().then(function (res) {
+        if (res && res.error && !res.entities) { problem = res.status === 401 ? 'Home Assistant turned down HomeGlow’s sign-in. Check Admin → System → Connections.' : 'Can’t reach Home Assistant right now.'; }
+        else if (res && !res.sources) { problem = 'This HomeGlow is too old for HomeHealth. Update HomeGlow to the release after 1.9.1 or later.'; }
+        else { problem = null; data = res; record(Date.now()); }
+        render();
+      }).catch(function (err) {
+        problem = err && err.status === 404
+          ? 'This HomeGlow is too old for HomeHealth. Update HomeGlow to the release after 1.9.1 or later.'
+          : 'Home Assistant isn’t connected. Set it up in Admin → System → Connections.';
+        render();
+      });
+    }
+
+    setInterval(poll, POLL_MS);
+    setInterval(render, 60000);   // keeps "offline for" current
+
+    Promise.all([
+      HG && HG.settings ? HG.settings.get().then(function (v) { Object.assign(settings, v || {}); }).catch(function () {}) : null,
+      HG && HG.storage ? HG.storage.get('ignored').then(function (v) { if (Array.isArray(v)) ignored = v; }).catch(function () {}) : null,
+      HG && HG.storage ? HG.storage.get('dropouts').then(function (v) { if (v && v.devices) log = v; else logDirty = true; }).catch(function () { logDirty = true; }) : null
+    ]).then(poll);
+  })();
+  </script>
+</body>
+</html>
