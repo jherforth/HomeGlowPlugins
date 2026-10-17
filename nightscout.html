@@ -83,7 +83,7 @@
     .cgm-main {
       display: flex;
       align-items: center;
-      justify-content: space-between;
+      justify-content: center;
       gap: 8px;
       flex: 1;
       min-height: 0;
@@ -113,21 +113,23 @@
     }
     .cgm-sub {
       display: flex;
-      flex-direction: column;
-      justify-content: center;
-      gap: 6px;
+      flex-direction: row;
+      justify-content: space-around;
+      align-items: center;
+      gap: 8px;
       font-size: clamp(0.8rem, 3.5cqw, 1.8rem);
       font-weight: 800;
       color: var(--text-main);
-      border-left: 1px solid var(--border-color);
-      padding-left: 12px;
+      border-top: 1px solid var(--border-color);
+      padding-top: 8px;
       min-width: 0;
       overflow: hidden;
     }
     .sub-item {
       display: flex;
       flex-direction: column;
-      align-items: flex-start;
+      align-items: center;
+      text-align: center;
       min-width: 0;
     }
     .sub-item > span:last-child {
