@@ -16,11 +16,18 @@
     "category": "household",
     "author": "HomeGlow",
     "apiVersion": "v1",
+    "storage": true,
     "events": ["ha.state"],
     "homeAssistant": { "domains": ["media_player"] },
     "settings": [
       { "key": "speakers", "label": "Speakers to offer (entity ids, comma-separated; blank = automatic: the best entry for each speaker, Music Assistant's first). Also chosen from the widget: Speakers, then Edit.", "type": "string", "default": "" },
-      { "key": "speaker", "label": "This display's speaker (entity id; blank = the first)", "type": "string", "default": "", "scope": "device" }
+      { "key": "speaker", "label": "This display's speaker (entity id; blank = the first)", "type": "string", "default": "", "scope": "device" },
+      { "key": "quietStart", "label": "Quiet hours start: from then until the end, music can't be started from this widget (pause still works). Off = no quiet hours.", "type": "select",
+        "options": ["Off", "00:00", "00:30", "01:00", "01:30", "02:00", "02:30", "03:00", "03:30", "04:00", "04:30", "05:00", "05:30", "06:00", "06:30", "07:00", "07:30", "08:00", "08:30", "09:00", "09:30", "10:00", "10:30", "11:00", "11:30", "12:00", "12:30", "13:00", "13:30", "14:00", "14:30", "15:00", "15:30", "16:00", "16:30", "17:00", "17:30", "18:00", "18:30", "19:00", "19:30", "20:00", "20:30", "21:00", "21:30", "22:00", "22:30", "23:00", "23:30"],
+        "default": "Off" },
+      { "key": "quietEnd", "label": "Quiet hours end", "type": "select",
+        "options": ["Off", "00:00", "00:30", "01:00", "01:30", "02:00", "02:30", "03:00", "03:30", "04:00", "04:30", "05:00", "05:30", "06:00", "06:30", "07:00", "07:30", "08:00", "08:30", "09:00", "09:30", "10:00", "10:30", "11:00", "11:30", "12:00", "12:30", "13:00", "13:30", "14:00", "14:30", "15:00", "15:30", "16:00", "16:30", "17:00", "17:30", "18:00", "18:30", "19:00", "19:30", "20:00", "20:30", "21:00", "21:30", "22:00", "22:30", "23:00", "23:30"],
+        "default": "Off" }
     ],
     "hideableControls": [
       { "id": "operate", "label": "Play and change music" }
@@ -104,6 +111,10 @@
     .btn.icon.lg svg { width: 44%; height: 44%; }
     .btn.icon.quiet { background: transparent; }
     .btn.icon.toggled { background: var(--on-bg); color: var(--on-ink); }
+    /* Quiet hours: in place of the controls that would start music. */
+    .quiet-hours { display: inline-flex; align-items: center; gap: 0.5em; min-height: clamp(52px, 15cqmin, 104px); padding: 0 1.1em; border-radius: 999px;
+      background: var(--tile-bg); color: var(--ink-2); font-weight: 650; font-size: clamp(0.8rem, 2.6cqmin, 1.1rem); }
+    .quiet-hours svg { width: 1.3em; height: 1.3em; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
     .btn.busy { position: relative; }
     .btn.busy::after { content: ''; position: absolute; inset: -3px; border-radius: 50%; border: 3px solid transparent; border-top-color: var(--acc); animation: spin 0.9s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
@@ -178,7 +189,18 @@
     label.item input { width: 22px; height: 22px; margin: 0 6px; flex: none; accent-color: var(--acc); cursor: pointer; }
     .hintline { margin: 0 2px; font-size: 0.82rem; color: var(--ink-2); line-height: 1.35; }
     .foot { display: flex; gap: 8px; justify-content: flex-end; }
-    .search { display: flex; gap: 6px; }
+    .search { display: flex; gap: 6px; position: relative; }
+    /* Suggestions as you type, under the search box. */
+    .suggest { position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 2; padding: 4px; border-radius: 12px;
+      background: var(--surface, #fff); box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28); border: 1px solid color-mix(in srgb, var(--ink) 12%, transparent); }
+    .suggest[hidden] { display: none; }
+    .suggest button { appearance: none; border: 0; width: 100%; display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 10px; border-radius: 8px;
+      background: transparent; text-align: left; cursor: pointer; }
+    .suggest button.active, .suggest button:hover { background: var(--tile-bg); }
+    .suggest svg { width: 18px; height: 18px; flex: none; fill: none; stroke: var(--ink-2); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .suggest .s { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .suggest .s b { font-weight: 750; }
+    .suggest .k { flex: none; font-size: 0.75rem; color: var(--ink-2); }
     input.text { flex: 1; min-width: 0; min-height: 44px; padding: 0 12px; border-radius: 10px; font: inherit; font-size: 1rem;
       border: 1px solid color-mix(in srgb, var(--ink) 22%, transparent); background: var(--background, #fff); color: var(--ink); -webkit-user-select: text; user-select: text; }
     input.text:focus-visible { outline: 3px solid var(--acc); outline-offset: 1px; }
@@ -219,6 +241,7 @@
       edit: 'Edit', save: 'Save', cancel: 'Cancel', toOffer: 'Speakers to offer', needOne: 'Pick at least one speaker.',
       editHint: 'Tick the speakers this widget offers, the same on every display. Automatic offers one entry for each speaker, the best one (Music Assistant\'s first), and leaves out speakers that are unavailable.',
       automatic: 'Automatic', unavailable: 'unavailable',
+      quietUntil: 'Quiet hours until {t}', quietBlocked: 'It\'s quiet hours: music can\'t be started until {t}.',
       groupHint: 'Tap + to play the same music on more speakers, in step with {name}.',
       groupWith: 'Play on {name} too', groupLeave: 'Stop playing on {name}', withMore: '{name} + {n}', playingWith: '{name}, playing with {others}',
       kind_playlist: 'Playlist', kind_album: 'Album', kind_artist: 'Artist', kind_track: 'Song', kind_music: 'Music', kind_directory: 'Folder', kind_podcast: 'Podcast', kind_channel: 'Station'
@@ -236,6 +259,7 @@
       edit: 'Editar', save: 'Guardar', cancel: 'Cancelar', toOffer: 'Altavoces disponibles', needOne: 'Elige al menos un altavoz.',
       editHint: 'Marca los altavoces que ofrece este widget, los mismos en todas las pantallas. Automático ofrece una entrada por altavoz, la mejor (primero la de Music Assistant), y deja fuera los que no están disponibles.',
       automatic: 'Automático', unavailable: 'no disponible',
+      quietUntil: 'Horas de silencio hasta las {t}', quietBlocked: 'Son horas de silencio: no se puede poner música hasta las {t}.',
       groupHint: 'Toca + para poner la misma música en más altavoces, a la vez que {name}.',
       groupWith: 'Reproducir también en {name}', groupLeave: 'Dejar de reproducir en {name}', withMore: '{name} + {n}', playingWith: '{name}, junto con {others}',
       kind_playlist: 'Lista', kind_album: 'Álbum', kind_artist: 'Artista', kind_track: 'Canción', kind_music: 'Música', kind_directory: 'Carpeta', kind_podcast: 'Pódcast', kind_channel: 'Emisora'
@@ -261,7 +285,10 @@
     music: '<path d="M9 18V5l11-2v13"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="17.5" cy="16" r="2.5"/>',
     speaker: '<rect x="6" y="3" width="12" height="18" rx="2"/><circle cx="12" cy="14" r="3"/><circle cx="12" cy="7" r=".8"/>',
     volLow: '<path d="M4 9.5h3.5L12 6v12l-4.5-3.5H4z"/><path d="M15.5 10a3 3 0 0 1 0 4"/>',
-    volHigh: '<path d="M4 9.5h3.5L12 6v12l-4.5-3.5H4z"/><path d="M15.5 10a3 3 0 0 1 0 4M18 7.5a6.5 6.5 0 0 1 0 9"/>'
+    volHigh: '<path d="M4 9.5h3.5L12 6v12l-4.5-3.5H4z"/><path d="M15.5 10a3 3 0 0 1 0 4M18 7.5a6.5 6.5 0 0 1 0 9"/>',
+    moon: '<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/>',
+    recent: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
+    find: '<circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5 5"/>'
   };
   var glyph = function (name) { return '<svg viewBox="0 0 24 24" aria-hidden="true">' + GLYPHS[name] + '</svg>'; };
   var stroke = function (name) { return '<svg viewBox="0 0 24 24" aria-hidden="true">' + STROKES[name] + '</svg>'; };
@@ -382,6 +409,47 @@
     render();
     var shown = text;
     setTimeout(function () { if (hintText === shown) { hintText = null; render(); } }, 2800);
+  }
+
+  // --- Quiet hours -----------------------------------------------------------------
+  // Between the two times set in Plugin Options, in the household's timezone,
+  // nothing here starts music; what is already playing can still be paused.
+  // Overnight (22:00 to 07:00) works as written.
+
+  var householdTz = null;
+  var minutesOf = function (hhmm) {
+    var m = /^(\d{2}):(\d{2})$/.exec(String(hhmm || ''));
+    return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+  };
+  // The time quiet hours end, while they're on; otherwise null.
+  function quietUntil() {
+    var start = minutesOf(settings.quietStart), end = minutesOf(settings.quietEnd);
+    if (start === null || end === null || start === end) return null;
+    var parts;
+    try {
+      parts = new Intl.DateTimeFormat('en-GB', { timeZone: householdTz || undefined, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date()).split(':');
+    } catch (e) { return null; }
+    var now = Number(parts[0]) * 60 + Number(parts[1]);
+    var inside = start < end ? now >= start && now < end : now >= start || now < end;
+    return inside ? settings.quietEnd : null;
+  }
+  // "07:00" the way this display writes a time.
+  function timeLabel(hhmm) {
+    var m = minutesOf(hhmm);
+    try {
+      return new Intl.DateTimeFormat(lang, { hour: 'numeric', minute: '2-digit', timeZone: 'UTC' }).format(new Date(Date.UTC(2000, 0, 1, Math.floor(m / 60), m % 60)));
+    } catch (e) { return hhmm; }
+  }
+  // Starting music is held back: quiet hours, and nothing already playing.
+  function quietBlocks(s) { return !!quietUntil() && !(s && (s.state === 'playing' || s.state === 'buffering')); }
+  function quietHint() { flash(fmt(T.quietBlocked, { t: timeLabel(quietUntil()) })); }
+
+  function readTimezone() {
+    return fetch('/api/timezone').then(function (res) { return res.ok ? res.json() : null; }).then(function (data) {
+      var tz = data && (typeof data === 'string' ? data : data.timezone || data.tz);
+      if (!tz) return;
+      try { new Intl.DateTimeFormat('en', { timeZone: tz }); householdTz = tz; } catch (e) { /* not a timezone this browser knows */ }
+    }).catch(function () {});
   }
 
   // --- Home Assistant ----------------------------------------------------------
@@ -517,10 +585,15 @@
       };
       html += '<div class="ctl">';
       if (has(s, F.SHUFFLE)) html += btn('shuffle', T.shuffle, 'quiet' + (a.shuffle ? ' toggled' : ''), true, ' aria-pressed="' + !!a.shuffle + '"');
-      html += btn('previous', T.previous, 'quiet', has(s, F.PREVIOUS));
-      html += btn('play_pause', s.state === 'playing' ? T.pause : T.play, 'lg', has(s, F.PAUSE) || has(s, F.PLAY));
-      html += btn('next', T.next, 'quiet', has(s, F.NEXT));
-      html += '<button type="button" class="btn icon quiet" data-library aria-haspopup="dialog" aria-label="' + esc(T.chooseMusic) + '">' + glyph('library') + '</button>';
+      if (quietBlocks(s)) {
+        // Quiet hours, nothing playing: no button here can start music.
+        html += '<span class="quiet-hours" role="status">' + stroke('moon') + esc(fmt(T.quietUntil, { t: timeLabel(quietUntil()) })) + '</span>';
+      } else {
+        html += btn('previous', T.previous, 'quiet', has(s, F.PREVIOUS));
+        html += btn('play_pause', s.state === 'playing' ? T.pause : T.play, 'lg', has(s, F.PAUSE) || has(s, F.PLAY));
+        html += btn('next', T.next, 'quiet', has(s, F.NEXT));
+        html += '<button type="button" class="btn icon quiet" data-library aria-haspopup="dialog" aria-label="' + esc(T.chooseMusic) + '">' + glyph('library') + '</button>';
+      }
       html += '</div>';
       if (has(s, F.VOLUME_SET) && a.volume_level != null) {
         var vol = Math.round(a.volume_level * 100);
@@ -557,10 +630,12 @@
   app.addEventListener('click', function (event) {
     var el = event.target.closest('[data-act],[data-library],[data-speakers]');
     if (!el || el.disabled) return;
-    if (el.hasAttribute('data-library')) { openLibrary(); return; }
-    if (el.hasAttribute('data-speakers')) { openSpeakers(); return; }
     var s = st();
     var name = el.getAttribute('data-act');
+    // A button drawn a moment before quiet hours began still mustn't start music.
+    if (quietBlocks(s) && (el.hasAttribute('data-library') || name === 'play_pause' || name === 'next' || name === 'previous')) { quietHint(); render(); return; }
+    if (el.hasAttribute('data-library')) { openLibrary(); return; }
+    if (el.hasAttribute('data-speakers')) { openSpeakers(); return; }
     if (name === 'play_pause') {
       act('play_pause', undefined, { busy: 'play_pause', optimistic: { state: s.state === 'playing' ? 'paused' : 'playing' } }).catch(function () {});
     } else if (name === 'shuffle') {
@@ -691,7 +766,9 @@
             var p = players[id];
             var what = [p.attributes.media_title && !looksLikeAddress(p.attributes.media_title) ? p.attributes.media_title : p.state, sourceName(id)].filter(Boolean).join(' · ');
             var inGroup = group.indexOf(id) !== -1;
-            var toggle = id !== current && groupable && canGroup(id)
+            // In quiet hours a speaker can leave the group but not join it:
+            // joining starts the music on it.
+            var toggle = id !== current && groupable && canGroup(id) && (inGroup || !quietUntil())
               ? '<button type="button" class="go grp' + (inGroup ? ' on' : '') + (busyIds[id] ? ' busy' : '') + '" data-group="' + esc(id) + '" aria-pressed="' + inGroup + '" aria-label="'
                 + esc(fmt(inGroup ? T.groupLeave : T.groupWith, { name: nameOf(id) })) + '">' + glyph(inGroup ? 'check' : 'plus') + '</button>'
               : '';
@@ -709,6 +786,7 @@
         if (busyIds[id]) return;
         var group = groupOf(current);
         var joining = group.indexOf(id) === -1;
+        if (joining && quietUntil()) { problemText = fmt(T.quietBlocked, { t: timeLabel(quietUntil()) }); draw(); return; }
         var leader = canGroup(group[0]) ? group[0] : current;
         var target = joining ? leader : id;
         busyIds[id] = true;
@@ -793,6 +871,88 @@
     }, true);
   }
 
+  // --- Suggestions while searching ------------------------------------------------------
+  // HomeGlow remembers every search it runs, so the widget doesn't search on
+  // each keystroke. It suggests from what it already knows: recent searches,
+  // and the names of artists, albums, playlists and songs it has seen while
+  // browsing or searching, kept in plugin storage so every display shares
+  // them. A suggestion runs an ordinary search.
+
+  var NAMES_KEY = 'names';
+  var NAMES_MAX = 600;
+  var NAMES_BYTES = 56000;   // under plugin storage's 64 KB a value
+  var NAME_KINDS = { artist: 1, album: 2, playlist: 3, track: 4, podcast: 5, channel: 6 };
+  var known = [];            // [name, kind], newest first
+  var namesTimer = null;
+  var fold = function (text) {
+    return String(text || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim();
+  };
+  var nameId = function (pair) { return fold(pair[0]) + '|' + pair[1]; };
+
+  // Newest first, one of each, and within the size plugin storage takes.
+  function mergeNames(first, then) {
+    var seen = {};
+    var list = first.concat(then).filter(function (pair) {
+      var id = nameId(pair);
+      if (seen[id]) return false;
+      seen[id] = true;
+      return true;
+    }).slice(0, NAMES_MAX);
+    while (list.length && JSON.stringify(list).length > NAMES_BYTES) list = list.slice(0, Math.floor(list.length * 0.9));
+    return list;
+  }
+  function loadNames() {
+    if (!HG.storage) return Promise.resolve();
+    return HG.storage.get(NAMES_KEY).then(function (value) {
+      if (Array.isArray(value)) known = value.filter(function (pair) { return Array.isArray(pair) && typeof pair[0] === 'string' && NAME_KINDS[pair[1]]; });
+    }).catch(function () {});
+  }
+  function rememberNames(items) {
+    var fresh = (items || []).filter(function (item) {
+      return item && item.title && NAME_KINDS[item.kind] && !looksLikeAddress(item.title);
+    }).map(function (item) { return [String(item.title).slice(0, 120), item.kind]; });
+    if (!fresh.length) return;
+    known = mergeNames(fresh, known);
+    // Saved a little later, on top of what other displays have saved since.
+    clearTimeout(namesTimer);
+    namesTimer = setTimeout(function () {
+      if (!HG.storage) return;
+      HG.storage.get(NAMES_KEY).catch(function () { return null; }).then(function (stored) {
+        known = mergeNames(known, Array.isArray(stored) ? stored : []);
+        return HG.storage.set(NAMES_KEY, known);
+      }).catch(function () {});
+    }, 4000);
+  }
+
+  // Up to six: matching recent searches first, then names, those starting
+  // with what was typed before those with a word that does.
+  function suggestionsFor(query, recent) {
+    var q = fold(query);
+    if (!q) return [];
+    var tokens = q.split(' ');
+    var score = function (text) {
+      var f = fold(text);
+      if (f === q) return null;
+      if (f.indexOf(q) === 0) return 0;
+      var words = f.split(/[\s\-–—_()[\],.&/:;'"!?¿¡]+/);
+      return tokens.every(function (t) { return words.some(function (w) { return w.indexOf(t) === 0; }); }) ? 1 : null;
+    };
+    var out = [];
+    var seen = {};
+    var add = function (text, kind, s) {
+      var id = fold(text);
+      if (seen[id]) return;
+      seen[id] = true;
+      out.push({ text: text, kind: kind, prefix: s === 0 });
+    };
+    (recent || []).forEach(function (r) { var s = score(r); if (s !== null) add(r, 'recent', s); });
+    known.map(function (pair) { return { pair: pair, s: score(pair[0]) }; })
+      .filter(function (x) { return x.s !== null; })
+      .sort(function (a, b) { return a.s - b.s || NAME_KINDS[a.pair[1]] - NAME_KINDS[b.pair[1]]; })
+      .forEach(function (x) { add(x.pair[0], x.pair[1], x.s); });
+    return out.slice(0, 6);
+  }
+
   // --- The library: the speaker's own ----------------------------------------------------
 
   // view: { tab: 'browse'|'search', stack: [levels], query, results, recent, status }
@@ -817,7 +977,8 @@
         if (!speakerLibrary) {
           html += '<p class="status">' + esc(T.cannotBrowse) + '</p>';
         } else if (view.tab === 'search') {
-          html += '<form class="search" data-search><input class="text" type="search" name="q" value="' + esc(view.query) + '" placeholder="' + esc(T.searchPlaceholder) + '" aria-label="' + esc(T.search) + '" enterkeyhint="search"><button class="btn primary">' + esc(T.go) + '</button></form>';
+          html += '<form class="search" data-search><input class="text" type="search" name="q" value="' + esc(view.query) + '" placeholder="' + esc(T.searchPlaceholder) + '" aria-label="' + esc(T.search) + '" enterkeyhint="search" autocomplete="off" role="combobox" aria-autocomplete="list" aria-controls="suggestions" aria-expanded="false">'
+            + '<button class="btn primary">' + esc(T.go) + '</button><div class="suggest" id="suggestions" role="listbox" data-suggestions hidden></div></form>';
           if (view.status) html += '<p class="status' + (view.status.err ? ' err' : '') + '">' + esc(view.status.text) + '</p>';
           else if (view.results) html += view.results.length ? view.results.map(itemHtml).join('') : '<p class="status">' + esc(T.noResults) + '</p>';
           else if (view.recent.length) {
@@ -854,6 +1015,7 @@
         draw();
         return promise.then(function (level) {
           view.status = null;
+          rememberNames(level.items);
           if (push) view.stack.push(level);
           draw();
         }).catch(function (error) {
@@ -878,6 +1040,7 @@
       function play(items, index) {
         var item = items[index];
         if (!st() || !has(st(), F.PLAY_MEDIA)) { flash(T.cannotPlay); return; }
+        if (quietBlocks(st())) { close(); quietHint(); return; }
         close();
         act('play_media', item.key, { busy: 'play_pause', optimistic: { state: 'playing' } }).catch(function (error) {
           if (error && error.status === 410) flash(T.stale);
@@ -919,6 +1082,7 @@
         draw();
         speakerSource.search(q).then(function (result) {
           view.status = null;
+          rememberNames(result.items);
           view.results = result.items;
           view.recent = result.recent || view.recent;
           draw();
@@ -932,6 +1096,82 @@
         event.preventDefault();
         var form = event.target;
         if (form.hasAttribute('data-search')) runSearch(form.q.value);
+      });
+
+      // Suggestions: drawn into their own box as the query changes, so the
+      // search box keeps its place and caret.
+      var shownSuggestions = [];
+      var active = -1;
+      function showSuggestions(value) {
+        var box = sheet.querySelector('[data-suggestions]');
+        var input = sheet.querySelector('input[name=q]');
+        if (!box || !input) return;
+        shownSuggestions = suggestionsFor(value, view.recent);
+        active = -1;
+        box.hidden = !shownSuggestions.length;
+        input.setAttribute('aria-expanded', String(!!shownSuggestions.length));
+        input.removeAttribute('aria-activedescendant');
+        box.innerHTML = shownSuggestions.map(function (s, i) {
+          var shown = s.prefix
+            ? '<b>' + esc(s.text.slice(0, value.trim().length)) + '</b>' + esc(s.text.slice(value.trim().length))
+            : esc(s.text);
+          var kind = s.kind === 'recent' ? '' : (T['kind_' + s.kind] || '');
+          return '<button type="button" role="option" id="suggestion-' + i + '" data-suggestion="' + i + '">'
+            + stroke(s.kind === 'recent' ? 'recent' : 'find') + '<span class="s">' + shown + '</span>'
+            + (kind ? '<span class="k">' + esc(kind) + '</span>' : '') + '</button>';
+        }).join('');
+      }
+      function highlight(index) {
+        var buttons = sheet.querySelectorAll('[data-suggestion]');
+        var input = sheet.querySelector('input[name=q]');
+        active = index;
+        buttons.forEach(function (b, i) { b.classList.toggle('active', i === index); b.setAttribute('aria-selected', String(i === index)); });
+        if (input) {
+          if (index >= 0) input.setAttribute('aria-activedescendant', 'suggestion-' + index);
+          else input.removeAttribute('aria-activedescendant');
+        }
+      }
+      function hideSuggestions() {
+        var box = sheet.querySelector('[data-suggestions]');
+        if (box) box.hidden = true;
+        shownSuggestions = [];
+        active = -1;
+      }
+      sheet.addEventListener('input', function (event) {
+        if (event.target.name !== 'q') return;
+        view.query = event.target.value;
+        showSuggestions(event.target.value);
+      });
+      sheet.addEventListener('keydown', function (event) {
+        if (event.target.name !== 'q' || !shownSuggestions.length) return;
+        if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+          // Down from the box into the list and round again; -1 is the box.
+          event.preventDefault();
+          var next = active + (event.key === 'ArrowDown' ? 1 : -1);
+          if (next < -1) next = shownSuggestions.length - 1;
+          if (next > shownSuggestions.length - 1) next = -1;
+          highlight(next);
+        } else if (event.key === 'Enter' && active >= 0) {
+          event.preventDefault();
+          var pickedText = shownSuggestions[active].text;
+          hideSuggestions();
+          runSearch(pickedText);
+        } else if (event.key === 'Escape') {
+          // Closes the suggestions, not the library.
+          event.stopPropagation();
+          hideSuggestions();
+        }
+      });
+      // A tap on a suggestion mustn't take the focus (and the keyboard) away first.
+      sheet.addEventListener('pointerdown', function (event) {
+        if (event.target.closest('[data-suggestion]')) event.preventDefault();
+      });
+      sheet.addEventListener('click', function (event) {
+        var pick = event.target.closest('[data-suggestion]');
+        if (!pick) return;
+        var chosen = shownSuggestions[Number(pick.getAttribute('data-suggestion'))];
+        hideSuggestions();
+        if (chosen) runSearch(chosen.text);
       });
 
       draw();
@@ -953,9 +1193,16 @@
 
   // --- Starting -----------------------------------------------------------------------------
 
-  HG.settings.get().then(function (values) { Object.assign(settings, values || {}); }).catch(function () {}).then(poll);
+  // Settings are read again now and then, so quiet hours set in the Admin
+  // Panel reach a display that is already showing the widget.
+  function readSettings() {
+    return HG.settings.get().then(function (values) { Object.assign(settings, values || {}); }).catch(function () {});
+  }
+  Promise.all([readSettings(), readTimezone(), loadNames()]).then(poll);
 
   setInterval(poll, POLL_MS);
+  setInterval(function () { readSettings().then(render); }, 60 * 1000);
+  setInterval(readTimezone, 60 * 60 * 1000);
   document.addEventListener('visibilitychange', function () { if (!document.hidden) poll(); });
   var nudge = null;
   HG.on('ha.state', function (payload) {
