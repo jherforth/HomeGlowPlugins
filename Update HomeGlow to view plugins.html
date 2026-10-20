@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Update HomeGlow to view plugins</title>
+  <!--
+    Kept at the root of HomeGlowPlugins for HomeGlow before 1.10, which only
+    looks at the top two levels of the repository and so no longer finds the
+    plugins, each now in a folder of its own inside its category's. This is
+    what those versions list instead. HomeGlow 1.10 and later list every
+    plugin, and leave this one out because its manifest says storeNotice.
+    No plugin SDK on purpose: it has to work on the oldest HomeGlow too.
+  -->
+  <script type="application/json" id="homeglow-manifest">
+  {
+    "manifestVersion": 1,
+    "id": "update-homeglow-notice",
+    "name": "Update HomeGlow to view plugins",
+    "version": "1.0.0",
+    "description": "The plugin library was reorganized into folders, which this version of HomeGlow can't read. Update HomeGlow to 1.10 or later to browse and install plugins again. Plugins you already installed keep working.",
+    "category": "other",
+    "author": "HomeGlow",
+    "apiVersion": "v1",
+    "storeNotice": true
+  }
+  </script>
+  <link rel="stylesheet" href="/index.css">
+  <style>
+    html, body { margin: 0; height: 100%; }
+    body {
+      /* /index.css pads the body for the dashboard's dock; not in a tile. */
+      padding: 0;
+      display: grid;
+      place-items: center;
+      background: var(--card-bg, #fff);
+      color: var(--text, #222);
+      font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+      box-sizing: border-box;
+    }
+    body.transparent { background: transparent; }
+    .notice { max-width: 460px; padding: 20px 22px; text-align: center; line-height: 1.5; }
+    .icon {
+      width: 48px; height: 48px; margin: 0 auto 10px; border-radius: 50%;
+      display: grid; place-items: center;
+      background: color-mix(in srgb, var(--accent, #3a7cc4) 16%, transparent); color: var(--accent, #3a7cc4);
+    }
+    .icon svg { width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    h1 { margin: 0 0 8px; font-size: 1.15rem; }
+    p { margin: 0 0 10px; font-size: 0.92rem; color: var(--text-secondary, inherit); }
+    p.lead { color: inherit; }
+    a { color: var(--accent, #3a7cc4); font-weight: 600; }
+  </style>
+</head>
+<body>
+  <main class="notice">
+    <div class="icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M4 19h16"/></svg>
+    </div>
+    <h1>Update HomeGlow to view plugins</h1>
+    <p class="lead">The plugin library was reorganized into folders, and this version of HomeGlow can't read the new layout.</p>
+    <p>Update HomeGlow to 1.10 or later to browse and install plugins again. <strong>Admin → About</strong> shows whether an update is ready.</p>
+    <p>Plugins you already installed keep working.</p>
+    <p><a href="https://github.com/jherforth/HomeGlow/releases" target="_blank" rel="noopener">HomeGlow releases</a></p>
+  </main>
+  <script>
+    (function () {
+      var params = new URLSearchParams(window.location.search);
+      var theme = params.get('theme');
+      if (theme === 'dark' || theme === 'light') document.documentElement.setAttribute('data-theme', theme);
+      if (params.get('transparent') === 'true') document.body.classList.add('transparent');
+    })();
+  </script>
+</body>
+</html>

@@ -1,30 +1,49 @@
-# HomeGlow Widget Plugins Directory
+# HomeGlow Plugins
 
-This directory stores all uploaded widget HTML files for the HomeGlow app.
+Plugins for [HomeGlow](https://github.com/jherforth/HomeGlow), installed from
+**Admin → Plugins** in HomeGlow. Each plugin is a self-contained HTML file that
+runs in a sandboxed frame on the dashboard.
 
-## How it works
-- When you upload a widget via the Admin Panel, the HTML file is saved here.
-- Each widget is a self-contained HTML file (with optional CSS/JS) that will be rendered in a sandboxed iframe in the app.
-- The widget registry (`../widgets_registry.json`) keeps track of all uploaded widgets.
+## Layout
 
-## Security
-- Only HTML files are allowed.
-- Widgets are rendered in sandboxed iframes for isolation and security.
+Each plugin has a folder of its own, inside a folder for its category:
 
-## Manual Management
-- You can manually add or remove HTML files here, but it is recommended to use the Admin Panel for consistency.
-- If you manually remove a file, also update `widgets_registry.json` to avoid broken entries.
+```
+household/
+  Vacuum/
+    Vacuum.html                  the plugin
+    Vacuum.png                   its preview in the Admin Panel
+    Vacuum.md                    setup notes, when it needs any
+    Vacuum-clean-button.yaml     anything else it comes with
+chores-rewards/
+  Routines/
+    Routines.html
+    Routines.png
+```
 
-// WIDGET_DEVELOPMENT_GUIDE.md
-Reference the widgets readme on the main HomeGlow git repository
+- **The category folder is the manifest's `category`**, one of the Admin
+  Panel's groups: `clock-calendar`, `news-weather`, `chores-rewards`,
+  `family-hub`, `meals`, `household`, `health`, `games`. The Admin Panel groups
+  plugins by the manifest, so the two should agree.
+- **The plugin's folder is named after its file**, and the preview is the same
+  name as a `.png` (or `.jpg`, `.jpeg`, `.webp`) beside it.
+- **Never rename a plugin's file once it's published.** An install knows a
+  plugin by its file name, so a renamed file arrives as a second plugin.
 
----
+HomeGlow 1.10 and later list plugins at any depth. Older versions only look at
+the top two levels, so they find just
+`Update HomeGlow to view plugins.html` at the root, which asks them to update.
+Its manifest says `"storeNotice": true`, which keeps it out of the list on 1.10
+and later.
 
-**Do not delete this README.**
+Guides: [`docs/WidgetDevGuide.md`](docs/WidgetDevGuide.md) and
+[`docs/PhotoFix.md`](docs/PhotoFix.md). The full plugin platform is documented
+in HomeGlow's
+[plugin development guide](https://github.com/jherforth/HomeGlow/blob/main/docs/guides/plugin-development.md).
 
 ## Plugin manifests
 
-Every widget here carries an embedded manifest so HomeGlow can identify and
+Every plugin carries an embedded manifest so HomeGlow can identify and
 describe it:
 
 ```html
@@ -34,6 +53,7 @@ describe it:
   "id": "guest-wifi",
   "name": "Guest Wi-Fi",
   "version": "1.0.0",
+  "category": "household",
   "description": "One or two sentences on what the widget does and what it needs."
 }
 </script>
@@ -45,6 +65,7 @@ describe it:
 - `description` is optional and capped at 300 characters. It renders as the
   subtitle on the plugin card in the Admin Panel.
 - `name` replaces the filename-derived label in the plugin list.
+- `category` places it in the Admin Panel, and names its folder here.
 - `version` is the plugin's version, `major.minor.patch` (see Versions below).
 
 The block is plain JSON in a non-executing `<script>` tag, so it is inert in the
