@@ -8,11 +8,12 @@
     "manifestVersion": 1,
     "id": "family-polls",
     "name": "Family Poll",
-    "version": "1.1.0",
-    "description": "Runs a quick family vote. Ask a question, add the options, and everyone picks their profile and votes from the dashboard. Every display shows the same tally. A poll closes when everyone has voted, or when someone closes it, and is kept under Past polls.",
+    "version": "1.2.0",
+    "description": "Runs a quick family vote. Ask a question, add the options, and everyone picks their profile and votes from the dashboard. Every display shows the same tally. A poll closes when everyone has voted, or when someone closes it, and is kept under Past polls. Phones can hear the result.",
     "category": "family-hub",
     "apiVersion": "v1",
     "storage": true,
+    "notify": true,
     "settings": [
       { "key": "voter", "label": "Who votes from this display (profile id; the widget sets it when a profile is picked)",
         "type": "string", "default": "", "scope": "device" }
@@ -1095,10 +1096,40 @@
       const failed = results.filter(r => r.status === 'rejected').length;
 
       await reloadAndRender();
+      void notifyClosed(record, everyoneVoted);
       if (failed > 0) {
         showError(`Poll closed, but ${failed} of ${results.length} votes could not be removed`);
       } else {
         showSuccess(everyoneVoted ? 'Everyone has voted. The poll is closed and saved under Past polls.' : 'Poll closed and saved under Past polls');
+      }
+    }
+
+    // A closed poll's result in a few words: "Pizza, 4 of 6", a tie, or none.
+    function outcomeOf(record) {
+      const counts = record.options.map(option => option.voters.length);
+      const total = counts.reduce((a, b) => a + b, 0);
+      const top = Math.max(...counts);
+      const leaders = record.options.filter((option, index) => counts[index] === top && top > 0).map(option => option.text);
+      return total === 0 ? 'No votes'
+        : leaders.length === 1 ? `${leaders[0]}, ${top} of ${total}`
+        : `Tie: ${leaders.join(', ')}, ${top} each`;
+    }
+
+    // Tell the phones that ticked Polls. The display that closed the poll is
+    // the only one that gets here, so a result is sent once. A HomeGlow
+    // without notify(), or one refusing (no phone, over the limit), is no
+    // reason to trouble whoever closed it.
+    async function notifyClosed(record, everyoneVoted) {
+      if (!SDK || typeof SDK.notify !== 'function') return;
+      const tag = `poll-${String(record.id).toLowerCase().replace(/[^a-z0-9-]/g, '')}`.slice(0, 40);
+      try {
+        await SDK.notify({
+          title: `Poll closed: ${record.question}`,
+          message: `${everyoneVoted ? 'Everyone voted. ' : ''}${outcomeOf(record)}`,
+          tag,
+        });
+      } catch (error) {
+        console.warn('Polls: could not send the result to phones:', error);
       }
     }
 
@@ -1398,13 +1429,7 @@
 
       container.innerHTML = archive.map(record => {
         const id = escapeHtml(record.id);
-        const counts = record.options.map(option => option.voters.length);
-        const total = counts.reduce((a, b) => a + b, 0);
-        const top = Math.max(...counts);
-        const leaders = record.options.filter((option, index) => counts[index] === top && top > 0).map(option => option.text);
-        const outcome = total === 0 ? 'No votes'
-          : leaders.length === 1 ? `${leaders[0]}, ${top} of ${total}`
-          : `Tie: ${leaders.join(', ')}, ${top} each`;
+        const outcome = outcomeOf(record);
         const closed = new Date(record.closedAt).toLocaleDateString();
         const open = expandedArchiveId === record.id;
         const armed = pendingDeleteId === record.id;
