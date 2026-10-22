@@ -11,10 +11,10 @@
     "author": "HomeGlow",
     "description": "Scores and schedules for the leagues you pick: NFL, college football, NBA, MLB, NHL, MLS and the Premier League, from TheSportsDB. Pick favorite teams to see just theirs. A free key is built in; you can add your own. Checks every few minutes while a game is on, and about once an hour otherwise.",
     "category": "news-weather",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "apiVersion": "v1",
     "settings": [
-      { "key": "apiKey", "label": "TheSportsDB API key (3 is the free public key)", "type": "string", "default": "3", "scope": "household" },
+      { "key": "apiKey", "label": "TheSportsDB API key (123 is the free public key)", "type": "string", "default": "123", "scope": "household" },
       { "key": "teams", "label": "Favorite teams, comma-separated (full names find them best, e.g. Green Bay Packers, Milwaukee Brewers)", "type": "string", "default": "", "scope": "household" },
       { "key": "teamsOnly", "label": "Show only my teams' games (when favorite teams are set)", "type": "boolean", "default": true, "scope": "household" },
       { "key": "showNfl", "label": "NFL", "type": "boolean", "default": true, "scope": "household" },
@@ -214,8 +214,9 @@
     (function () {
       'use strict';
 
-      // TheSportsDB: free, no sign-up needed for the public key "3", and it
-      // allows cross-origin reads. Each check makes one livescore request,
+      // TheSportsDB: free, no sign-up needed for the public key "123", and it
+      // allows cross-origin reads. (The old free key "3" is disabled for good:
+      // every request with it is refused, so a saved "3" is read as "123".) Each check makes one livescore request,
       // which covers every sport at once. The full schedule and results are
       // fetched per league at most once an hour, or when a live game ends.
       var API = 'https://www.thesportsdb.com/api/v1/json/';
@@ -239,7 +240,7 @@
       LEAGUES.forEach(function (league) { LEAGUE_BY_ID[league.id] = league; });
 
       var DEFAULTS = {
-        apiKey: '3',
+        apiKey: '123',
         showNfl: true, showCollegeFootball: false, showNba: true, showMlb: true,
         showNhl: true, showMls: false, showPremierLeague: false,
         gamesPerLeague: 4, liveMinutes: 5,
@@ -299,6 +300,8 @@
           var merged = Object.assign({}, DEFAULTS, values || {});
           // Keys go into the URL, so only accept the characters a key uses.
           if (!/^[A-Za-z0-9]{1,32}$/.test(String(merged.apiKey))) merged.apiKey = DEFAULTS.apiKey;
+          // The old free key, saved before TheSportsDB retired it.
+          if (String(merged.apiKey) === '3') merged.apiKey = DEFAULTS.apiKey;
           merged.gamesPerLeague = clamp(merged.gamesPerLeague, 1, 10, DEFAULTS.gamesPerLeague);
           merged.liveMinutes = clamp(merged.liveMinutes, 2, 30, DEFAULTS.liveMinutes);
           return merged;
