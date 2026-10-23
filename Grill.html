@@ -11,7 +11,7 @@
   "manifestVersion": 1,
   "id": "grill-card",
   "name": "Grill",
-  "version": "1.13.0",
+  "version": "2.0.0",
   "description": "Your grill and probes from Home Assistant: temps, a cook graph you can zoom and compare with past cooks, multi-step cook programs, Ready by times that learn from your grill, a grill journal and alerts. Works with smart grills (Pit Boss, Traeger, recteq…) or any grill with a temperature sensor.",
   "author": "jasonstantler",
   "category": "meals",
@@ -19,7 +19,7 @@
   "storage": true,
   "notify": true,
   "homeAssistant": {
-    "domains": ["climate", "sensor", "binary_sensor", "number", "script", "weather"],
+    "domains": ["climate", "sensor", "binary_sensor", "number", "weather"],
     "control": true
   },
   "events": ["ha.state"],
@@ -367,13 +367,7 @@
   .offrow .stepper .val { font-size: 1.1em; min-width: 3em; }
   .offrow .stepper button { width: 44px; height: 44px; font-size: 1.15em; }
   .morebtn { margin-top: 12px; width: 100%; text-align: left; }
-  /* Setup → Phone alerts: the phones, then a row for each kind of alert */
-  .phonesbox { display: flex; flex-direction: column; gap: 6px; }
-  .phonechips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-  .phonechips button { display: inline-flex; align-items: center; gap: 8px; border-radius: 999px; padding: 0 14px 0 10px; font-size: 14px; }
-  .phonechips button.sel { border-color: var(--accent, #4a7); box-shadow: inset 0 0 0 1px var(--accent, #4a7); background: color-mix(in srgb, var(--accent, #4a7) 14%, transparent); font-weight: 600; }
-  .phonechips .tick { width: 18px; height: 18px; border-radius: 5px; border: 1.5px solid var(--ink2); display: inline-flex; align-items: center; justify-content: center; font-size: 12px; line-height: 1; flex: none; }
-  .phonechips .sel .tick { background: var(--accent, #4a7); border-color: var(--accent, #4a7); color: var(--hg-button-text, #fff); }
+  /* Setup → Phone alerts: a row for each kind of alert */
   .loudtxt { color: color-mix(in srgb, var(--warn) 55%, var(--ink)); }
   .needbox { background: color-mix(in srgb, var(--warn) 16%, transparent); border-radius: var(--radius); padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; }
   .palerts { display: flex; flex-direction: column; gap: 4px; }
@@ -384,9 +378,7 @@
   .prow .n small.loud { color: color-mix(in srgb, var(--warn) 55%, var(--ink)); font-weight: 600; }
   .prow button { min-height: 44px; flex: none; padding: 0 10px; font-size: 13px; }
   .prow button.psw { display: inline-flex; align-items: center; gap: 6px; border-color: transparent; background: transparent; padding: 0 4px; color: var(--ink2); }
-  .prow button.scr { width: 132px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; color: var(--ink2); }
-  .palerts.noapi .prow button.scr { width: 190px; }
-  @media (max-width: 440px) { .prow { flex-wrap: wrap; padding: 6px 6px 6px 12px; } .prow .n { flex-basis: 100%; } .prow button.scr, .palerts.noapi .prow button.scr { flex: 1 1 0; width: auto; min-width: 0; } }
+  .palerts.noapi .prow button.psw { opacity: .5; }
   textarea { font: inherit; color: inherit; background: var(--tile); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; width: 100%; min-height: 6em; resize: vertical; }
   .stars { display: flex; gap: 4px; justify-content: center; }
   .stars button { font-size: 1.8em; width: 52px; height: 52px; padding: 0; border: 0; background: transparent; color: var(--ink2); line-height: 1; }
@@ -723,7 +715,8 @@
   // The 1.6 built-in plans, fingerprinted: one still exactly as it came is brought up to date (doneness and all).
   var V16_PLANS = { 'b-brisket': '14v5y3v', 'b-butt': 'kvm4hm', 'b-ribs': '1mesgiq', 'b-ribs221': 'wjr2v1', 'b-chicken': '1t10kut', 'b-spatchcock': 'yyd2s9', 'b-thighs': 'xl4jdc', 'b-wings': '5u9af1', 'b-turkey': '19z1wh5', 'b-tritip': '1crgok4', 'b-steak': 'ib3ya2', 'b-tenderloin': '1yyzn1u', 'b-salmon': 'b62znr', 'b-burgers': '19nuzaa', 'b-queso': '1hv6519' };
   var MAX_PLANS = 40, MAX_STEPS = 8, MAX_FAME = 50, MAX_LEARN = 60, MAX_REMINDERS = 3, MAX_TIMERS = 3;
-  // Phone alerts: each kind of alert can run its own Home Assistant script (picked in Setup → Phone alerts).
+  // Phone alerts: the kinds of alert, each with its own Phone switch in Setup → Phone alerts. (The keys are the card's
+  // names for them; they once picked a script each.)
   var SCRIPT_KINDS = [
     ['problemScript', 'Grill problem', 'An error or out of pellets, running hot or dropping, turned off mid-cook, lost the grill or a probe, or food under 140° too long'],
     ['foodScript', 'Food done', 'Food reaches its target'],
@@ -733,7 +726,7 @@
     ['reminderScript', 'Reminders', 'Spritz, flip and the rest, and time to light the grill for Ready by'],
     ['leftOnScript', 'Grill left on', 'The grill is still on after the food is done'],
   ];
-  var SETUP_KEYS = ['grill', 'probe', 'probeTarget', 'foodEntity', 'timerEntity', 'timerLeftEntity', 'outdoor'].concat(SCRIPT_KINDS.map(function (k) { return k[0]; }));
+  var SETUP_KEYS = ['grill', 'probe', 'probeTarget', 'foodEntity', 'timerEntity', 'timerLeftEntity', 'outdoor'];
   var SIDE_LABELS = ['Corn', 'Potatoes', 'Beans', 'Veggies', 'Rolls', 'Mac & cheese'];
   // Doneness, in °F: the temp a food ends at after it rests (ThermoWorks' chef chart). pull is how many
   // degrees early the heads-up says to take it off, since it keeps climbing while it rests. Poultry never
@@ -865,8 +858,7 @@
     SETUP_KEYS.forEach(function (k) { if (typeof d[k] === 'string' && d[k].trim()) out[k] = d[k].trim(); });
     out.offsets = {};
     if (d.offsets && typeof d.offsets === 'object') Object.keys(d.offsets).forEach(function (id) { var n = num(d.offsets[id]); if (n) out.offsets[id] = Math.max(-30, Math.min(30, n)); });
-    // The phones every alert goes to (picked in Setup → Phone alerts), and the alerts switched off for phones.
-    out.phones = arr(d.phones).filter(function (id) { return typeof id === 'string' && /^[A-Za-z0-9_:-]{1,90}$/.test(id); }).slice(0, 8);
+    // The alerts switched off for phones (Setup → Phone alerts).
     out.phoneOff = {};
     if (d.phoneOff && typeof d.phoneOff === 'object') SCRIPT_KINDS.forEach(function (k) { if (d.phoneOff[k[0]] === true) out.phoneOff[k[0]] = true; });
     return out;
@@ -1247,7 +1239,6 @@
         var done = pl.steps[pl.step], nxt = pl.steps[pl.step + 1];
         HG.storage.increment(key, 'n', 1).then(function (r) {
           if (r.result !== 1) return;
-          runScript('stepScript');
           sendPhones('stepScript', (done.msg || done.name + ' is done').replace(/[.!]*$/, '.') + ' ' + nxt.name + ' started by itself. ' + foodNow());
           advance(pl.step, 'auto');
         }).catch(function () {});
@@ -2900,7 +2891,7 @@
       if (S.fired[a.key]) return;
       S.fired[a.key] = true;
       HG.storage.increment(a.key, 'n', 1).then(function (r) {
-        if (r.result === 1) { runScript(a.script); sendPhones(a.script, phoneText(a)); if (a.onFire) a.onFire(); }
+        if (r.result === 1) { sendPhones(a.script, phoneText(a)); if (a.onFire) a.onFire(); }
         if (r.value && r.value.d) { S.acked[a.key] = true; if (r.value.ok && a.trust) a.trust(); }
       }).catch(function () {});
     });
@@ -2939,7 +2930,6 @@
     S.acked[a.key] = true; S.alertKey = null; $('alert').style.display = 'none';
     HG.storage.increment(a.key, 'd', 1).catch(function () {});
     if (a.onAck && !skip) a.onAck();
-    clearPhones(a);
     tickAlerts();
   }
   function refreshAcks() {
@@ -2948,50 +2938,33 @@
       HG.storage.get(a.key).then(function (d) { if (d && d.d) { S.acked[a.key] = true; if (d.ok && a.trust) a.trust(); tickAlerts(); } }).catch(function () {});
     });
   }
-  function runScript(key) {
-    var id = settingId(key);
-    if (!id) return;
-    HG.homeAssistant.action(id, 'run').catch(function (e) { toast('Script ' + id + ': ' + errText(e)); });
-  }
 
   // ---------- phone alerts ----------
-  // Each kind of alert can go to the household's phones as well as (or instead of) its script: the phones picked in
-  // Setup → Phone alerts, through HomeGlow (Home Assistant's Companion app or Pushover). The card writes the message,
-  // titled Grill, with the numbers as they are. Grill problems and food done ring through a silent phone. Sent once,
-  // by the display that runs the script; Got it takes it back from the phones.
+  // Each kind of alert can go to the household's phones through HomeGlow's notifications (HomeGlow.notify): every
+  // phone, ntfy topic or browser that ticks Grill in Admin → System → Notifications. The card writes the message,
+  // titled Grill, with the numbers as they are. Grill problems and food done go as urgent, which rings through a
+  // silenced phone where HomeGlow can. Sent once, by the display that wins the alert's once-only count.
   var PHONE_TAGS = { problemScript: 'problem', foodScript: 'food', nearScript: 'near', timerScript: 'timer', stepScript: 'step', reminderScript: 'reminder', leftOnScript: 'lefton' };
   var PHONE_URGENT = { problemScript: true, foodScript: true };
-  function phonesApi() { return !!(HG.notify && typeof HG.notify.send === 'function'); }
-  function pickedPhones() { return (S.setup && S.setup.phones) || []; }
+  function phonesApi() { return typeof HG.notify === 'function'; }
   function phoneOn(kind) { return !!PHONE_TAGS[kind] && !((S.setup && S.setup.phoneOff) || {})[kind]; }
   function phoneText(a) {
     var t = String(a.phone || a.text || '').replace(/\s+/g, ' ').trim();
     return t.replace(/!$/, '.');
   }
+  function phoneErr(e) {
+    var st = e && e.status;
+    if (st === 429) return 'HomeGlow allows 5 phone messages a minute. Try again in a minute.';
+    if (st === 403) return 'HomeGlow hasn’t let this card send to phones. Upload Grill.html again.';
+    return 'Phone alert: ' + errText(e);
+  }
+  // Resolves how many phones (or topics, or browsers) it reached, or null when it wasn't sent. A test's failure is
+  // passed on so Test can say what went wrong.
   function sendPhones(kind, message, test) {
-    var phones = pickedPhones();
-    if (!phonesApi() || !phones.length || !phoneOn(kind) || !message) return Promise.resolve(false);
-    return HG.notify.send(phones, { title: 'Grill', message: message.slice(0, 300), urgent: !!PHONE_URGENT[kind], tag: PHONE_TAGS[kind] })
-      .then(function (r) {
-        if (r && r.ok === false) toast('Some phones didn’t get it: ' + phoneFailures(r));
-        return true;
-      }, function (e) { toast('Phone alert: ' + errText(e)); if (test) throw e; return false; });
-  }
-  function phoneFailures(r) {
-    return Object.keys((r && r.results) || {}).filter(function (id) { return !r.results[id].ok; }).map(function (id) { return phoneName(id); }).join(', ');
-  }
-  function phoneName(id) {
-    var p = (S.phoneList || []).filter(function (x) { return x.id === id; })[0];
-    return p ? p.name : id.replace(/^mobile_app_/, '').replace(/^pushover:/, '').replace(/_/g, ' ');
-  }
-  // Got it on the card takes the message back from the phones, unless another alert of the same kind is still up
-  // (two probes done at once share one phone message).
-  function clearPhones(a) {
-    var kind = a && a.script, phones = pickedPhones();
-    if (!phonesApi() || !phones.length || !phoneOn(kind)) return;
-    var still = alertsNow().some(function (x) { return x.key !== a.key && x.script === kind && !S.acked[x.key]; });
-    if (still) return;
-    HG.notify.clear(phones, PHONE_TAGS[kind]).catch(function () {});
+    if (!phonesApi() || !phoneOn(kind) || !message) return Promise.resolve(null);
+    return Promise.resolve(HG.notify({ title: 'Grill', message: message.slice(0, 300), urgent: !!PHONE_URGENT[kind], tag: PHONE_TAGS[kind] }))
+      .then(function (r) { return r && typeof r.sent === 'number' ? r.sent : 0; },
+        function (e) { if (test) throw e; toast(phoneErr(e)); return null; });
   }
   // Sound. Browsers keep a page quiet until someone taps it, and a reload (a power blip, a HomeGlow update) starts
   // over. So the chime is set up as the card loads (a kiosk browser that allows sound plays it at once), tried again
@@ -3626,12 +3599,9 @@
       if (can.food) row('Grill and probes', probesSummary(), openProbeSetup);
       if (can.food && (S.ids.grill || S.slots[0].id)) row('Adjust readings', offsetsSummary(), openAdjust);
       if (can.temps) row('Phone alerts', (function () {
-        var n = SCRIPT_KINDS.filter(function (k) { return settingId(k[0]); }).length, p = pickedPhones().length;
-        var bits = [];
-        if (phonesApi() && p) bits.push('To ' + p + (p === 1 ? ' phone' : ' phones'));
-        if (n) bits.push(n + ' of ' + SCRIPT_KINDS.length + ' run a script');
-        if (bits.length) return bits.join(' · ');
-        return phonesApi() ? 'Send alerts to your phones, or run a Home Assistant script' : 'Run a Home Assistant script, like a phone notification, when an alert goes off';
+        if (!phonesApi()) return 'Needs a newer HomeGlow';
+        var n = SCRIPT_KINDS.filter(function (k) { return phoneOn(k[0]); }).length;
+        return n === SCRIPT_KINDS.length ? 'Every alert goes to your phones' : (n ? n + ' of ' + SCRIPT_KINDS.length + ' alerts go to your phones' : 'None go to your phones');
       })(), openPhoneAlerts);
       if (can.temps) row('Screen lock', !S.lockPat ? 'Off. Set a pattern so displays lock when no one’s using them' : (lockSecs() ? 'On · this display locks after ' + fmtSecs(lockSecs()) : 'On, but this display never locks (Plugin Options)'), openLockSheet);
       var nl = learnOn().length;
@@ -5057,9 +5027,8 @@
       .catch(function (e) { toast('Couldn’t save: ' + errText(e)); });
   }
 
-  // Setup → Phone alerts: the phones every alert goes to, and for each kind of alert a Phone switch, a Home Assistant
-  // script and Test. Phones need a HomeGlow with phone notifications (HG.notify); without one, scripts work as before.
-  function scriptIds() { return entityIds(function (id) { return domainOf(id) === 'script'; }).sort(byName); }
+  // Setup → Phone alerts: for each kind of alert a Phone switch and Test. Which phones hear the card is chosen in
+  // HomeGlow (Admin → System → Notifications, "Messages from"). A HomeGlow without notifications gets a note instead.
   var PHONE_SUBS = {
     problemScript: 'Errors, pellets, too hot or cold…', foodScript: 'Food reaches its target', nearScript: 'Pull it, or a few degrees out', timerScript: 'Your timers, a step’s, the rest', stepScript: 'A step ends, the grill is hot',
     reminderScript: 'Spritz, flip, light the grill', leftOnScript: 'Still on after the food’s done',
@@ -5070,78 +5039,36 @@
       sh.classList.add('tight');
       sh.appendChild(heading('Phone alerts'));
       if (api) {
-        var chips = el('div', { className: 'phonechips' }, [el('span', { className: 'note', textContent: 'Looking for phones…' })]);
-        var why = el('p', { className: 'note' }, ['Messages are titled ', el('b', { textContent: 'Grill' }), '. The two marked ', el('b', { className: 'loudtxt', textContent: 'Rings on silent' }), ' ring even when a phone is on silent. Got it on the card clears them from the phones.']);
-        sh.appendChild(el('div', { className: 'phonesbox' }, [el('h5', { textContent: 'Send to' }), chips, why]));
-        paintPhoneChips(chips, null);
-        loadPhones(chips);
+        sh.appendChild(el('p', { className: 'note' }, ['Messages go to the phones that tick ', el('b', { textContent: 'Grill' }), ' in HomeGlow: Admin → System → Notifications. The two marked ',
+          el('b', { className: 'loudtxt', textContent: 'Rings on silent' }), ' ring even when a phone is silenced.']));
       } else {
         sh.appendChild(el('div', { className: 'needbox' }, [
-          el('b', { textContent: 'Sending to phones needs a newer HomeGlow' }),
-          el('p', { className: 'note', textContent: 'Once HomeGlow is updated, pick your phones here and the card writes the messages itself. Until then, each alert can run a Home Assistant script, as before.' }),
+          el('b', { textContent: 'Phone alerts need a newer HomeGlow' }),
+          el('p', { className: 'note', textContent: 'Once HomeGlow has notifications (Admin → System → Notifications), the card sends its alerts to your phones.' }),
         ]));
       }
       var rows = el('div', { className: 'palerts' + (api ? '' : ' noapi') });
       SCRIPT_KINDS.forEach(function (k) {
-        var id = settingId(k[0]), urgent = PHONE_URGENT[k[0]];
-        var sub = urgent && api ? el('small', { className: 'loud', textContent: 'Rings on silent' }) : el('small', { textContent: PHONE_SUBS[k[0]] || k[2] });
+        var urgent = PHONE_URGENT[k[0]];
+        var sub = urgent ? el('small', { className: 'loud', textContent: 'Rings on silent' }) : el('small', { textContent: PHONE_SUBS[k[0]] || k[2] });
         var kids = [el('span', { className: 'n' }, [el('b', { textContent: k[1] }), sub])];
-        if (api) {
-          var on = phoneOn(k[0]);
-          var sw = el('button', { className: 'psw', title: on ? 'Sent to the phones' : 'Not sent to the phones', on: { click: function () {
-            var next = !phoneOn(k[0]);
-            saveSetup(function (d) { if (next) delete d.phoneOff[k[0]]; else d.phoneOff[k[0]] = true; }).then(function () {
-              sw.querySelector('.switch').classList.toggle('on', next); sw.setAttribute('aria-checked', next ? 'true' : 'false');
-            }).catch(function (e) { toast('Couldn’t save: ' + errText(e)); });
-          } } }, [el('span', { textContent: 'Phone' }), el('span', { className: 'switch' + (on ? ' on' : '') })]);
-          sw.setAttribute('role', 'switch'); sw.setAttribute('aria-checked', on ? 'true' : 'false'); sw.setAttribute('aria-label', 'Send ' + k[1] + ' to phones');
-          kids.push(sw);
-        }
-        kids.push(el('button', { className: 'scr', title: id ? 'Runs ' + nameOf(id) : 'Run a Home Assistant script too', on: { click: function () { pickScript(k); } } },
-          ['Script: ' + (id ? nameOf(id) + (stateOf(id) ? '' : ' (not found)') : 'none')]));
-        kids.push(el('button', { textContent: 'Test', title: 'Send this alert’s test now', on: { click: function () { testAlert(k); } } }));
+        var on = phoneOn(k[0]);
+        var sw = el('button', { className: 'psw', title: on ? 'Sent to the phones' : 'Not sent to the phones', on: { click: function () {
+          if (!phonesApi()) { toast('Phone alerts need a newer HomeGlow.'); return; }
+          var next = !phoneOn(k[0]);
+          saveSetup(function (d) { if (next) delete d.phoneOff[k[0]]; else d.phoneOff[k[0]] = true; }).then(function () {
+            sw.querySelector('.switch').classList.toggle('on', next); sw.setAttribute('aria-checked', next ? 'true' : 'false');
+          }).catch(function (e) { toast('Couldn’t save: ' + errText(e)); });
+        } } }, [el('span', { textContent: 'Phone' }), el('span', { className: 'switch' + (on ? ' on' : '') })]);
+        sw.setAttribute('role', 'switch'); sw.setAttribute('aria-checked', on ? 'true' : 'false'); sw.setAttribute('aria-label', 'Send ' + k[1] + ' to phones');
+        kids.push(sw);
+        kids.push(el('button', { textContent: 'Test', title: 'Send this alert’s test message now', on: { click: function () { testAlert(k); } } }));
         rows.appendChild(el('div', { className: 'prow' }, kids));
       });
       sh.appendChild(rows);
-      if (!scriptIds().length && !api) sh.appendChild(el('p', { className: 'note', textContent: 'Home Assistant has no scripts yet. Make one under Settings → Automations & scenes → Scripts; the Grill guide has examples.' }));
     }, 'phones');
   }
-  // The household's phones, from HomeGlow; the picked ones toggle on a tap. A phone picked earlier that HomeGlow
-  // doesn't list now (renamed, removed) still shows, so it can be turned off.
-  function loadPhones(chips) {
-    HG.notify.phones().then(function (r) {
-      S.phoneList = arr(r && r.phones);
-      var errs = r && r.errors ? Object.keys(r.errors).map(function (w) { return (w === 'pushover' ? 'Pushover' : 'Home Assistant') + ': ' + r.errors[w]; }) : [];
-      paintPhoneChips(chips, errs.length ? 'Couldn’t reach ' + errs.join('; ') : null);
-    }, function (e) {
-      S.phoneList = [];
-      var msg = e && e.status === 503 ? 'HomeGlow can’t reach any phones yet. Connect Home Assistant or Pushover in HomeGlow: Admin → System → Connections.'
-        : (e && e.status === 403 ? 'HomeGlow hasn’t let this card send to phones. Upload Grill.html again.' : 'Couldn’t list the phones: ' + errText(e));
-      paintPhoneChips(chips, msg);
-    });
-  }
-  function paintPhoneChips(chips, msg) {
-    if (!chips.isConnected && chips.parentNode === null) return;
-    chips.textContent = '';
-    var list = S.phoneList, picked = pickedPhones();
-    if (!list) { chips.appendChild(el('span', { className: 'note', textContent: 'Looking for phones…' })); return; }
-    var all = list.slice();
-    picked.forEach(function (id) { if (!all.some(function (p) { return p.id === id; })) all.push({ id: id, name: phoneName(id) + ' (not found)' }); });
-    all.forEach(function (p) {
-      var sel = picked.indexOf(p.id) >= 0;
-      var b = el('button', { className: sel ? 'sel' : '', title: p.via === 'pushover' ? 'Through Pushover' : (p.via === 'home_assistant' ? 'Through Home Assistant’s app' : ''), on: { click: function () {
-        if (!sel && pickedPhones().length >= 8) { toast('Up to 8 phones.'); return; }
-        saveSetup(function (d) { d.phones = sel ? d.phones.filter(function (x) { return x !== p.id; }) : d.phones.concat([p.id]); })
-          .then(function () { paintPhoneChips(chips, msg); }).catch(function (e) { toast('Couldn’t save: ' + errText(e)); });
-      } } }, [el('span', { className: 'tick', textContent: sel ? '✓' : '' }), p.name]);
-      b.setAttribute('aria-pressed', sel ? 'true' : 'false');
-      chips.appendChild(b);
-    });
-    if (!list.length && !msg) msg = 'No phones found. Install Home Assistant’s app on a phone, or set up Pushover in HomeGlow (Admin → System → Connections).';
-    if (msg) chips.appendChild(el('span', { className: 'note', style: 'flex-basis:100%', textContent: msg }));
-  }
-  // Test: this kind's message, with the numbers as they are now where there are any, to the picked phones (when its
-  // Phone switch is on), and its script run (when it has one).
+  // Test: this kind's message, with the numbers as they are now where there are any.
   var PHONE_TESTS = {
     problemScript: function () { return grillNow() || 'Grill is 310°, set to 250°.'; },
     foodScript: function () { return (S.slots[0] && S.slots[0].temp !== null ? foodLabel(S.slots[0]) + ' is ' + deg(S.slots[0].temp) + '.' : 'Brisket reached 203°.'); },
@@ -5152,21 +5079,12 @@
     leftOnScript: function () { return 'The grill’s still on. ' + grillNow(); },
   };
   function testAlert(k) {
-    var id = settingId(k[0]), phones = phonesApi() && pickedPhones().length && phoneOn(k[0]);
-    if (!id && !phones) { toast(phonesApi() ? 'Nothing to test: pick a phone, or a script for ' + k[1].toLowerCase() + '.' : 'Pick a script for ' + k[1].toLowerCase() + ' first.'); return; }
-    var done = [];
-    var jobs = [];
-    if (phones) jobs.push(sendPhones(k[0], ('Test: ' + PHONE_TESTS[k[0]]()).trim(), true).then(function (sent) { if (sent) done.push('sent to ' + pickedPhones().length + (pickedPhones().length === 1 ? ' phone' : ' phones')); }, function () {}));
-    if (id) jobs.push(HG.homeAssistant.action(id, 'run').then(function () { done.push('ran ' + nameOf(id)); }, function (e) { toast('Script ' + id + ': ' + errText(e)); }));
-    Promise.all(jobs).then(function () { if (done.length) toast(k[1] + ' test: ' + done.join(', ')); });
-  }
-  function pickScript(k) {
-    openEntityPicker({
-      title: k[1], placeholder: 'Search scripts', ids: scriptIds(), current: settingId(k[0]),
-      top: [['', 'None', 'No script for this']],
-      onPick: function (v) { saveSetupKey(k[0], v, v ? k[1] + ' runs ' + nameOf(v) : 'No script for ' + k[1].toLowerCase(), openPhoneAlerts); },
-      note: 'Runs when: ' + k[2].charAt(0).toLowerCase() + k[2].slice(1) + '.', empty: 'Home Assistant has no scripts yet.', back: openPhoneAlerts,
-    });
+    if (!phonesApi()) { toast('Phone alerts need a newer HomeGlow.'); return; }
+    if (!phoneOn(k[0])) { toast(k[1] + ' is off for phones. Turn its Phone switch on to test it.'); return; }
+    sendPhones(k[0], ('Test: ' + PHONE_TESTS[k[0]]()).trim(), true).then(function (n) {
+      toast(n ? k[1] + ' test: sent to ' + n + (n === 1 ? ' phone' : ' phones')
+        : 'No phone hears Grill yet. In HomeGlow, Admin → System → Notifications, tick Grill under Messages from.');
+    }, function (e) { toast(phoneErr(e)); });
   }
 
   // Grill and probes → Adjust readings: + or − degrees for the grill and each probe.
