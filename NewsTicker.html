@@ -10,7 +10,7 @@
     "manifestVersion": 1,
     "id": "rss-reader",
     "name": "RSS Reader",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "description": "Headlines from the feeds you choose, merged newest first. Comes with a list of working feeds - news, technology, science, sport - and takes any RSS or Atom URL you add. Feeds are fetched through HomeGlow's own proxy rather than a third-party service.",
     "category": "news-weather",
     "apiVersion": "v1",
@@ -362,15 +362,8 @@
         .catch(function () { state.whitelist = []; });
     }
 
-    function allowHosts(hosts) {
-      var merged = state.whitelist.slice();
-      hosts.forEach(function (h) { if (h && merged.indexOf(h) === -1) merged.push(h); });
-      return fetchJson(API + '/api/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ key: 'PROXY_WHITELIST', value: merged.join(',') })
-      }).then(function () { state.whitelist = merged; });
-    }
+    // The whitelist is the household's to change, not a plugin's: HomeGlow
+    // refuses a plugin's settings writes. This only says where to change it.
 
     // ---------- fetching ----------
 
@@ -482,9 +475,8 @@
       if (state.blockedHosts.length) {
         html += '<div class="warn">HomeGlow\'s proxy is not allowed to reach ' +
           state.blockedHosts.map(function (h) { return '<strong>' + esc(h) + '</strong>'; }).join(', ') +
-          '. Feeds are fetched through it, so these have to be permitted first.' +
-          '<br><button class="btn primary" id="allowBtn">Allow ' +
-          (state.blockedHosts.length === 1 ? 'it' : 'them') + '</button></div>';
+          '. Feeds are fetched through it, so ' + (state.blockedHosts.length === 1 ? 'it has' : 'they have') +
+          ' to be added to the proxy whitelist first: Admin → System → Connections, then refresh this widget.</div>';
       }
       if (state.fetchErrors.length) {
         html += '<div class="err">' + state.fetchErrors.map(esc).join('<br>') + '</div>';
@@ -594,21 +586,6 @@
           document.getElementById('feedsBtn').textContent = state.picking ? 'Close' : 'Feeds';
           render();
           break;
-
-        case 'allowBtn': {
-          var btn = document.getElementById('allowBtn');
-          btn.disabled = true;
-          btn.textContent = 'Allowing…';
-          allowHosts(state.blockedHosts)
-            .then(refresh)
-            .then(render)
-            .catch(function (e) {
-              note('Could not update the proxy whitelist: ' + e.message +
-                   '. Add the hostname under Settings → Interface → Proxy whitelist.');
-              render();
-            });
-          break;
-        }
 
         case 'addFeed': {
           var name = document.getElementById('newName').value.trim();
