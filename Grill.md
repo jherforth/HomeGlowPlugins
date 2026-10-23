@@ -1,34 +1,12 @@
-# Grill card for HomeGlow · 1.13.0
+# Grill card for HomeGlow · 2.0.0
 
 Your grill and probes from Home Assistant on one card: temps for the grill and every probe, doneness picks for each food, a cook graph you can zoom and slide along, multi-step programs, Ready by times that learn from your grill, a grill journal, timers, reminders and alerts, and a pattern screen lock. Works with a smart grill, or with any grill and two temperature sensors.
-
-**New in 1.13:** when you double-tap the card to half or the whole screen, the four top boxes show at twice the size, in proportion, and go back to normal when the card does. The Programs list is plainer: no *Start* next to each program, and no *New from what’s set now*. The ⋯ menu shows just the names (Compare keeps its line), and a program is stopped from the program box instead of ⋯.
-
-**New in 1.12:** alerts go straight to your phones, without a script. In Setup → **Phone alerts**, tap your phones once; each alert then has a **Phone** switch beside its script, and **Test** sends a test message. The card writes each message itself, with the numbers as they are (*Brisket is 198°. Done at 203°.*). Grill problems and food done ring even when a phone is on silent, and **Got it** on the card clears the message from the phones. Phones are reached through Home Assistant's app or Pushover, whichever HomeGlow is set up with. This needs a HomeGlow with phone notifications; on an older one, Phone alerts says so and scripts work as before.
-
-**New in 1.11.1:** the **+** that adds a timer is now a stopwatch. It sits to the left of the timer and reminder boxes and stays put while they slide. The boxes no longer have icons.
-
-**New in 1.11:** the line under the top boxes drops the cook's name (it's already in the Food box) and keeps how long the cook has been going. Every timer and reminder gets its own box there, soonest on the left, on one line you slide sideways, with a **+** at the end to add one. Tap a box for just that timer or reminder.
-
-**New in 1.10:** the timer and side timer are one: up to 3 timers at once, each with a name (*Timer*, or *Corn*, *Potatoes*, *Beans*, *Veggies*, *Rolls*, *Mac & cheese*, or your own), and each rings on its own (*Corn is done!*). ⋯ → **Add timer** starts one any time, even while a program runs. **Compare** moved into ⋯. The *Side timer* setting is gone; a timer or side timer running when you update carries on as one of your timers.
-
-**New in 1.9:** a slimmer top. The four boxes now hold what the big cards under them used to: the grill's temp and set temp (*249°/250°*), the food with its temp and target (*Brisket 118°/203°*), the timer (or, while a program runs, its step) and when it'll be done. The graph is about 40% taller on a wall display and half again as tall on a Nest Hub. Extra probes get a slim box each. Plans are now called **programs**. ⋯ → **End cook** asks whether to save the cook to the journal or delete it. The timer and food menus fit a wall display without scrolling, and Journal, Programs and Setup each have a ✕ back to Cook.
-
-**New in 1.7:** tap anywhere on the grill, food or timer box; pick the food and how done, and the card sets the target and when to pull it; up to 3 reminders, added any time; a side timer; doneness on programs; Undo after changes; a setting to turn learning off; locked displays show what they can't do; a pattern screen lock with Mute; probe and grill offsets; a check for a probe that slipped out of the meat; a reminder when the grill's left on; a *How was it?* bar after a cook; and the grill, probes and phone-alert scripts are now picked on the card, so Plugin Options is down to 14 settings.
-
-**New in 1.8:** a new layout. Four tabs along the bottom: **Cook**, **Journal**, **Programs** and **Setup**. Across the top of Cook, the set temp, the program's step, the timer and when it's ready; under them a card for the pit and each probe, with its target and done time. The graph names each line with its temp, shows the clock along the bottom, and marks the set temp and target. **Compare** puts a past cook's line behind this one and says if you're ahead or behind. Big numbers is bigger, every button is easier to hit, and the colors are darker on light themes so they read in sunlight.
-
-**New in 1.7.4:** the running-hot alarm also catches a grill that's already far over its set temp and staying there, and a fire right after relighting; a clearer message when a probe stops reporting; and no old done time while a probe isn't reading.
-
-**New in 1.7.3:** alerts for a grill that turns off before the food is done (the cook stays open until you answer), a probe that stops reading, and a grill running hot; the grill's errors in plain words with what to do; done times that allow for the stall; clearer grill status words, including *Cooling down*; and a **🔇 Tap for sound** button when a display can't chime yet.
 
 ## Install or update
 
 1. Home Assistant must be connected in HomeGlow (Admin → System → Connections).
-2. Admin → Dashboard → Plugins → **Upload Widget** → pick `Grill.html`. Uploading over an older version keeps its data. Your presets become programs (an untouched built-in preset becomes the new built-in program; one you made or changed becomes a program that does the same thing), and your past cooks show up in the Grill journal under Recent.
+2. Admin → Dashboard → Plugins → **Upload Widget** → pick `Grill.html` (or install Grill from the plugin list). Uploading a newer `Grill.html` over it keeps all its data.
 3. Enable it and put it on a tab.
-
-**Updating from 1.6:** the boxes for the grill, probes, probe target, grill timer, outdoor temperature and the six scripts have moved out of Plugin Options and onto the card. HomeGlow doesn't pass along values a plugin no longer lists, so **take a screenshot of Plugin Options before you upload 1.7**. Then pick them again on the card: the grill, food sensor and outdoor temp in Setup → **Grill and probes**, the scripts in Setup → **Phone alerts**. A Pit Boss is found by itself, so most setups only need the scripts. The 140° warning's on/off switch and hours became one dropdown, so check that too.
 
 ## What it works with
 
@@ -51,7 +29,7 @@ Four tabs along the bottom:
 - **Cook:** the grill, the probes and the graph. Where the card rests.
 - **Journal:** your last 10 cooks and the Hall of fame (see Grill journal).
 - **Programs:** programs, and Ready by (see Programs).
-- **Setup:** Grill and probes, Adjust readings, Phone alerts (phones and scripts), Screen lock, and What your grill has learned.
+- **Setup:** Grill and probes, Adjust readings, Phone alerts, Screen lock, and What your grill has learned.
 
 Left on Journal, Programs or Setup for 5 minutes, the card goes back to Cook by itself. So does a new alert.
 
@@ -198,8 +176,6 @@ A program also has its food target for the done alert (at its lowest it follows 
 - pork tenderloin, salmon, smoked queso
 - burgers: first side 6 minutes, flip, then the second side to 160°
 
-1.6's built-in programs you never changed are brought up to date by themselves; programs you made or changed are left alone.
-
 ## Ready by
 
 Tap a program → **Ready by…** (or **Ready by…** on the Cook tab when no cook is going, then the program) → pick when you want to eat, and the weight for programs that cook to a temp. It works out **Light the grill by 5:10 AM** and shows the breakdown:
@@ -209,7 +185,7 @@ Tap a program → **Ready by…** (or **Ready by…** on the Cook tab when no co
 - the rest
 - extra time on a cold day
 
-**Remind me** sets it. The third box counts down to lighting the grill (*Light in 7h 10m*), the Done box shows *Ready by 6:00 PM*, and the graph's space shows the program. Tap either box for **Light now**, **Change** or **Cancel Ready by**. At that time the card chimes and runs your reminder script. Tap **Lit it** (or **Light now**, or just light the grill) and the program starts. Lighting it early counts too, up to 3 hours ahead. If the grill is already on when you set a Ready by, the program waits for the chime or **Light now**, so it doesn't start in the middle of another cook.
+**Remind me** sets it. The third box counts down to lighting the grill (*Light in 7h 10m*), the Done box shows *Ready by 6:00 PM*, and the graph's space shows the program. Tap either box for **Light now**, **Change** or **Cancel Ready by**. At that time the card chimes and tells your phones. Tap **Lit it** (or **Light now**, or just light the grill) and the program starts. Lighting it early counts too, up to 3 hours ahead. If the grill is already on when you set a Ready by, the program waits for the chime or **Light now**, so it doesn't start in the middle of another cook.
 
 During the cook, the Done box says *Ready by 6:00 PM · On track*, or *Ready 6:25 PM · Behind* when the card's projection runs more than 10 minutes late.
 
@@ -248,7 +224,7 @@ Setup → **Grill and probes**:
 - **Other sensors:** **+ Add a temperature sensor** puts a Meater, ThermoWorks or any temperature sensor on the card next to the grill's probes. ✕ removes it.
 - Up to 5 probes show at once, counting the main food, so the graph stays readable.
 - Each probe keeps its line and color for the whole cook, even when others are turned off or added.
-- **Adjust readings** (its own row in Setup): a − / + for the grill and each probe. Check a probe in ice water (32°F) next to a thermometer you trust: if it reads 30°, set +2°. For the grill, compare a thermometer at the grate: with −10°, the card shows the grate temp and asks the grill for 10° more than you pick, so *Set 250°* really means 250° at the grate. A probe's target on the grill itself is adjusted the same way, so the grill's own beep agrees with the card. Phone-alert scripts read Home Assistant directly, so their temps aren't adjusted.
+- **Adjust readings** (its own row in Setup): a − / + for the grill and each probe. Check a probe in ice water (32°F) next to a thermometer you trust: if it reads 30°, set +2°. For the grill, compare a thermometer at the grate: with −10°, the card shows the grate temp and asks the grill for 10° more than you pick, so *Set 250°* really means 250° at the grate. A probe's target on the grill itself is adjusted the same way, so the grill's own beep agrees with the card.
 - **More:** the choices the card normally makes by itself: which of the grill's probe ports is the main food, the main probe's target on the grill (or the card's own target), the grill timer (or always the card's own), and the timer's time-left sensor.
 - The choices are shared by every display and carry over from cook to cook.
 
@@ -283,10 +259,10 @@ Taking a cook out of the Hall of fame after it's left Recent deletes it, so that
 - **Big numbers:** during a cook, after 2 minutes untouched on the Cook tab, the card switches to the main food's temp as big as the card allows, with its target and done time under it, and the grill, the other probes and the timer or done time along the bottom, to read across the yard. Any tap brings the graph back. Change or turn off with **Big numbers after…** (per display).
 - **Chime:** browsers only play sound after someone taps the screen, and a reload (a power blip, a HomeGlow update) starts over. While a cook is going and the chime can't play yet, the card shows a **🔇 Tap here for sound** bar over the probes (and on Big numbers); one tap on the card fixes it (in Chrome, a tap anywhere on the dashboard does). To never need the tap on a wall display, let its browser play sound by itself: for Chromium or Chrome in kiosk mode, add `--autoplay-policy=no-user-gesture-required` to how it starts.
 - **Keep the card on screen:** a card only runs while its tab is showing. A display left on another tab, or a screensaver that cycles through tabs, doesn't chime (or record) while the Grill tab is hidden, and the card restarts each time the tab comes back. Keep the Grill card on the tab the display rests on, or use the photo screensaver during a cook.
-- **Quiet hours:** set a start and end per display (like 22:00 and 07:00). During them alerts still flash and phone alerts and scripts still go out, but the display doesn't chime. Turn on *Grill problems still chime* if you want an empty hopper at 3 AM to make noise.
+- **Quiet hours:** set a start and end per display (like 22:00 and 07:00). During them alerts still flash and still go to your phones, but the display doesn't chime. Turn on *Grill problems still chime* if you want an empty hopper at 3 AM to make noise.
 - Reminders stop when their cook ends, or when you start a new one. A program step's reminder stops when the step ends, after one last ring if it was due.
 - **Done times are estimates.** Good mid-cook, rough early on. Before the stall they allow for it (see Done times and the stall); through it, the card shows how long it's been stalled instead.
-- **Access:** the plugin can read sensors, error sensors and weather entities, and operate climate, number and script entities. It only operates the ones it's set to: the grill, probe targets, the grill timer and your scripts. It can also send the phones you pick a short message through HomeGlow (text only).
+- **Access:** the plugin can read sensors, error sensors and weather entities, and operate climate and number entities. It only operates the ones it's set to: the grill, probe targets and the grill timer. It can also send short messages (text only) through HomeGlow's notifications to the phones that tick Grill.
 
 ## Locked displays
 
@@ -312,13 +288,19 @@ A phone-style pattern on a 3×3 grid of dots, so a passing hand or a kid can't c
 
 ## Phone alerts
 
-Setup → **Phone alerts**. Each kind of alert can go to your phones, run a Home Assistant script, or both.
+The card can send its alerts to your phones through HomeGlow's notifications.
 
-**Phones (needs a HomeGlow with phone notifications):**
+**Choosing the phones** happens in HomeGlow, not on the card: Admin → System → **Notifications**. HomeGlow reaches phones three ways, and you can use any of them:
 
-- **Send to:** tap each phone once. Every alert with its **Phone** switch on goes to all the phones picked. Every display shares the choice.
-- The phones come from HomeGlow: every phone with Home Assistant's Companion app, and your Pushover devices if HomeGlow has Pushover set up (Admin → System → Connections → Pushover; for homes without Home Assistant).
-- **The messages** are titled **Grill**, and the card writes them with the numbers as they are:
+- **The Home Assistant app:** every phone with Home Assistant's Companion app, each turned on with a switch.
+- **ntfy:** a free notification app for Android and iPhone. HomeGlow sends to topics you subscribe to in the app.
+- **Browser notifications:** a phone or tablet that turns them on in HomeGlow. Needs HomeGlow at an https:// address; on iPhone, HomeGlow added to the Home Screen.
+
+Each phone, topic or browser lists the plugins that can send messages under **Messages from:**. Tick **Grill** on each one that should hear the grill. Nothing hears it until you do.
+
+**On the card,** Setup → **Phone alerts** has a row for each kind of alert, with a **Phone** switch (all on to start) and **Test**.
+
+**The messages** are titled **Grill**, and the card writes them with the numbers as they are:
 
 | Alert | The phone says, for example |
 | --- | --- |
@@ -330,73 +312,11 @@ Setup → **Phone alerts**. Each kind of alert can go to your phones, run a Home
 | Reminders | *Time to spritz. Brisket is 152°.* · *Time to light the grill for Brisket, ready by 6:00 PM.* |
 | Grill left on | *The grill’s still on, 45 minutes after the brisket was done. It’s at 180°.* |
 
-- **Rings on silent:** Grill problem and Food done. Through Home Assistant's app, an Android rings at alarm volume even on vibrate or silent (not through Do Not Disturb), and an iPhone rings through mute and Do Not Disturb once its owner allows Critical Alerts for the Home Assistant app. Through Pushover they repeat every minute, for up to an hour, until someone taps Acknowledge on a phone.
+- **Rings on silent:** Grill problem and Food done are sent as urgent. Through the Home Assistant app, an Android rings at alarm volume even on vibrate or silent (not through Do Not Disturb), and an iPhone rings through mute once its owner allows Critical Alerts for the Home Assistant app. Through ntfy they go at its top priority. Browser notifications follow the phone's own sound settings.
 - **Once:** each message goes out once, from one display, even with several screens showing the card.
-- **Got it** on the card clears it from the phones (Pushover stops repeating it instead; a message already showing stays). A phone whose app hasn't run lately may keep it.
-- **Test** sends that alert's test message to the picked phones (if its Phone switch is on) and runs its script (if it has one). A test of Grill problem or Food done rings like the real thing.
-- On a HomeGlow without phone notifications, the page says it needs a newer HomeGlow, and only the scripts show.
-
-**Scripts:** make scripts in Home Assistant, then pick one for each alert. The same script can serve several alerts. Each runs once, even with several screens showing the card. The card can't pass the temps along, but a script can read them itself. Replace `pb1150ps3` with your grill's name (look it up under Settings → Devices & services → Entities), and use your phones' names from Settings → Devices & services → Mobile App.
-
-**Grill problem** (pick it for *Grill problem*):
-
-```yaml
-alias: Grill problem
-sequence:
-  - action: notify.mobile_app_YOUR_PHONE
-    data:
-      title: "Grill needs you"
-      message: >-
-        Grill is {{ state_attr('climate.pb1150ps3_grill_temperature', 'current_temperature') | round }}°,
-        set to {{ state_attr('climate.pb1150ps3_grill_temperature', 'temperature') | round }}°.
-        {% if is_state('binary_sensor.pb1150ps3_no_pellets', 'on') %}Out of pellets.{% endif %}
-      data:
-        priority: high
-        ttl: 0
-  - action: notify.mobile_app_SECOND_PHONE
-    data:
-      title: "Grill needs you"
-      message: "Check the grill: it's reporting an error, losing heat, running hot or turned off, or a probe stopped reading."
-```
-
-**Food done** (pick it for *Food done*):
-
-```yaml
-alias: Grill food done
-sequence:
-  - action: notify.mobile_app_YOUR_PHONE
-    data:
-      title: "Food's ready"
-      message: >-
-        The probe reads {{ states('sensor.pb1150ps3_mpc') | float(0) | round }}°.
-        Time to pull it and rest.
-```
-
-**Almost done** (pick it for *Almost done*):
-
-```yaml
-alias: Grill almost done
-sequence:
-  - action: notify.mobile_app_YOUR_PHONE
-    data:
-      title: "Almost done"
-      message: >-
-        Food is at {{ states('sensor.pb1150ps3_mpc') | float(0) | round }}°,
-        target {{ states('number.pb1150ps3_mpc_target') | float(0) | round }}°.
-```
-
-**Program step** (pick it for *Program step*):
-
-```yaml
-alias: Grill step done
-sequence:
-  - action: notify.mobile_app_YOUR_PHONE
-    data:
-      title: "Grill: next step"
-      message: "A program step is done (time to wrap, sauce or sear). Check the card."
-```
-
-With phones picked above you don't need these; they're for a HomeGlow without phone notifications, or for doing more than a message (flashing a light, announcing on a speaker). Make more the same way for the timer, reminders and *Grill left on* if you want those on your phone too. The problem script also runs for *The grill turned off*, *…probe stopped reporting*, *running hot*, the 140° warning and *Is the probe still in…?*, so it's the one to make loud. The *Time to light the grill* alarm uses the reminders script. The program's final step uses the food script when it ends at a food temp.
+- **Got it** on the card doesn't take the message off the phones; swipe it away there.
+- **Test** sends that alert's test message to the phones that tick Grill. A test of Grill problem or Food done rings like the real thing. HomeGlow lets a plugin send 5 messages a minute and 30 an hour, so after a few tests in a row the card asks you to wait a minute.
+- On a HomeGlow without notifications, the page says it needs a newer HomeGlow.
 
 ## Settings (Admin → Dashboard → Plugins → Grill → Plugin Options)
 
