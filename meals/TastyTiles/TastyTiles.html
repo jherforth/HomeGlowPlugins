@@ -9,7 +9,7 @@
     "manifestVersion": 1,
     "id": "rolling-weekly-menu",
     "name": "Rolling Weekly Menu",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "description": "A rolling weekly dinner menu. Fill in what is planned for each day in edit mode, and reset the week when it is time to plan again. The menu is saved in shared household plugin storage, so every display in the house shows the same one.",
     "category": "meals",
     "apiVersion": "v1",
@@ -102,6 +102,11 @@
       text-transform: var(--hg-heading-transform, none);
       letter-spacing: var(--hg-heading-letter-spacing, normal);
       transition: all 0.3s ease;
+    }
+
+    /* Reset Week after its first click: the second click clears the week. */
+    .custom-button.armed {
+      background: var(--hg-error, var(--error, #ef4444)) !important;
     }
 
     .custom-button:hover {
@@ -631,6 +636,18 @@
       }
     }
 
+    // Menu items are typed by anyone at any display and kept in shared
+    // storage, so they are text, never markup: unescaped, one item could run
+    // script on every display in the house.
+    function escapeHtml(value) {
+      return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
     function renderMenu() {
       const container = document.getElementById('menu-days');
       const rollingDays = getRollingDayOrder();
@@ -653,7 +670,7 @@
             '<div class="empty-day">No menu items planned</div>' :
             dayItems.map((item, itemIndex) => `
                 <div class="menu-item">
-                  <span class="menu-item-text">${item}</span>
+                  <span class="menu-item-text">${escapeHtml(item)}</span>
                   ${editMode ? `
                     <div class="menu-item-actions">
                       <button class="small-button" onclick="removeItem(${day.index}, ${itemIndex})">×</button>
@@ -754,15 +771,50 @@
       }
     }
 
+    // The first click arms, the second clears. confirm() is ignored in the
+    // sandboxed iframe the dashboard embeds plugins in: it returns false, so
+    // the confirm-guarded reset silently did nothing there.
+    const RESET_LABEL = 'Reset Week';
+    const RESET_ARMED_LABEL = 'Tap again to clear the week';
+    let resetArmed = false;
+    // Set by the click that arms, so the same click bubbling up to the
+    // document listener below does not disarm it again at once.
+    let armClickHandled = false;
+
+    function setResetArmed(armed) {
+      resetArmed = armed;
+      const button = document.getElementById('reset-week-btn');
+      if (!button) return;
+      button.textContent = armed ? RESET_ARMED_LABEL : RESET_LABEL;
+      button.classList.toggle('armed', armed);
+    }
+
+    // Anything but the armed button disarms it, so a stray first click can
+    // be taken back.
+    document.addEventListener('click', () => {
+      if (armClickHandled) { armClickHandled = false; return; }
+      if (resetArmed) setResetArmed(false);
+    });
+
+    // A click on another widget never reaches this document (the plugin is in
+    // an iframe), but it does take focus away from it.
+    window.addEventListener('blur', () => {
+      if (resetArmed) setResetArmed(false);
+    });
+
     function resetWeek() {
-      if (confirm('Are you sure you want to clear all menu items for the week?')) {
-        menuData = {};
-        dayNames.forEach((day, index) => {
-          menuData[index] = [];
-        });
-        saveMenuData();
-        renderMenu();
+      if (!resetArmed) {
+        armClickHandled = true;
+        setResetArmed(true);
+        return;
       }
+      setResetArmed(false);
+      menuData = {};
+      dayNames.forEach((day, index) => {
+        menuData[index] = [];
+      });
+      saveMenuData();
+      renderMenu();
     }
   </script>
 </body>

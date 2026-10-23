@@ -8,17 +8,18 @@
     "manifestVersion": 1,
     "id": "family-polls",
     "name": "Family Poll",
-    "version": "1.0.0",
-    "description": "Runs a quick family vote. Ask a question, add the options, and everyone picks their profile and votes straight from the dashboard. Polls and votes are saved on the server, so every display shows the same tally.",
+    "version": "1.2.0",
+    "description": "Runs a quick family vote. Ask a question, add the options, and everyone picks their profile and votes from the dashboard. Every display shows the same tally. A poll closes when everyone has voted, or when someone closes it, and is kept under Past polls. Phones can hear the result.",
     "category": "family-hub",
     "apiVersion": "v1",
     "storage": true,
+    "notify": true,
     "settings": [
       { "key": "voter", "label": "Who votes from this display (profile id; the widget sets it when a profile is picked)",
         "type": "string", "default": "", "scope": "device" }
     ],
     "hideableControls": [
-      { "id": "managePolls", "label": "Create, edit, or delete polls" }
+      { "id": "managePolls", "label": "Create, edit, close, or delete polls" }
     ]
   }
   </script>
@@ -302,7 +303,7 @@
     .result-progress {
       flex: 1;
       height: 20px;
-      background: rgba(128, 128, 128, 0.15) !important;
+      background: var(--hg-meter-track, rgba(128, 128, 128, 0.15)) !important;
       border-radius: 10px;
       overflow: hidden;
       margin-right: 0.5rem;
@@ -311,11 +312,29 @@
 
     .result-fill {
       height: 100%;
-      background: linear-gradient(45deg, var(--secondary, #38bdf8), var(--accent, #757575)) !important;
+      background: var(--hg-meter-fill, linear-gradient(45deg, var(--secondary, #38bdf8), var(--accent, #757575))) !important;
       transition: width 0.5s ease;
       border-radius: 10px;
     }
 
+
+    .archive-item {
+      border-top: 1px solid var(--border, rgba(128, 128, 128, 0.3));
+      padding: 0.5rem 0;
+    }
+
+    .archive-summary {
+      cursor: pointer;
+    }
+
+    .archive-question {
+      font-weight: 600;
+    }
+
+    .archive-outcome {
+      font-size: 0.8rem;
+      color: var(--text-secondary, #A3A3A3);
+    }
 
     .result-percentage {
       font-size: 0.8rem;
@@ -433,6 +452,12 @@
         <div class="no-polls">No polls created yet. Create your first poll above!</div>
       </div>
     </div>
+
+    <!-- Closed polls, kept. Shown only once there is one. -->
+    <div class="poll-section" id="archiveSection" style="display: none;">
+      <button type="button" class="custom-button" id="toggleArchiveBtn" onclick="toggleArchive()" style="font-size: 0.8rem; padding: 4px 10px;">Past polls</button>
+      <div id="archiveContainer" style="display: none; margin-top: 0.5rem;"></div>
+    </div>
   </div>
 
   <script src="/plugin-sdk/v1.js"></script>
@@ -449,9 +474,16 @@
     let dataLoaded = false;
     // Which poll the form is editing, or null when creating a new one.
     let editingPollId = null;
-    // Which poll's Delete has been armed. The sandbox blocks confirm(), so the
-    // second click on the button is the confirmation.
+    // Which past poll's Delete, or which open poll's Close, has been armed. The
+    // sandbox blocks confirm(), so the second click on the button confirms.
     let pendingDeleteId = null;
+    let pendingCloseId = null;
+    // Closed polls, newest first: { id, question, options: [{ text, voters }],
+    // createdBy, createdAt, closedAt, closedBy }. closedBy is null when the poll
+    // closed itself because everyone had voted.
+    let archive = [];
+    let archiveOpen = false;
+    let expandedArchiveId = null;
     // Set by the click that arms, so the same click bubbling up to the document
     // listener below does not immediately disarm it again.
     let armClickHandled = false;
@@ -462,6 +494,11 @@
     const API_BASE = '';
 
     const POLLS_KEY = 'polls';
+    // Closed polls live in one document per year, archive:<year>, continued in
+    // archive:<year>:2 and on once a document nears the 64 KB value cap. A key
+    // per poll would use up the 500-key cap; a year rarely fills one document.
+    const ARCHIVE_PREFIX = 'archive:';
+    const ARCHIVE_DOC_BYTES = 56 * 1024;
     const VOTE_PREFIX = 'v:';
     const MIGRATION_KEY = 'migratedFromLocalStorage';
     const LEGACY_POLLS_KEY = 'pollWidget_polls';
@@ -584,7 +621,7 @@
         if (savedUserId) {
           const savedUser = users.find(u => u.id === parseInt(savedUserId));
           if (savedUser) {
-            selectUser(savedUser);
+            applyUser(savedUser);
           }
         }
       } catch (error) {
@@ -610,10 +647,19 @@
       `).join('');
     }
 
+    // Someone picked their profile: show it and remember it for this display.
     function selectUser(user) {
-      currentUser = user;
+      applyUser(user);
       writeVoterId(user.id.toString());
-      
+      showSuccess(`Selected ${user.username} as current voter`);
+    }
+
+    // Shows the voter without saving. Restoring the saved voter on load uses
+    // only this; going through selectUser wrote the same setting back to the
+    // server, and announced it, on every page load.
+    function applyUser(user) {
+      currentUser = user;
+
       // Update UI
       document.getElementById('currentUserName').textContent = user.username;
       document.getElementById('currentUserAvatar').innerHTML = avatarMarkup(user, 28);
@@ -626,7 +672,6 @@
       });
       
       renderPolls(); // Re-render polls to show user-specific voting status
-      showSuccess(`Selected ${user.username} as current voter`);
     }
 
     function clearUserSelection() {
@@ -666,6 +711,7 @@
     async function loadData() {
       polls = [];
       votes = {};
+      archive = [];
       dataLoaded = false;
 
       if (!PLATFORM_AVAILABLE) {
@@ -674,8 +720,7 @@
       }
 
       try {
-        const all = await STORAGE.list();
-        const documents = all && typeof all === 'object' && !Array.isArray(all) ? all : {};
+        const documents = await readAll();
 
         const stored = documents[POLLS_KEY];
         polls = Array.isArray(stored) ? stored.map(normalizePoll).filter(Boolean) : [];
@@ -693,6 +738,20 @@
           (votes[pollId] = votes[pollId] || {})[userId] = value;
         }
 
+        archive = [];
+        for (const key of Object.keys(documents)) {
+          if (key.indexOf(ARCHIVE_PREFIX) !== 0 || !Array.isArray(documents[key])) continue;
+          for (const candidate of documents[key]) {
+            const record = normalizeArchived(candidate);
+            if (record) archive.push(record);
+          }
+        }
+        archive.sort((a, b) => (a.closedAt < b.closedAt ? 1 : a.closedAt > b.closedAt ? -1 : 0));
+        // Closing archives first and then takes the poll off the open list. If
+        // that second write failed, the poll is in both; it counts as closed.
+        const archivedIds = new Set(archive.map(record => record.id));
+        polls = polls.filter(poll => !archivedIds.has(String(poll.id)));
+
         dataLoaded = true;
 
         if (polls.length === 0 && documents[MIGRATION_KEY] === undefined) {
@@ -704,8 +763,44 @@
         showError('Error loading saved polls');
         polls = [];
         votes = {};
+        archive = [];
         dataLoaded = false;
       }
+    }
+
+    // Every stored document, read fresh. Closing a poll works from this rather
+    // than from what this display loaded, which may be minutes old.
+    async function readAll() {
+      const all = await STORAGE.list();
+      return all && typeof all === 'object' && !Array.isArray(all) ? all : {};
+    }
+
+    // One poll's votes in a set of stored documents: { [userId]: {o, u, t} }.
+    function votesIn(documents, pollId) {
+      const prefix = voteKey(pollId, '');
+      const cast = {};
+      for (const key of Object.keys(documents)) {
+        if (key.indexOf(prefix) !== 0) continue;
+        const value = documents[key];
+        if (value && typeof value === 'object') cast[key.slice(prefix.length)] = value;
+      }
+      return cast;
+    }
+
+    function normalizeArchived(candidate) {
+      const poll = normalizePoll(candidate);
+      if (!poll || typeof candidate.closedAt !== 'string') return null;
+      const options = poll.options.map((option, index) => {
+        const voters = candidate.options[index] && Array.isArray(candidate.options[index].voters)
+          ? candidate.options[index].voters.filter(name => typeof name === 'string') : [];
+        return { text: option.text, voters };
+      });
+      return {
+        ...poll,
+        options,
+        closedAt: candidate.closedAt,
+        closedBy: typeof candidate.closedBy === 'string' ? candidate.closedBy : null
+      };
     }
 
     // Writes the poll list only. Votes are written one key at a time by vote(),
@@ -769,22 +864,25 @@
       await STORAGE.set(POLLS_KEY, polls);
     }
 
+    // Each message replaces the last, and so does its timer: an older message's
+    // timer used to hide a newer one early (a vote, then "everyone has voted").
+    const messageTimers = {};
+    function showMessage(id, message, ms) {
+      const div = document.getElementById(id);
+      div.textContent = message;
+      div.style.display = 'block';
+      clearTimeout(messageTimers[id]);
+      messageTimers[id] = setTimeout(() => {
+        div.style.display = 'none';
+      }, ms);
+    }
+
     function showError(message) {
-      const errorDiv = document.getElementById('errorMessage');
-      errorDiv.textContent = message;
-      errorDiv.style.display = 'block';
-      setTimeout(() => {
-        errorDiv.style.display = 'none';
-      }, 5000);
+      showMessage('errorMessage', message, 5000);
     }
 
     function showSuccess(message) {
-      const successDiv = document.getElementById('successMessage');
-      successDiv.textContent = message;
-      successDiv.style.display = 'block';
-      setTimeout(() => {
-        successDiv.style.display = 'none';
-      }, 3000);
+      showMessage('successMessage', message, 3000);
     }
 
     function addOption() {
@@ -888,18 +986,176 @@
 
       (votes[poll.id] = votes[poll.id] || {})[userId] = record;
       pendingDeleteId = null;
+      pendingCloseId = null;
       renderPolls();
       showSuccess(moved
         ? `Vote moved for ${currentUser.username}`
         : `Vote recorded for ${currentUser.username}!`);
+      if (!moved) await closeIfEveryoneVoted(poll.id);
+    }
+
+    // Read fresh, so votes cast on other displays since this one loaded count.
+    async function closeIfEveryoneVoted(pollId) {
+      const id = String(pollId);
+      let documents;
+      try {
+        documents = await readAll();
+      } catch (error) {
+        console.error('Polls: could not check whether everyone has voted:', error);
+        return;
+      }
+      const cast = votesIn(documents, id);
+      const open = Array.isArray(documents[POLLS_KEY]) && documents[POLLS_KEY].some(p => p && String(p.id) === id);
+      if (!open) {
+        // Closed on another display after this one loaded: the vote just cast
+        // has no poll. Remove it rather than leave it against the key cap.
+        await Promise.allSettled(Object.keys(cast).map(userId => STORAGE.remove(voteKey(id, userId))));
+        await reloadAndRender();
+        showError('That poll was already closed. It is under Past polls.');
+        return;
+      }
+      if (users.length > 0 && users.every(user => cast[String(user.id)] !== undefined)) {
+        await closePoll(id, true);
+      }
+    }
+
+    // The first click on Close arms it, the second closes; a poll closing
+    // because everyone has voted skips that. The result is written to the
+    // archive first, and only then is the poll taken off the open list and its
+    // votes removed, so a failure part way never loses the poll.
+    async function closePoll(pollId, everyoneVoted = false) {
+      const id = String(pollId);
+      if (!everyoneVoted) {
+        if (HIDE_MANAGE_POLLS) return;
+        if (pendingCloseId !== id) {
+          pendingCloseId = id;
+          pendingDeleteId = null;
+          armClickHandled = true;
+          renderPolls();
+          return;
+        }
+        pendingCloseId = null;
+      }
+      if (!dataLoaded) {
+        console.error('Polls: data was never loaded; refusing to close.');
+        showError('Error closing poll');
+        return;
+      }
+
+      let documents;
+      try {
+        documents = await readAll();
+      } catch (error) {
+        console.error('Error closing poll:', error);
+        showError('Error closing poll');
+        return;
+      }
+      const stored = Array.isArray(documents[POLLS_KEY]) ? documents[POLLS_KEY].map(normalizePoll).filter(Boolean) : [];
+      const poll = stored.find(p => String(p.id) === id);
+      if (!poll) {
+        // Closed or deleted on another display meanwhile.
+        await reloadAndRender();
+        return;
+      }
+
+      const cast = votesIn(documents, id);
+      const record = {
+        id,
+        question: poll.question,
+        options: poll.options.map(option => ({ text: option.text, voters: [] })),
+        createdBy: poll.createdBy,
+        createdAt: poll.createdAt,
+        closedAt: new Date().toISOString(),
+        closedBy: everyoneVoted ? null : (currentUser ? currentUser.username : 'Anonymous')
+      };
+      Object.values(cast).forEach(v => {
+        if (v && typeof v.o === 'number' && record.options[v.o]) {
+          record.options[v.o].voters.push(typeof v.u === 'string' && v.u ? v.u : 'Someone');
+        }
+      });
+
+      const key = archiveKeyFor(documents, record);
+      const doc = Array.isArray(documents[key]) ? documents[key] : [];
+      try {
+        if (!doc.some(r => r && String(r.id) === id)) await STORAGE.set(key, doc.concat([record]));
+      } catch (error) {
+        console.error('Error archiving poll:', error);
+        showError('Error closing poll');
+        return;
+      }
+      try {
+        await STORAGE.set(POLLS_KEY, stored.filter(p => String(p.id) !== id));
+      } catch (error) {
+        console.error('Error taking the poll off the open list:', error);
+        showError('Poll saved to Past polls, but it could not be taken off the open list');
+        await reloadAndRender();
+        return;
+      }
+      // Left behind, vote keys are invisible and count against the 500-key cap.
+      const results = await Promise.allSettled(Object.keys(cast).map(userId => STORAGE.remove(voteKey(id, userId))));
+      const failed = results.filter(r => r.status === 'rejected').length;
+
+      await reloadAndRender();
+      void notifyClosed(record, everyoneVoted);
+      if (failed > 0) {
+        showError(`Poll closed, but ${failed} of ${results.length} votes could not be removed`);
+      } else {
+        showSuccess(everyoneVoted ? 'Everyone has voted. The poll is closed and saved under Past polls.' : 'Poll closed and saved under Past polls');
+      }
+    }
+
+    // A closed poll's result in a few words: "Pizza, 4 of 6", a tie, or none.
+    function outcomeOf(record) {
+      const counts = record.options.map(option => option.voters.length);
+      const total = counts.reduce((a, b) => a + b, 0);
+      const top = Math.max(...counts);
+      const leaders = record.options.filter((option, index) => counts[index] === top && top > 0).map(option => option.text);
+      return total === 0 ? 'No votes'
+        : leaders.length === 1 ? `${leaders[0]}, ${top} of ${total}`
+        : `Tie: ${leaders.join(', ')}, ${top} each`;
+    }
+
+    // Tell the phones that ticked Polls. The display that closed the poll is
+    // the only one that gets here, so a result is sent once. A HomeGlow
+    // without notify(), or one refusing (no phone, over the limit), is no
+    // reason to trouble whoever closed it.
+    async function notifyClosed(record, everyoneVoted) {
+      if (!SDK || typeof SDK.notify !== 'function') return;
+      const tag = `poll-${String(record.id).toLowerCase().replace(/[^a-z0-9-]/g, '')}`.slice(0, 40);
+      try {
+        await SDK.notify({
+          title: `Poll closed: ${record.question}`,
+          message: `${everyoneVoted ? 'Everyone voted. ' : ''}${outcomeOf(record)}`,
+          tag,
+        });
+      } catch (error) {
+        console.warn('Polls: could not send the result to phones:', error);
+      }
+    }
+
+    // The year's archive document with room for this record, by its JSON size.
+    function archiveKeyFor(documents, record) {
+      const year = new Date(record.closedAt).getFullYear();
+      const bytes = (value) => new TextEncoder().encode(JSON.stringify(value)).length;
+      for (let n = 1; ; n++) {
+        const key = ARCHIVE_PREFIX + year + (n === 1 ? '' : ':' + n);
+        const doc = documents[key];
+        if (!Array.isArray(doc) || doc.some(r => r && String(r.id) === record.id) || bytes(doc.concat([record])) <= ARCHIVE_DOC_BYTES) return key;
+      }
+    }
+
+    async function reloadAndRender() {
+      await loadData();
+      renderPolls();
     }
 
     // Anything that is not the armed button disarms it. Without this the only way
     // out of the armed state is to perform another action, so a stray first click
     // leaves "Confirm delete" sitting there with nowhere to click to take it back.
     function disarmDelete() {
-      if (!pendingDeleteId) return;
+      if (!pendingDeleteId && !pendingCloseId) return;
       pendingDeleteId = null;
+      pendingCloseId = null;
       renderPolls();
     }
 
@@ -914,14 +1170,16 @@
     // available for "the family is looking at something else now".
     window.addEventListener('blur', disarmDelete);
 
-    // The first click arms, the second deletes. confirm() is ignored in the
-    // sandboxed iframe the dashboard embeds plugins in -- it returns false, so
-    // the original confirm-guarded delete silently did nothing there.
+    // Deleting is for past polls only; an open poll is closed instead, so
+    // nothing is lost by accident. The first click arms, the second deletes.
+    // confirm() is ignored in the sandboxed iframe the dashboard embeds plugins
+    // in -- it returns false, so a confirm-guarded delete silently did nothing.
     async function deletePoll(pollId) {
       if (HIDE_MANAGE_POLLS) return;
-      const id0 = String(pollId);
-      if (pendingDeleteId !== id0) {
-        pendingDeleteId = id0;
+      const id = String(pollId);
+      if (pendingDeleteId !== id) {
+        pendingDeleteId = id;
+        pendingCloseId = null;
         armClickHandled = true;
         renderPolls();
         return;
@@ -933,25 +1191,35 @@
         showError('Error deleting poll');
         return;
       }
-
-      const id = String(pollId);
-      const previous = polls;
-      polls = polls.filter(p => String(p.id) !== id);
-      if (!await savePolls()) { polls = previous; return; }
-
-      // Every v:<pollId>:* key has to go. Left behind they are invisible and
-      // count against the 500-keys-per-plugin cap forever.
-      const cast = Object.keys(pollVotes(id));
-      const results = await Promise.allSettled(cast.map(userId => STORAGE.remove(voteKey(id, userId))));
-      delete votes[id];
-
-      const failed = results.filter(r => r.status === 'rejected').length;
-      renderPolls();
-      if (failed > 0) {
-        showError(`Poll deleted, but ${failed} of ${cast.length} votes could not be removed`);
-      } else {
-        showSuccess('Poll deleted');
+      try {
+        const documents = await readAll();
+        for (const key of Object.keys(documents)) {
+          if (key.indexOf(ARCHIVE_PREFIX) !== 0 || !Array.isArray(documents[key])) continue;
+          if (!documents[key].some(r => r && String(r.id) === id)) continue;
+          const rest = documents[key].filter(r => !(r && String(r.id) === id));
+          if (rest.length > 0) await STORAGE.set(key, rest);
+          else await STORAGE.remove(key);
+        }
+      } catch (error) {
+        console.error('Error deleting past poll:', error);
+        showError('Error deleting poll');
+        return;
       }
+      if (expandedArchiveId === id) expandedArchiveId = null;
+      await reloadAndRender();
+      showSuccess('Past poll deleted');
+    }
+
+    function toggleArchive() {
+      archiveOpen = !archiveOpen;
+      pendingDeleteId = null;
+      renderArchive();
+    }
+
+    function toggleArchived(id) {
+      expandedArchiveId = expandedArchiveId === id ? null : id;
+      pendingDeleteId = null;
+      renderArchive();
     }
 
     // The create form starts collapsed: on a wall display the widget is mostly
@@ -1051,13 +1319,17 @@
     function renderPolls() {
       const container = document.getElementById('pollsContainer');
       
+      renderArchive();
+
       if (polls.length === 0) {
-        container.innerHTML = '<div class="no-polls">No polls created yet. Create your first poll above!</div>';
+        container.innerHTML = archive.length > 0
+          ? '<div class="no-polls">No open polls.</div>'
+          : '<div class="no-polls">No polls created yet. Create your first poll above!</div>';
         return;
       }
-      
-      if (pendingDeleteId && !polls.some(p => String(p.id) === pendingDeleteId)) {
-        pendingDeleteId = null;
+
+      if (pendingCloseId && !polls.some(p => String(p.id) === pendingCloseId)) {
+        pendingCloseId = null;
       }
 
       container.innerHTML = polls.map(poll => {
@@ -1065,7 +1337,7 @@
         const hasVoted = userVoteIndex !== null;
         const { counts, total } = voteCountsFor(poll);
         const pollId = escapeHtml(String(poll.id));
-        const armed = pendingDeleteId === String(poll.id);
+        const armed = pendingCloseId === String(poll.id);
 
         if (editingPollId === String(poll.id)) {
           return `
@@ -1135,9 +1407,58 @@
               Total votes: ${total} | Created by: ${escapeHtml(poll.createdBy)} | ${new Date(poll.createdAt).toLocaleDateString()}
               ${HIDE_MANAGE_POLLS ? '' : `
               <button type="button" class="custom-button" onclick="editPoll('${pollId}')" style="margin-left: 1rem; font-size: 0.7rem; padding: 4px 8px;">Edit</button>
-              <button type="button" class="custom-button" onclick="deletePoll('${pollId}')" style="margin-left: 0.5rem; font-size: 0.7rem; padding: 4px 8px;${armed ? ' background: var(--hg-error, var(--error, #ef4444)) !important;' : ''}">${armed ? 'Confirm delete' : 'Delete'}</button>`}
+              <button type="button" class="custom-button" onclick="closePoll('${pollId}')" style="margin-left: 0.5rem; font-size: 0.7rem; padding: 4px 8px;">${armed ? 'Confirm close' : 'Close'}</button>`}
 
             </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // Past polls: collapsed to a count until opened; each shows its outcome and
+    // opens to the full tally.
+    function renderArchive() {
+      const section = document.getElementById('archiveSection');
+      if (!section) return;
+      section.style.display = archive.length > 0 ? '' : 'none';
+      document.getElementById('toggleArchiveBtn').textContent = `${archiveOpen ? '▾' : '▸'} Past polls (${archive.length})`;
+      const container = document.getElementById('archiveContainer');
+      container.style.display = archiveOpen ? '' : 'none';
+      if (!archiveOpen) return;
+      if (pendingDeleteId && !archive.some(r => r.id === pendingDeleteId)) pendingDeleteId = null;
+
+      container.innerHTML = archive.map(record => {
+        const id = escapeHtml(record.id);
+        const outcome = outcomeOf(record);
+        const closed = new Date(record.closedAt).toLocaleDateString();
+        const open = expandedArchiveId === record.id;
+        const armed = pendingDeleteId === record.id;
+        return `
+          <div class="archive-item">
+            <div class="archive-summary" onclick="toggleArchived('${id}')">
+              <div class="archive-question">${open ? '▾' : '▸'} ${escapeHtml(record.question)}</div>
+              <div class="archive-outcome">${escapeHtml(outcome)} · closed ${escapeHtml(closed)}</div>
+            </div>
+            ${open ? `
+              <div class="poll-results" style="margin-top: 0.5rem;">
+                ${record.options.map((option, index) => {
+                  const percentage = total > 0 ? Math.round((counts[index] / total) * 100) : 0;
+                  return `
+                    <div class="result-bar">
+                      <div class="result-label">${escapeHtml(option.text)}</div>
+                      <div class="result-progress"><div class="result-fill" style="width: ${percentage}%"></div></div>
+                      <div class="result-percentage">${percentage}%</div>
+                    </div>
+                    ${option.voters.length > 0 ? `<div class="voter-list">Voted by: ${option.voters.map(name => escapeHtml(name)).join(', ')}</div>` : ''}
+                  `;
+                }).join('')}
+              </div>
+              <div class="poll-meta">
+                Created by: ${escapeHtml(record.createdBy)} | ${escapeHtml(new Date(record.createdAt).toLocaleDateString())} | ${record.closedBy ? `Closed by ${escapeHtml(record.closedBy)}` : 'Closed when everyone had voted'}
+                ${HIDE_MANAGE_POLLS ? '' : `
+                <button type="button" class="custom-button" onclick="deletePoll('${id}')" style="margin-left: 0.5rem; font-size: 0.7rem; padding: 4px 8px;${armed ? ' background: var(--hg-error, var(--error, #ef4444)) !important;' : ''}">${armed ? 'Confirm delete' : 'Delete'}</button>`}
+              </div>
+            ` : ''}
           </div>
         `;
       }).join('');
