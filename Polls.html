@@ -8,7 +8,7 @@
     "manifestVersion": 1,
     "id": "family-polls",
     "name": "Family Poll",
-    "version": "1.2.0",
+    "version": "1.2.1",
     "description": "Runs a quick family vote. Ask a question, add the options, and everyone picks their profile and votes from the dashboard. Every display shows the same tally. A poll closes when everyone has voted, or when someone closes it, and is kept under Past polls. Phones can hear the result.",
     "category": "family-hub",
     "apiVersion": "v1",
@@ -1430,6 +1430,9 @@
       container.innerHTML = archive.map(record => {
         const id = escapeHtml(record.id);
         const outcome = outcomeOf(record);
+        // The expanded row's bars need the tally too, not just its summary.
+        const counts = record.options.map(option => option.voters.length);
+        const total = counts.reduce((a, b) => a + b, 0);
         const closed = new Date(record.closedAt).toLocaleDateString();
         const open = expandedArchiveId === record.id;
         const armed = pendingDeleteId === record.id;
