@@ -8,12 +8,13 @@
     "manifestVersion": 1,
     "id": "family-polls",
     "name": "Family Poll",
-    "version": "1.3.0",
+    "version": "1.3.1",
     "description": "Runs a quick family vote. Ask a question, add the options, and everyone picks their profile and votes from the dashboard. Every display shows the same tally. A poll closes when everyone has voted, or when someone closes it, and is kept under Past polls. Phones can hear the result.",
     "category": "family-hub",
     "apiVersion": "v1",
     "storage": true,
     "notify": true,
+    "events": ["household.changed"],
     "settings": [
       { "key": "voter", "label": "Who votes from this display (profile id; the widget sets it when a profile is picked)",
         "type": "string", "default": "", "scope": "device" }
@@ -663,9 +664,21 @@
         await loadUsers();
         renderPolls();
       })();
+
+      // A family member added, renamed or removed on any display: show the
+      // new list, and count them in "everyone has voted".
+      if (SDK && typeof SDK.on === 'function') {
+        SDK.on('household.changed', (payload) => {
+          if (payload && Array.isArray(payload.domains) && payload.domains.includes('users')) loadUsers({ quiet: true });
+        });
+      }
     });
 
-    async function loadUsers() {
+    // quiet: a reload in the background. It keeps what is shown when it
+    // fails, rather than replacing it with an error, and leaves the voter as
+    // it is: reading the saved voter again would bring back one that was just
+    // switched away from, when another display still has it saved.
+    async function loadUsers({ quiet = false } = {}) {
       try {
         const response = await fetch(`${API_BASE}/api/users`);
         if (!response.ok) throw new Error('Failed to fetch users');
@@ -675,7 +688,13 @@
         users = allUsers.filter(user => user.id !== 0);
         
         renderUserSelection();
-        
+        if (quiet) {
+          // The same person, under any new name or picture.
+          const same = currentUser && users.find(u => u.id === currentUser.id);
+          if (same) applyUser(same);
+          return;
+        }
+
         // Load saved user selection
         const savedUserId = await readVoterId();
         if (savedUserId) {
@@ -686,6 +705,7 @@
         }
       } catch (error) {
         console.error('Error loading users:', error);
+        if (quiet) return;
         showError('Could not load family members. Please check your connection.');
         document.getElementById('userGrid').innerHTML = '<div class="error-message">Failed to load family members</div>';
       }
@@ -1157,6 +1177,9 @@
 
       await reloadAndRender();
       void notifyClosed(record, everyoneVoted);
+      // A result is a moment; a poll nobody voted in isn't. Only this display
+      // gets here, so the board celebrates once.
+      if (record.options.some(option => option.voters.length > 0) && SDK && typeof SDK.celebrate === 'function') SDK.celebrate();
       if (failed > 0) {
         showError(`Poll closed, but ${failed} of ${results.length} votes could not be removed`);
       } else {
