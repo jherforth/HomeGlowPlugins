@@ -2,1331 +2,429 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Family Message Board</title>
   <script type="application/json" id="homeglow-manifest">
   {
     "manifestVersion": 1,
     "id": "family-messages",
     "name": "Family Message Board",
-    "version": "1.0.0",
+    "version": "2.0.0",
     "category": "family-hub",
-    "description": "A message board for the household. Pick your profile, post a note, and everyone sees it on the dashboard. Filter down to just the unread messages, and delete them once they have served their purpose."
+    "author": "HomeGlow",
+    "apiVersion": "v1",
+    "storage": true,
+    "description": "Notes for the whole household, on every display: pick who it's from, write it, and it's up on the board. Mark one important to keep it at the top. Old messages clear themselves after a while.",
+    "settings": [
+      { "key": "keepFor", "label": "Remove messages after", "type": "select",
+        "options": ["Never", "1 day", "3 days", "1 week", "2 weeks", "1 month"], "default": "2 weeks" }
+    ],
+    "hideableControls": [
+      { "id": "write", "label": "Write and remove messages" }
+    ]
   }
   </script>
   <link rel="stylesheet" href="/index.css">
   <style>
-    * {
-      background: transparent !important;
-      background-color: transparent !important;
-      background-image: none !important;
+    :root {
+      --acc: var(--accent, #3a7cc4);
+      --ink: var(--text, #1e2b3a);
+      --ink-2: var(--text-secondary, #5a6b7d);
+      --line: var(--card-border, rgba(128, 128, 128, 0.28));
+      --tile: color-mix(in srgb, var(--ink) 6%, transparent);
+      --paper: var(--card-bg, #fff);
+      --mix: 34%;
     }
-
+    [data-theme="dark"] { --mix: 20%; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; }
     body {
-      background: transparent !important;
-      font-family: 'Inter', sans-serif;
-      margin: 0;
-      padding: 0.75rem;
-      box-sizing: border-box;
-      font-size: 0.85rem;
-      color: #333;
-    }
-
-    [data-theme="dark"] body {
-      color: #a6a6d1;
-      background: transparent !important;
-    }
-
-    .widget-container {
-      background: transparent !important;
-      border: none !important;
-      box-shadow: none !important;
-      backdrop-filter: none !important;
-      border-radius: 12px;
-      padding: 0.5rem;
-      text-align: center;
-      width: 100%;
-      max-height: calc(100vh - 1.5rem);
-      overflow-y: auto;
-    }
-
-    .widget-title {
-      font-size: 1.2rem;
-      font-weight: 700;
-      margin: 0 0 1rem 0;
-      color: inherit;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 0.5rem;
-    }
-
-    .user-selection {
-      margin-bottom: 1rem;
-    }
-
-    .user-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
-      gap: 0.5rem;
-      margin-bottom: 1rem;
-    }
-
-    .user-card {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 0.5rem;
-      border: 2px solid transparent;
-      border-radius: 8px;
-      cursor: pointer;
-      transition: all 0.3s ease;
-      background: rgba(255, 255, 255, 0.1) !important;
-    }
-
-    [data-theme="dark"] .user-card {
-      background: rgba(30, 30, 50, 0.3) !important;
-    }
-
-    .user-card:hover {
-      border-color: #00ddeb;
-      transform: translateY(-2px);
-    }
-
-    .user-card.selected {
-      border-color: #00ddeb;
-      background: rgba(0, 221, 235, 0.1) !important;
-    }
-
-    .user-avatar {
-      width: 40px;
-      height: 40px;
-      border-radius: 50%;
-      margin-bottom: 0.25rem;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: #ddd !important;
-      font-size: 1.2rem;
-    }
-
-    [data-theme="dark"] .user-avatar {
-      background: #555 !important;
-    }
-
-    .user-avatar img {
-      width: 100%;
-      height: 100%;
-      border-radius: 50%;
-      object-fit: cover;
-    }
-
-    .user-name {
-      font-size: 0.7rem;
-      font-weight: 600;
-      text-transform: capitalize;
-    }
-
-    .current-user {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      margin-bottom: 1rem;
-      padding: 0.5rem;
-      background: rgba(0, 221, 235, 0.1) !important;
-      border-radius: 8px;
-      border: 1px solid rgba(0, 221, 235, 0.3);
-    }
-
-    .current-user-avatar {
-      width: 30px;
-      height: 30px;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: #ddd !important;
-      font-size: 1rem;
-    }
-
-    [data-theme="dark"] .current-user-avatar {
-      background: #555 !important;
-    }
-
-    .current-user-avatar img {
-      width: 100%;
-      height: 100%;
-      border-radius: 50%;
-      object-fit: cover;
-    }
-
-    .switch-user-btn {
-      background: linear-gradient(45deg, #00ddeb, #ff6b6b) !important;
-      color: #333 !important;
-      border: none;
-      border-radius: 6px;
-      padding: 4px 8px;
-      cursor: pointer;
-      font-size: 0.7rem;
-      font-weight: 600;
-      transition: all 0.3s ease;
-      margin-left: auto;
-    }
-
-    [data-theme="dark"] .switch-user-btn {
-      background: linear-gradient(45deg, #2e2767, #620808) !important;
-      color: #a6a6d1 !important;
-    }
-
-    .switch-user-btn:hover {
-      filter: brightness(1.1);
-      transform: translateY(-1px);
-    }
-
-    .message-form {
-      margin-bottom: 1rem;
-      padding: 1rem;
-      background: rgba(255, 255, 255, 0.05) !important;
-      border-radius: 8px;
-      border: 1px solid rgba(255, 255, 255, 0.1);
-    }
-
-    [data-theme="dark"] .message-form {
-      background: rgba(30, 30, 50, 0.2) !important;
-      border-color: rgba(100, 100, 150, 0.2);
-    }
-
-    .form-row {
-      display: flex;
-      gap: 0.5rem;
-      margin-bottom: 0.5rem;
-      align-items: center;
-    }
-
-    .priority-select {
-      padding: 0.4rem;
-      border: 1px solid rgba(255, 255, 255, 0.2);
-      border-radius: 4px;
-      background: rgba(255, 255, 255, 0.1) !important;
-      color: inherit;
-      font-size: 0.8rem;
-      min-width: 100px;
-    }
-
-    [data-theme="dark"] .priority-select {
-      background: rgba(30, 30, 50, 0.3) !important;
-      border-color: rgba(100, 100, 150, 0.3);
-    }
-
-    .message-input {
-      width: 100%;
-      padding: 0.5rem;
-      border: 1px solid rgba(255, 255, 255, 0.2);
-      border-radius: 4px;
-      background: rgba(255, 255, 255, 0.1) !important;
-      color: inherit;
-      font-size: 0.8rem;
-      resize: vertical;
-      min-height: 60px;
-      font-family: inherit;
-    }
-
-    [data-theme="dark"] .message-input {
-      background: rgba(30, 30, 50, 0.3) !important;
-      border-color: rgba(100, 100, 150, 0.3);
-    }
-
-    .message-input::placeholder {
-      color: rgba(255, 255, 255, 0.5);
-    }
-
-    [data-theme="dark"] .message-input::placeholder {
-      color: rgba(166, 166, 209, 0.5);
-    }
-
-    .char-counter {
-      font-size: 0.7rem;
-      opacity: 0.7;
-      text-align: right;
-      margin-top: 0.25rem;
-    }
-
-    .char-counter.warning {
-      color: #ff6b6b;
-      font-weight: 600;
-    }
-
-    .post-btn {
-      background: linear-gradient(45deg, #00ddeb, #ff6b6b) !important;
-      color: #333 !important;
-      border: none;
-      border-radius: 6px;
-      padding: 0.5rem 1rem;
-      cursor: pointer;
-      font-size: 0.8rem;
-      font-weight: 600;
-      transition: all 0.3s ease;
-      width: 100%;
-      margin-top: 0.5rem;
-    }
-
-    [data-theme="dark"] .post-btn {
-      background: linear-gradient(45deg, #2e2767, #620808) !important;
-      color: #a6a6d1 !important;
-    }
-
-    .post-btn:hover:not(:disabled) {
-      filter: brightness(1.1);
-      transform: translateY(-1px);
-    }
-
-    .post-btn:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-      transform: none;
-    }
-
-    .filters {
-      display: flex;
-      gap: 0.25rem;
-      margin-bottom: 1rem;
-      flex-wrap: wrap;
-      justify-content: center;
-    }
-
-    .filter-btn {
-      padding: 0.3rem 0.6rem;
-      border: 1px solid rgba(255, 255, 255, 0.2);
-      border-radius: 4px;
-      background: rgba(255, 255, 255, 0.1) !important;
-      color: inherit;
-      cursor: pointer;
-      font-size: 0.7rem;
-      transition: all 0.3s ease;
-    }
-
-    [data-theme="dark"] .filter-btn {
-      background: rgba(30, 30, 50, 0.3) !important;
-      border-color: rgba(100, 100, 150, 0.3);
-    }
-
-    .filter-btn.active {
-      background: linear-gradient(45deg, #00ddeb, #ff6b6b) !important;
-      color: #333 !important;
-      border-color: transparent;
-    }
-
-    [data-theme="dark"] .filter-btn.active {
-      background: linear-gradient(45deg, #2e2767, #620808) !important;
-      color: #a6a6d1 !important;
-    }
-
-    .filter-btn:hover {
-      border-color: #00ddeb;
-    }
-
-    .messages-container {
-      max-height: 300px;
-      overflow-y: auto;
-      padding-right: 0.25rem;
-    }
-
-    .message {
-      margin-bottom: 0.75rem;
-      padding: 0.75rem;
-      border-radius: 8px;
-      background: rgba(255, 255, 255, 0.05) !important;
-      border-left: 4px solid #ddd;
-      position: relative;
-      transition: all 0.3s ease;
-    }
-
-    [data-theme="dark"] .message {
-      background: rgba(30, 30, 50, 0.2) !important;
-    }
-
-    .message.priority-important {
-      border-left-color: #ff9800;
-      background: rgba(255, 152, 0, 0.05) !important;
-    }
-
-    .message.priority-urgent {
-      border-left-color: #f44336;
-      background: rgba(244, 67, 54, 0.05) !important;
-    }
-
-    .message.unread {
-      box-shadow: 0 0 0 2px rgba(0, 221, 235, 0.3);
-    }
-
-    .message-header {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      margin-bottom: 0.5rem;
-    }
-
-    .message-avatar {
-      width: 24px;
-      height: 24px;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: #ddd !important;
-      font-size: 0.8rem;
-    }
-
-    [data-theme="dark"] .message-avatar {
-      background: #555 !important;
-    }
-
-    .message-avatar img {
-      width: 100%;
-      height: 100%;
-      border-radius: 50%;
-      object-fit: cover;
-    }
-
-    .message-author {
-      font-weight: 600;
-      font-size: 0.8rem;
-      text-transform: capitalize;
-    }
-
-    .message-priority {
-      font-size: 0.7rem;
-      padding: 0.1rem 0.3rem;
-      border-radius: 3px;
-      font-weight: 600;
-    }
-
-    .priority-normal {
-      background: rgba(76, 175, 80, 0.2) !important;
-      color: #4caf50;
-    }
-
-    .priority-important {
-      background: rgba(255, 152, 0, 0.2) !important;
-      color: #ff9800;
-    }
-
-    .priority-urgent {
-      background: rgba(244, 67, 54, 0.2) !important;
-      color: #f44336;
-    }
-
-    .message-time {
-      font-size: 0.7rem;
-      opacity: 0.7;
-      margin-left: auto;
-    }
-
-    .message-actions {
-      position: absolute;
-      top: 0.5rem;
-      right: 0.5rem;
-      display: flex;
-      gap: 0.25rem;
-    }
-
-    .action-btn {
-      background: rgba(255, 255, 255, 0.1) !important;
-      border: none;
-      border-radius: 4px;
-      padding: 0.25rem;
-      cursor: pointer;
-      font-size: 0.7rem;
-      transition: all 0.3s ease;
-      opacity: 0.7;
-    }
-
-    [data-theme="dark"] .action-btn {
-      background: rgba(30, 30, 50, 0.3) !important;
-    }
-
-    .action-btn:hover {
-      opacity: 1;
-      transform: scale(1.1);
-    }
-
-    .delete-btn:hover {
-      background: rgba(244, 67, 54, 0.2) !important;
-      color: #f44336;
-    }
-
-    .read-btn:hover {
-      background: rgba(76, 175, 80, 0.2) !important;
-      color: #4caf50;
-    }
-
-    .message-content {
-      font-size: 0.8rem;
-      line-height: 1.4;
-      white-space: pre-wrap;
-      word-wrap: break-word;
-    }
-
-    .no-messages {
-      text-align: center;
-      padding: 2rem;
-      opacity: 0.7;
-      font-style: italic;
-    }
-
-    .error-message {
-      background: rgba(244, 67, 54, 0.1) !important;
-      color: #f44336;
-      padding: 0.5rem;
-      border-radius: 4px;
-      margin-bottom: 1rem;
-      font-size: 0.8rem;
-      text-align: center;
-    }
-
-    /* Scrollbar styling */
-    .messages-container::-webkit-scrollbar {
-      width: 4px;
-    }
-
-    .messages-container::-webkit-scrollbar-track {
-      background: rgba(255, 255, 255, 0.1);
-      border-radius: 2px;
-    }
-
-    .messages-container::-webkit-scrollbar-thumb {
-      background: rgba(0, 221, 235, 0.5);
-      border-radius: 2px;
-    }
-
-    .messages-container::-webkit-scrollbar-thumb:hover {
-      background: rgba(0, 221, 235, 0.7);
-    }
-
-    /* Confirmation dialog styles */
-    .confirmation-dialog {
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: rgba(0, 0, 0, 0.5) !important;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 1000;
-    }
-
-    .dialog-content {
-      background: rgba(255, 255, 255, 0.95) !important;
-      padding: 1.5rem;
-      border-radius: 12px;
-      max-width: 300px;
-      text-align: center;
-      border: 1px solid rgba(255, 255, 255, 0.2);
-    }
-
-    [data-theme="dark"] .dialog-content {
-      background: rgba(30, 30, 50, 0.95) !important;
-      border-color: rgba(100, 100, 150, 0.3);
-    }
-
-    .dialog-buttons {
-      display: flex;
-      gap: 0.5rem;
-      margin-top: 1rem;
-      justify-content: center;
-    }
-
-    .dialog-btn {
-      padding: 0.5rem 1rem;
-      border: none;
-      border-radius: 6px;
-      cursor: pointer;
-      font-size: 0.8rem;
-      font-weight: 600;
-      transition: all 0.3s ease;
-    }
-
-    .dialog-btn.cancel {
-      background: rgba(255, 255, 255, 0.2) !important;
-      color: inherit;
-    }
-
-    .dialog-btn.confirm {
-      background: linear-gradient(45deg, #f44336, #d32f2f) !important;
-      color: white !important;
-    }
-
-    .dialog-btn:hover {
-      filter: brightness(1.1);
-      transform: translateY(-1px);
-    }
-
-    /* Message Modal Styles */
-    .message-modal {
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: rgba(0, 0, 0, 0.7) !important;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 1001;
-      padding: 1rem;
-    }
-
-    .message-modal-content {
-      background: rgba(255, 255, 255, 0.95) !important;
-      border-radius: 12px;
-      max-width: 500px;
-      width: 100%;
-      max-height: 80vh;
-      overflow-y: auto;
-      border: 1px solid rgba(255, 255, 255, 0.2);
-      position: relative;
-    }
-
-    [data-theme="dark"] .message-modal-content {
-      background: rgba(30, 30, 50, 0.95) !important;
-      border-color: rgba(100, 100, 150, 0.3);
-    }
-
-    .message-modal-header {
-      padding: 1rem 1.5rem;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-
-    [data-theme="dark"] .message-modal-header {
-      border-bottom-color: rgba(100, 100, 150, 0.3);
-    }
-
-    .message-modal-title {
-      font-size: 1.1rem;
-      font-weight: 600;
-      margin: 0;
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-    }
-
-    .modal-close-btn {
-      background: rgba(255, 255, 255, 0.1) !important;
-      border: none;
-      border-radius: 50%;
-      width: 32px;
-      height: 32px;
-      cursor: pointer;
-      font-size: 1.2rem;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: all 0.3s ease;
-      color: inherit;
-    }
-
-    [data-theme="dark"] .modal-close-btn {
-      background: rgba(30, 30, 50, 0.3) !important;
-    }
-
-    .modal-close-btn:hover {
-      background: rgba(255, 255, 255, 0.2) !important;
-      transform: scale(1.1);
-    }
-
-    [data-theme="dark"] .modal-close-btn:hover {
-      background: rgba(30, 30, 50, 0.5) !important;
-    }
-
-    .message-modal-body {
-      padding: 1.5rem;
-    }
-
-    .modal-message-content {
-      font-size: 1rem;
-      line-height: 1.6;
-      white-space: pre-wrap;
-      word-wrap: break-word;
-      margin-bottom: 1rem;
-    }
-
-    .modal-message-meta {
-      display: flex;
-      flex-direction: column;
-      gap: 0.5rem;
-      padding-top: 1rem;
-      border-top: 1px solid rgba(255, 255, 255, 0.2);
-      font-size: 0.8rem;
-      opacity: 0.8;
-    }
-
-    [data-theme="dark"] .modal-message-meta {
-      border-top-color: rgba(100, 100, 150, 0.3);
-    }
-
-    .modal-meta-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-
-    /* Recent Messages Section */
-    .recent-messages-section {
-      background: rgba(255, 255, 255, 0.05) !important;
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 8px;
-      padding: 0.75rem;
-      margin-bottom: 1rem;
-      max-height: 200px;
-      overflow-y: auto;
-    }
-
-    [data-theme="dark"] .recent-messages-section {
-      background: rgba(30, 30, 50, 0.2) !important;
-      border-color: rgba(100, 100, 150, 0.2);
-    }
-
-    .recent-messages-title {
-      font-size: 0.9rem;
-      font-weight: 600;
-      margin: 0 0 0.75rem 0;
-      text-align: center;
-    }
-
-    .recent-message-item {
-      background: rgba(255, 255, 255, 0.05) !important;
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 6px;
-      padding: 0.5rem;
-      margin-bottom: 0.5rem;
-      cursor: pointer;
-      transition: all 0.3s ease;
-      text-align: left;
-    }
-
-    [data-theme="dark"] .recent-message-item {
-      background: rgba(30, 30, 50, 0.2) !important;
-      border-color: rgba(100, 100, 150, 0.2);
-    }
-
-    .recent-message-item:hover {
-      background: rgba(255, 255, 255, 0.1) !important;
-      transform: translateY(-1px);
-      border-color: #00ddeb;
-    }
-
-    [data-theme="dark"] .recent-message-item:hover {
-      background: rgba(30, 30, 50, 0.4) !important;
-    }
-
-    .recent-message-item:last-child {
-      margin-bottom: 0;
-    }
-
-    .recent-message-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 0.25rem;
-    }
-
-    .recent-message-author {
-      font-weight: 600;
-      font-size: 0.75rem;
-      display: flex;
-      align-items: center;
-      gap: 0.25rem;
-    }
-
-    .recent-message-time {
-      font-size: 0.7rem;
-      opacity: 0.7;
-    }
-
-    .recent-message-preview {
-      font-size: 0.75rem;
-      line-height: 1.3;
-      opacity: 0.9;
+      /* /index.css pads the body for the dashboard's dock; not in a tile. */
+      padding: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: var(--hg-font-body, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif);
+      font-size: 15px;
       overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
+      -webkit-user-select: none; user-select: none;
     }
+    body.transparent { background: transparent; }
+    button { font: inherit; color: inherit; }
 
-    .no-recent-messages {
-      text-align: center;
-      opacity: 0.7;
-      font-style: italic;
-      font-size: 0.8rem;
+    #app { height: 100%; display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; container-type: size; }
+    .head { display: flex; align-items: center; gap: 10px; flex: none; }
+    .head h1 { margin: 0; font-size: 1rem; font-weight: 750; letter-spacing: -0.01em; flex: 1; }
+    .write {
+      appearance: none; border: 0; cursor: pointer; flex: none;
+      min-height: 34px; padding: 0 14px; border-radius: 999px;
+      background: var(--acc); color: #fff; font-weight: 700; font-size: 0.85rem;
     }
+    .notice { font-size: 0.78rem; color: var(--ink-2); border: 1px dashed var(--line); border-radius: 10px; padding: 6px 10px; flex: none; }
+    .notice.err { color: var(--hg-error, #c43d3d); }
+
+    /* The board: notes in a column, two on a wide tile, each tinted with its
+       writer's color. Important ones come first. */
+    .board { flex: 1; min-height: 0; overflow-y: auto; columns: 2 260px; column-gap: 10px; }
+    .msg {
+      break-inside: avoid; display: block; width: 100%; margin: 0 0 10px; padding: 10px 12px 11px;
+      appearance: none; border: 0; text-align: left; border-radius: 14px;
+      background: color-mix(in srgb, var(--tone) var(--mix), var(--paper));
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+    }
+    button.msg { cursor: pointer; }
+    .msg:focus-visible, .write:focus-visible { outline: 3px solid var(--acc); outline-offset: 2px; }
+    .msg.important { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--tone) 70%, var(--ink)), 0 1px 2px rgba(0, 0, 0, 0.06); }
+    .msg .top { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+    .msg .name { font-weight: 750; font-size: 0.88rem; }
+    .msg .time { margin-left: auto; font-size: 0.75rem; color: var(--ink-2); white-space: nowrap; }
+    .msg .flag { font-size: 0.72rem; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; padding: 2px 7px; border-radius: 999px;
+      background: color-mix(in srgb, var(--tone) 70%, var(--ink)); color: var(--paper); }
+    .msg .text { font-size: 1.02rem; line-height: 1.4; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .empty { height: 100%; display: grid; place-items: center; text-align: center; color: var(--ink-2); padding: 20px; column-span: all; }
+    .empty b { display: block; font-size: 1.6rem; margin-bottom: 6px; }
+
+    .av { flex: none; width: 26px; height: 26px; border-radius: 50%; overflow: hidden; display: grid; place-items: center;
+      background: color-mix(in srgb, var(--tone, var(--acc)) 75%, var(--ink)); color: var(--paper); font-size: 0.75rem; font-weight: 800; }
+    .av img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+    /* Writing, or reading one in full, in a sheet over the tile. */
+    .sheet { position: fixed; inset: 0; z-index: 10; background: var(--paper); color: var(--ink); display: flex; flex-direction: column; }
+    body.transparent .sheet { background: var(--surface, var(--card-bg, #fff)); }
+    .sheet[hidden] { display: none; }
+    .sheet header { display: flex; align-items: center; gap: 10px; padding: 12px 14px 8px; border-bottom: 1px solid var(--line); }
+    .sheet header h2 { margin: 0; font-size: 1rem; flex: 1; }
+    .sheet .body { flex: 1; overflow-y: auto; padding: 12px 14px; display: flex; flex-direction: column; gap: 14px; }
+    .sheet footer { display: flex; align-items: center; gap: 8px; padding: 10px 14px 12px; border-top: 1px solid var(--line); }
+    .label { font-size: 0.75rem; font-weight: 750; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-2); margin-bottom: 6px; }
+    textarea {
+      width: 100%; min-height: 120px; padding: 10px 12px; border-radius: 10px; font: inherit; font-size: 1.05rem; line-height: 1.4; resize: vertical;
+      border: 1px solid var(--line); background: transparent; color: var(--ink); -webkit-user-select: text; user-select: text;
+    }
+    textarea:focus-visible { outline: 3px solid var(--acc); outline-offset: 1px; }
+    .count { font-size: 0.75rem; color: var(--ink-2); text-align: right; margin-top: 4px; }
+    .row { display: flex; flex-wrap: wrap; gap: 6px; }
+    .pill {
+      appearance: none; cursor: pointer; flex: none; min-height: 40px; padding: 0 12px 0 7px; border-radius: 999px;
+      border: 1px solid var(--line); background: transparent; font-size: 0.9rem; font-weight: 650;
+      display: inline-flex; align-items: center; gap: 7px;
+    }
+    .pill[aria-pressed="true"] { background: color-mix(in srgb, var(--tone, var(--acc)) 45%, var(--paper)); border-color: color-mix(in srgb, var(--tone, var(--acc)) 80%, var(--ink)); }
+    .pill:focus-visible, .btn:focus-visible, .toggle:focus-visible { outline: 3px solid var(--acc); outline-offset: 2px; }
+    .toggle { appearance: none; cursor: pointer; display: inline-flex; align-items: center; gap: 10px; border: 0; background: transparent; padding: 4px 0; font-weight: 650; }
+    .toggle .sw { width: 44px; height: 26px; border-radius: 999px; background: var(--tile); border: 1px solid var(--line); position: relative; transition: background 0.15s; }
+    .toggle .sw::after { content: ''; position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; border-radius: 50%; background: var(--paper); box-shadow: 0 1px 3px rgba(0,0,0,0.3); transition: left 0.15s; }
+    .toggle[aria-pressed="true"] .sw { background: var(--acc); border-color: var(--acc); }
+    .toggle[aria-pressed="true"] .sw::after { left: 20px; }
+    .btn { appearance: none; cursor: pointer; min-height: 42px; padding: 0 16px; border-radius: 10px; border: 1px solid var(--line); background: transparent; font-weight: 700; }
+    .btn.primary { background: var(--acc); border-color: var(--acc); color: #fff; }
+    .btn.danger { margin-right: auto; color: var(--hg-error, #c43d3d); border-color: color-mix(in srgb, var(--hg-error, #c43d3d) 50%, transparent); }
+    .btn.danger.armed { background: var(--hg-error, #c43d3d); color: #fff; }
+    .full { border-radius: 14px; padding: 14px 16px; background: color-mix(in srgb, var(--tone) var(--mix), var(--paper)); }
+    .full .text { font-size: 1.15rem; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .full .meta { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; font-weight: 700; }
+    .full .meta .when { font-weight: 500; color: var(--ink-2); font-size: 0.85rem; margin-left: auto; }
+    .err { color: var(--hg-error, #c43d3d); font-size: 0.85rem; font-weight: 600; }
+    @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
   </style>
 </head>
 <body>
-  <div class="widget-container">
-    <h1 class="widget-title">💬 Family Message Board</h1>
-    
-    <div id="errorMessage" class="error-message" style="display: none;"></div>
-    
-    <!-- User Selection -->
-    <div id="userSelection" class="user-selection">
-      <div id="userGrid" class="user-grid"></div>
-    </div>
-    
-    <!-- Current User Display -->
-    <div id="currentUserDisplay" class="current-user" style="display: none;">
-      <div id="currentUserAvatar" class="current-user-avatar"></div>
-      <span id="currentUserName"></span>
-      <button id="switchUserBtn" class="switch-user-btn">Switch User</button>
-    </div>
-    
-    <!-- Recent Messages Section -->
-    <div id="recentMessagesSection" class="recent-messages-section" style="display: none;">
-      <div class="recent-messages-title">Recent Messages</div>
-      <div id="recentMessagesList"></div>
-    </div>
-    
-    <!-- Message Form -->
-    <div id="messageForm" class="message-form" style="display: none;">
-      <div class="form-row">
-        <select id="prioritySelect" class="priority-select">
-          <option value="normal">📝 Normal</option>
-          <option value="important">⚠️ Important</option>
-          <option value="urgent">🚨 Urgent</option>
-        </select>
-      </div>
-      <textarea 
-        id="messageInput" 
-        class="message-input" 
-        placeholder="Type your message here..."
-        maxlength="500"
-      ></textarea>
-      <div id="charCounter" class="char-counter">0/500</div>
-      <button id="postBtn" class="post-btn">Post Message</button>
-    </div>
-    
-    <!-- Message Filters -->
-    <div id="messageFilters" class="filters" style="display: none;">
-      <button class="filter-btn active" data-filter="all">All</button>
-      <button class="filter-btn" data-filter="unread">Unread</button>
-      <button class="filter-btn" data-filter="urgent">🚨 Urgent</button>
-      <button class="filter-btn" data-filter="important">⚠️ Important</button>
-      <button class="filter-btn" data-filter="normal">📝 Normal</button>
-    </div>
-    
-    <!-- Messages Container -->
-    <div id="messagesContainer" class="messages-container" style="display: none;">
-      <div id="messagesList"></div>
-    </div>
-  </div>
+  <main id="app" aria-live="polite"></main>
+  <div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title" hidden></div>
 
-  <!-- Confirmation Dialog -->
-  <div id="confirmationDialog" class="confirmation-dialog" style="display: none;">
-    <div class="dialog-content">
-      <p id="confirmationMessage">Are you sure you want to delete this message?</p>
-      <div class="dialog-buttons">
-        <button id="cancelBtn" class="dialog-btn cancel">Cancel</button>
-        <button id="confirmBtn" class="dialog-btn confirm">Delete</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Message Modal -->
-  <div id="messageModal" class="message-modal" style="display: none;">
-    <div class="message-modal-content">
-      <div class="message-modal-header">
-        <div class="message-modal-title">
-          <span id="modalMessageAuthor"></span>
-          <span id="modalMessagePriority"></span>
-        </div>
-        <button id="modalCloseBtn" class="modal-close-btn">×</button>
-      </div>
-      <div class="message-modal-body">
-        <div id="modalMessageContent" class="modal-message-content"></div>
-        <div class="modal-message-meta">
-          <div class="modal-meta-row">
-            <span>Posted:</span>
-            <span id="modalMessageTime"></span>
-          </div>
-          <div class="modal-meta-row">
-            <span>Priority:</span>
-            <span id="modalMessagePriorityText"></span>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
+  <script src="/plugin-sdk/v1.js"></script>
   <script>
-    document.addEventListener('DOMContentLoaded', () => {
-      // Handle theme
-      const params = new URLSearchParams(window.location.search);
-      const theme = params.get('theme');
-      if (theme === 'dark' || theme === 'light') {
-        document.documentElement.setAttribute('data-theme', theme);
-      }
+  (function () {
+    'use strict';
 
-      // State management
-      let users = [];
-      let currentUser = null;
-      let messages = [];
-      let currentFilter = 'all';
+    var params = new URLSearchParams(window.location.search);
+    var theme = params.get('theme');
+    if (theme === 'dark' || theme === 'light') document.documentElement.setAttribute('data-theme', theme);
+    if (params.get('transparent') === 'true') document.body.classList.add('transparent');
+    var HIDE_WRITE = (params.get('hide') || '').split(',').indexOf('write') !== -1;
+    var lang = (params.get('lang') || navigator.language || 'en').split('-')[0];
 
-      // DOM elements
-      const userSelection = document.getElementById('userSelection');
-      const userGrid = document.getElementById('userGrid');
-      const currentUserDisplay = document.getElementById('currentUserDisplay');
-      const currentUserAvatar = document.getElementById('currentUserAvatar');
-      const currentUserName = document.getElementById('currentUserName');
-      const switchUserBtn = document.getElementById('switchUserBtn');
-      const recentMessagesSection = document.getElementById('recentMessagesSection');
-      const recentMessagesList = document.getElementById('recentMessagesList');
-      const messageForm = document.getElementById('messageForm');
-      const messageInput = document.getElementById('messageInput');
-      const prioritySelect = document.getElementById('prioritySelect');
-      const charCounter = document.getElementById('charCounter');
-      const postBtn = document.getElementById('postBtn');
-      const messageFilters = document.getElementById('messageFilters');
-      const messagesContainer = document.getElementById('messagesContainer');
-      const messagesList = document.getElementById('messagesList');
-      const errorMessage = document.getElementById('errorMessage');
-      const confirmationDialog = document.getElementById('confirmationDialog');
-      const confirmationMessage = document.getElementById('confirmationMessage');
-      const cancelBtn = document.getElementById('cancelBtn');
-      const confirmBtn = document.getElementById('confirmBtn');
-      const messageModal = document.getElementById('messageModal');
-      const modalMessageAuthor = document.getElementById('modalMessageAuthor');
-      const modalMessagePriority = document.getElementById('modalMessagePriority');
-      const modalMessageContent = document.getElementById('modalMessageContent');
-      const modalMessageTime = document.getElementById('modalMessageTime');
-      const modalMessagePriorityText = document.getElementById('modalMessagePriorityText');
-      const modalCloseBtn = document.getElementById('modalCloseBtn');
-
-      // Load data from localStorage
-      function loadMessages() {
-        const saved = localStorage.getItem('familyMessages');
-        messages = saved ? JSON.parse(saved) : [];
-      }
-
-      function saveMessages() {
-        localStorage.setItem('familyMessages', JSON.stringify(messages));
-      }
-
-      function loadCurrentUser() {
-        const saved = localStorage.getItem('messageBoardCurrentUser');
-        if (saved) {
-          const userId = parseInt(saved);
-          currentUser = users.find(u => u.id === userId);
-        }
-      }
-
-      function saveCurrentUser() {
-        if (currentUser) {
-          localStorage.setItem('messageBoardCurrentUser', currentUser.id.toString());
-        }
-      }
-
-      // Fetch users from HomeGlow API
-      async function fetchUsers() {
+    // Messages live in plugin storage, one key each, so every display shows
+    // the same board and two writing at once never overwrite each other.
+    // (Before 2.0 each display kept its own in localStorage; those aren't
+    // carried over.) Without HomeGlow's storage (a file dropped in rather
+    // than installed) this browser's storage stands in.
+    var SDK = window.HomeGlow && window.HomeGlow.pluginId && window.HomeGlow.storage ? window.HomeGlow : null;
+    var LOCAL = 'homeglow.messages.';
+    var store = {
+      list: function () {
+        if (SDK) return SDK.storage.list().then(function (all) { return all || {}; });
+        var out = {};
         try {
-          const response = await fetch('/api/users');
-          if (!response.ok) throw new Error('Failed to fetch users');
-          
-          const data = await response.json();
-          users = Array.isArray(data) ? data.filter(user => user.id !== 0) : [];
-          
-          if (users.length === 0) {
-            showError('No users found. Please add users in the HomeGlow admin panel.');
-            return;
+          for (var i = 0; i < localStorage.length; i++) {
+            var k = localStorage.key(i);
+            if (k.indexOf(LOCAL) === 0) { try { out[k.slice(LOCAL.length)] = JSON.parse(localStorage.getItem(k)); } catch (e) {} }
           }
-          
-          loadCurrentUser();
-          renderUserSelection();
-          
-          if (currentUser) {
-            showMainInterface();
-          }
-        } catch (error) {
-          console.error('Error fetching users:', error);
-          showError('Unable to connect to HomeGlow. Please check your connection.');
-        }
+        } catch (e) {}
+        return Promise.resolve(out);
+      },
+      set: function (key, value) {
+        if (SDK) return SDK.storage.set(key, value);
+        try { localStorage.setItem(LOCAL + key, JSON.stringify(value)); } catch (e) { return Promise.reject(e); }
+        return Promise.resolve();
+      },
+      remove: function (key) {
+        if (SDK) return SDK.storage.remove(key).catch(function () {});
+        try { localStorage.removeItem(LOCAL + key); } catch (e) {}
+        return Promise.resolve();
       }
+    };
+    var MAX_MESSAGES = 150;
+    var MAX_LENGTH = 500;
+    var KEEP = { 'Never': 0, '1 day': 1, '3 days': 3, '1 week': 7, '2 weeks': 14, '1 month': 31 };
+    var FROM_KEY = 'homeglow.messages.from';   // who this display last wrote as
 
-      function showError(message) {
-        errorMessage.textContent = message;
-        errorMessage.style.display = 'block';
-      }
+    // A message: { id, authorId, authorName, text, important, at (ISO) }.
+    var state = { messages: [], users: [], settings: { keepFor: '2 weeks' }, loaded: false, error: null };
+    var app = document.getElementById('app');
+    var sheet = document.getElementById('sheet');
 
-      function hideError() {
-        errorMessage.style.display = 'none';
-      }
-
-      function renderUserSelection() {
-        const apiBase = window.location.origin;
-        userGrid.innerHTML = '';
-
-        users.forEach(user => {
-          const userCard = document.createElement('div');
-          userCard.className = 'user-card';
-          userCard.onclick = () => selectUser(user);
-
-          const avatar = document.createElement('div');
-          avatar.className = 'user-avatar';
-
-          if (user.profile_picture) {
-            const img = document.createElement('img');
-            img.src = `${apiBase}/Uploads/users/${user.profile_picture}`;
-            img.alt = user.username;
-            avatar.appendChild(img);
-          } else {
-            avatar.textContent = user.username.charAt(0).toUpperCase();
-          }
-
-          const name = document.createElement('div');
-          name.className = 'user-name';
-          name.textContent = user.username;
-
-          userCard.appendChild(avatar);
-          userCard.appendChild(name);
-          userGrid.appendChild(userCard);
-        });
-      }
-
-      function selectUser(user) {
-        currentUser = user;
-        saveCurrentUser();
-        showMainInterface();
-      }
-
-      function showMainInterface() {
-        hideError();
-        userSelection.style.display = 'none';
-        currentUserDisplay.style.display = 'flex';
-        recentMessagesSection.style.display = 'block';
-        messageForm.style.display = 'block';
-        messageFilters.style.display = 'flex';
-        messagesContainer.style.display = 'block';
-        
-        updateCurrentUserDisplay();
-        renderRecentMessages();
-        renderMessages();
-      }
-
-      function showUserSelection() {
-        currentUser = null;
-        localStorage.removeItem('messageBoardCurrentUser');
-        userSelection.style.display = 'block';
-        currentUserDisplay.style.display = 'none';
-        recentMessagesSection.style.display = 'none';
-        messageForm.style.display = 'none';
-        messageFilters.style.display = 'none';
-        messagesContainer.style.display = 'none';
-      }
-
-      function updateCurrentUserDisplay() {
-        if (!currentUser) return;
-
-        const apiBase = window.location.origin;
-        currentUserAvatar.innerHTML = '';
-        if (currentUser.profile_picture) {
-          const img = document.createElement('img');
-          img.src = `${apiBase}/Uploads/users/${currentUser.profile_picture}`;
-          img.alt = currentUser.username;
-          currentUserAvatar.appendChild(img);
-        } else {
-          currentUserAvatar.textContent = currentUser.username.charAt(0).toUpperCase();
-        }
-
-        currentUserName.textContent = currentUser.username;
-      }
-
-      function renderRecentMessages() {
-        const recentMessages = messages.slice(0, 3); // Show last 3 messages
-        
-        if (recentMessages.length === 0) {
-          recentMessagesList.innerHTML = '<div class="no-recent-messages">No messages yet</div>';
-          return;
-        }
-        
-        recentMessagesList.innerHTML = recentMessages.map(message => {
-          const isUnread = !message.readBy.includes(currentUser.id);
-          const preview = message.content.length > 50 ? 
-            message.content.substring(0, 50) + '...' : 
-            message.content;
-          
-          return `
-            <div class="recent-message-item ${isUnread ? 'unread' : ''}" onclick="openMessageModal(${message.id})">
-              <div class="recent-message-header">
-                <div class="recent-message-author">
-                  ${getPriorityIcon(message.priority)} ${message.authorName}
-                </div>
-                <div class="recent-message-time">${formatTimeAgo(message.timestamp)}</div>
-              </div>
-              <div class="recent-message-preview">${preview}</div>
-            </div>
-          `;
-        }).join('');
-      }
-      function postMessage() {
-        const content = messageInput.value.trim();
-        const priority = prioritySelect.value;
-        
-        if (!content) return;
-        
-        const message = {
-          id: Date.now(),
-          authorId: currentUser.id,
-          authorName: currentUser.username,
-          authorAvatar: currentUser.profile_picture,
-          content: content,
-          priority: priority,
-          timestamp: new Date().toISOString(),
-          readBy: [currentUser.id] // Author automatically reads their own message
-        };
-        
-        messages.unshift(message);
-        saveMessages();
-        
-        messageInput.value = '';
-        updateCharCounter();
-        renderRecentMessages();
-        renderMessages();
-      }
-
-      function deleteMessage(messageId) {
-        const message = messages.find(m => m.id === messageId);
-        if (!message || message.authorId !== currentUser.id) return;
-        
-        confirmationMessage.textContent = 'Are you sure you want to delete this message?';
-        confirmationDialog.style.display = 'flex';
-        
-        confirmBtn.onclick = () => {
-          messages = messages.filter(m => m.id !== messageId);
-          saveMessages();
-          renderRecentMessages();
-          renderMessages();
-          confirmationDialog.style.display = 'none';
-        };
-      }
-
-      function markAsRead(messageId) {
-        const message = messages.find(m => m.id === messageId);
-        if (!message || message.readBy.includes(currentUser.id)) return;
-        
-        message.readBy.push(currentUser.id);
-        saveMessages();
-        renderRecentMessages();
-        renderMessages();
-      }
-
-      function openMessageModal(messageId) {
-        const message = messages.find(m => m.id === messageId);
-        if (!message) return;
-        
-        // Mark as read if not already read
-        if (!message.readBy.includes(currentUser.id)) {
-          markAsRead(messageId);
-        }
-        
-        // Populate modal content
-        modalMessageAuthor.textContent = message.authorName;
-        modalMessagePriority.textContent = getPriorityIcon(message.priority);
-        modalMessageContent.textContent = message.content;
-        modalMessageTime.textContent = new Date(message.timestamp).toLocaleString();
-        modalMessagePriorityText.textContent = message.priority.charAt(0).toUpperCase() + message.priority.slice(1);
-        
-        // Show modal
-        messageModal.style.display = 'flex';
-      }
-
-      function closeMessageModal() {
-        messageModal.style.display = 'none';
-      }
-      function formatTimeAgo(timestamp) {
-        const now = new Date();
-        const messageTime = new Date(timestamp);
-        const diffMs = now - messageTime;
-        const diffMins = Math.floor(diffMs / 60000);
-        const diffHours = Math.floor(diffMs / 3600000);
-        const diffDays = Math.floor(diffMs / 86400000);
-        
-        if (diffMins < 1) return 'just now';
-        if (diffMins < 60) return `${diffMins}m ago`;
-        if (diffHours < 24) return `${diffHours}h ago`;
-        if (diffDays < 7) return `${diffDays}d ago`;
-        return messageTime.toLocaleDateString();
-      }
-
-      function getPriorityIcon(priority) {
-        switch (priority) {
-          case 'urgent': return '🚨';
-          case 'important': return '⚠️';
-          default: return '📝';
-        }
-      }
-
-      function renderMessages() {
-        let filteredMessages = messages;
-        
-        // Apply filters
-        if (currentFilter === 'unread') {
-          filteredMessages = messages.filter(m => !m.readBy.includes(currentUser.id));
-        } else if (currentFilter !== 'all') {
-          filteredMessages = messages.filter(m => m.priority === currentFilter);
-        }
-        
-        if (filteredMessages.length === 0) {
-          messagesList.innerHTML = '<div class="no-messages">No messages to display</div>';
-          return;
-        }
-        
-        messagesList.innerHTML = '';
-        
-        filteredMessages.forEach(message => {
-          const messageEl = document.createElement('div');
-          messageEl.className = `message priority-${message.priority}`;
-          messageEl.style.cursor = 'pointer';
-          messageEl.onclick = () => openMessageModal(message.id);
-          
-          if (!message.readBy.includes(currentUser.id)) {
-            messageEl.classList.add('unread');
-          }
-          
-          const header = document.createElement('div');
-          header.className = 'message-header';
-          
-          const avatar = document.createElement('div');
-          avatar.className = 'message-avatar';
-
-          if (message.authorAvatar) {
-            const apiBase = window.location.origin;
-            const img = document.createElement('img');
-            img.src = `${apiBase}/Uploads/users/${message.authorAvatar}`;
-            img.alt = message.authorName;
-            avatar.appendChild(img);
-          } else {
-            avatar.textContent = message.authorName.charAt(0).toUpperCase();
-          }
-          
-          const author = document.createElement('div');
-          author.className = 'message-author';
-          author.textContent = message.authorName;
-          
-          const priority = document.createElement('span');
-          priority.className = `message-priority priority-${message.priority}`;
-          priority.textContent = getPriorityIcon(message.priority);
-          
-          const time = document.createElement('div');
-          time.className = 'message-time';
-          time.textContent = formatTimeAgo(message.timestamp);
-          
-          header.appendChild(avatar);
-          header.appendChild(author);
-          header.appendChild(priority);
-          header.appendChild(time);
-          
-          const actions = document.createElement('div');
-          actions.className = 'message-actions';
-          
-          if (!message.readBy.includes(currentUser.id)) {
-            const readBtn = document.createElement('button');
-            readBtn.className = 'action-btn read-btn';
-            readBtn.textContent = '✓';
-            readBtn.title = 'Mark as read';
-            readBtn.onclick = (e) => {
-              e.stopPropagation();
-              markAsRead(message.id);
-            };
-            actions.appendChild(readBtn);
-          }
-          
-          if (message.authorId === currentUser.id) {
-            const deleteBtn = document.createElement('button');
-            deleteBtn.className = 'action-btn delete-btn';
-            deleteBtn.textContent = '🗑️';
-            deleteBtn.title = 'Delete message';
-            deleteBtn.onclick = (e) => {
-              e.stopPropagation();
-              deleteMessage(message.id);
-            };
-            actions.appendChild(deleteBtn);
-          }
-          
-          const content = document.createElement('div');
-          content.className = 'message-content';
-          content.textContent = message.content;
-          
-          messageEl.appendChild(header);
-          messageEl.appendChild(actions);
-          messageEl.appendChild(content);
-          messagesList.appendChild(messageEl);
-        });
-      }
-
-      function updateCharCounter() {
-        const length = messageInput.value.length;
-        charCounter.textContent = `${length}/500`;
-        charCounter.classList.toggle('warning', length > 450);
-        postBtn.disabled = length === 0 || length > 500;
-      }
-
-      // Global functions for onclick handlers
-      window.openMessageModal = openMessageModal;
-      // Event listeners
-      switchUserBtn.onclick = showUserSelection;
-      postBtn.onclick = postMessage;
-      
-      messageInput.addEventListener('input', updateCharCounter);
-      messageInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter' && e.ctrlKey) {
-          postMessage();
-        }
+    var esc = function (s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
       });
-      
-      // Filter buttons
-      document.querySelectorAll('.filter-btn').forEach(btn => {
-        btn.onclick = () => {
-          document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-          btn.classList.add('active');
-          currentFilter = btn.dataset.filter;
-          renderMessages();
-        };
+    };
+    var uid = function () { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); };
+
+    // --- people, each with a color of their own ------------------------------
+    var TONES = ['#f6c945', '#7fd18b', '#7cb7f2', '#f29bc7', '#b49cf0', '#f6a663', '#5fd0c9', '#e7837b'];
+    var toneOf = function (userId) {
+      var index = state.users.map(function (u) { return u.id; }).indexOf(userId);
+      return TONES[(index < 0 ? Math.abs(Number(userId) || 0) : index) % TONES.length];
+    };
+    var userById = function (id) { for (var i = 0; i < state.users.length; i++) if (state.users[i].id === id) return state.users[i]; return null; };
+    function avatar(user, name) {
+      var shown = user ? user.username : name;
+      // A letter or digit only: it also goes inside the image's fallback script.
+      var first = String(shown || '').charAt(0).toUpperCase();
+      var letter = /[\p{L}\p{N}]/u.test(first) ? first : '?';
+      if (user && user.profile_picture) {
+        return '<span class="av"><img alt="" src="' + esc(window.location.origin + '/Uploads/users/' + user.profile_picture)
+          + '" onerror="this.parentNode.textContent=\'' + letter + '\'"></span>';
+      }
+      return '<span class="av">' + letter + '</span>';
+    }
+
+    // --- time ---------------------------------------------------------------------
+    function ago(iso) {
+      var t = Date.parse(iso);
+      if (!isFinite(t)) return '';
+      var min = Math.round((Date.now() - t) / 60000);
+      if (min < 1) return 'just now';
+      if (min < 60) return min + ' min ago';
+      var h = Math.round(min / 60);
+      if (h < 24) return h + ' h ago';
+      var d = Math.round(h / 24);
+      if (d === 1) return 'yesterday';
+      try {
+        return new Intl.DateTimeFormat(lang, d < 7 ? { weekday: 'long' } : { month: 'short', day: 'numeric' }).format(new Date(t));
+      } catch (e) { return d + ' days ago'; }
+    }
+
+    // --- loading ---------------------------------------------------------------------
+    function load() {
+      return Promise.all([
+        fetch('/api/users').then(function (r) { return r.ok ? r.json() : []; }).catch(function () { return []; }),
+        store.list(),
+        SDK && SDK.settings ? SDK.settings.get().catch(function () { return {}; }) : Promise.resolve({})
+      ]).then(function (res) {
+        // id 0 is the core's bonus pool, not a person.
+        state.users = (Array.isArray(res[0]) ? res[0] : []).filter(function (u) { return u && u.id !== 0; });
+        var all = res[1] || {};
+        state.messages = Object.keys(all).filter(function (k) { return k.indexOf('msg:') === 0 && all[k] && all[k].text; })
+          .map(function (k) { return all[k]; });
+        state.settings = Object.assign({ keepFor: '2 weeks' }, res[2] || {});
+        state.loaded = true;
+        state.error = null;
+        tidy();
+        render();
+      }).catch(function (e) {
+        state.loaded = true;
+        state.error = 'Couldn\'t load messages: ' + (e && e.message ? e.message : 'try again in a moment');
+        render();
       });
-      
-      // Confirmation dialog
-      cancelBtn.onclick = () => {
-        confirmationDialog.style.display = 'none';
-      };
-      
-      confirmationDialog.onclick = (e) => {
-        if (e.target === confirmationDialog) {
-          confirmationDialog.style.display = 'none';
-        }
-      };
-      
-      // Message modal
-      modalCloseBtn.onclick = closeMessageModal;
-      
-      messageModal.onclick = (e) => {
-        if (e.target === messageModal) {
-          closeMessageModal();
-        }
-      };
-      
-      // Escape key to close modal
-      document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && messageModal.style.display === 'flex') {
-          closeMessageModal();
-        }
+    }
+
+    // Messages older than the setting, and any past the most the board
+    // keeps, are cleared away by whichever display notices first.
+    function tidy() {
+      var days = KEEP[state.settings.keepFor];
+      var cutoff = days ? Date.now() - days * 86400000 : null;
+      var sorted = state.messages.slice().sort(function (a, b) { return Date.parse(b.at) - Date.parse(a.at); });
+      var gone = sorted.filter(function (m, i) { return i >= MAX_MESSAGES || (cutoff && Date.parse(m.at) < cutoff); });
+      gone.forEach(function (m) { store.remove('msg:' + m.id); });
+      var ids = gone.map(function (m) { return m.id; });
+      state.messages = state.messages.filter(function (m) { return ids.indexOf(m.id) === -1; });
+    }
+
+    // --- the board ------------------------------------------------------------------------
+    var lastHtml = '';
+    function ordered() {
+      return state.messages.slice().sort(function (a, b) {
+        return (b.important ? 1 : 0) - (a.important ? 1 : 0) || Date.parse(b.at) - Date.parse(a.at);
       });
-      
-      // Initialize
-      loadMessages();
-      fetchUsers();
-      updateCharCounter();
+    }
+    function render() {
+      var html = '<div class="head"><h1>Messages</h1>'
+        + (HIDE_WRITE ? '' : '<button type="button" class="write" data-write>+ Write</button>') + '</div>';
+      if (!SDK && state.loaded) html += '<div class="notice">Saved on this screen only. Install the Message Board from Admin → Plugins to share it with every display.</div>';
+      if (state.error) html += '<div class="notice err">' + esc(state.error) + '</div>';
+      html += '<div class="board">';
+      if (state.loaded && !state.messages.length) {
+        html += '<div class="empty"><div><b>\u{1F4AC}</b>No messages yet.' + (HIDE_WRITE ? '' : '<br>Tap <strong>+ Write</strong> to leave one for the family.') + '</div></div>';
+      }
+      ordered().forEach(function (m) {
+        var user = m.authorId != null ? userById(m.authorId) : null;
+        var tag = HIDE_WRITE ? 'div' : 'button';
+        html += '<' + tag + (HIDE_WRITE ? '' : ' type="button" data-open="' + esc(m.id) + '"') + ' class="msg' + (m.important ? ' important' : '') + '" style="--tone:' + toneOf(m.authorId) + '">'
+          + '<span class="top">' + avatar(user, m.authorName) + '<span class="name">' + esc(user ? user.username : m.authorName || 'Someone') + '</span>'
+          + (m.important ? '<span class="flag">Important</span>' : '')
+          + '<span class="time">' + esc(ago(m.at)) + '</span></span>'
+          + '<span class="text">' + esc(m.text) + '</span></' + tag + '>';
+      });
+      html += '</div>';
+      if (html !== lastHtml) {
+        var board = app.querySelector('.board');
+        var top = board ? board.scrollTop : 0;
+        app.innerHTML = html;
+        lastHtml = html;
+        board = app.querySelector('.board');
+        if (board) board.scrollTop = top;
+      }
+    }
+
+    // --- writing, and reading one in full ---------------------------------------------------
+    var draft = null;
+    function rememberedFrom() {
+      var id = null;
+      try { id = Number(localStorage.getItem(FROM_KEY)); } catch (e) {}
+      return userById(id) ? id : (state.users[0] ? state.users[0].id : null);
+    }
+    function openWrite() {
+      draft = { kind: 'write', text: '', important: false, from: rememberedFrom(), error: '' };
+      sheet.innerHTML = '';
+      drawSheet();
+      sheet.hidden = false;
+      var box = sheet.querySelector('textarea');
+      if (box) box.focus();
+    }
+    function openMessage(id) {
+      var m = state.messages.filter(function (x) { return x.id === id; })[0];
+      if (!m) return;
+      draft = { kind: 'read', message: m, armed: false };
+      sheet.innerHTML = '';
+      drawSheet();
+      sheet.hidden = false;
+    }
+    function closeSheet() { sheet.hidden = true; draft = null; }
+
+    function drawSheet() {
+      var box = sheet.querySelector('textarea');
+      var typing = !!box && document.activeElement === box;
+      var caret = typing ? box.selectionStart : null;
+      if (box && draft.kind === 'write') draft.text = box.value;
+      var h;
+      if (draft.kind === 'read') {
+        var m = draft.message;
+        var user = m.authorId != null ? userById(m.authorId) : null;
+        h = '<header><h2 id="sheet-title">Message</h2></header><div class="body">'
+          + '<div class="full" style="--tone:' + toneOf(m.authorId) + '"><div class="meta">' + avatar(user, m.authorName) + esc(user ? user.username : m.authorName || 'Someone')
+          + '<span class="when">' + esc(ago(m.at)) + '</span></div><div class="text">' + esc(m.text) + '</div></div></div>'
+          + '<footer><button type="button" class="btn danger' + (draft.armed ? ' armed' : '') + '" data-delete>' + (draft.armed ? 'Remove it' : 'Remove') + '</button>'
+          + '<button type="button" class="btn" data-pin>' + (m.important ? 'Not important' : 'Mark important') + '</button>'
+          + '<button type="button" class="btn primary" data-close>Done</button></footer>';
+      } else {
+        h = '<header><h2 id="sheet-title">New message</h2></header><div class="body">';
+        if (state.users.length) {
+          h += '<div><div class="label">From</div><div class="row">' + state.users.map(function (u) {
+            return '<button type="button" class="pill" data-from="' + u.id + '" aria-pressed="' + (draft.from === u.id) + '" style="--tone:' + toneOf(u.id) + '">' + avatar(u) + esc(u.username) + '</button>';
+          }).join('') + '</div></div>';
+        }
+        h += '<div><div class="label">Message</div><textarea maxlength="' + MAX_LENGTH + '" placeholder="Back by 6. Dinner\'s in the oven." aria-label="Message">' + esc(draft.text) + '</textarea>'
+          + '<div class="count">' + draft.text.length + '/' + MAX_LENGTH + '</div></div>'
+          + '<button type="button" class="toggle" data-important aria-pressed="' + draft.important + '"><span class="sw" aria-hidden="true"></span>Important: keep it at the top</button>';
+        if (draft.error) h += '<div class="err">' + esc(draft.error) + '</div>';
+        h += '</div><footer><span style="margin-right:auto"></span><button type="button" class="btn" data-close>Cancel</button><button type="button" class="btn primary" data-post>Post</button></footer>';
+      }
+      sheet.innerHTML = h;
+      if (typing) {
+        var again = sheet.querySelector('textarea');
+        again.focus();
+        try { again.setSelectionRange(caret, caret); } catch (e) { /* nothing to place */ }
+      }
+    }
+
+    function post() {
+      var box = sheet.querySelector('textarea');
+      var text = (box ? box.value : draft.text).trim().slice(0, MAX_LENGTH);
+      if (!text) { draft.error = 'Write the message first.'; drawSheet(); return; }
+      var user = userById(draft.from);
+      var m = { id: uid(), authorId: user ? user.id : null, authorName: user ? user.username : '', text: text, important: !!draft.important, at: new Date().toISOString() };
+      store.set('msg:' + m.id, m).then(function () {
+        try { if (user) localStorage.setItem(FROM_KEY, String(user.id)); } catch (e) { /* remembered next time */ }
+        state.messages.push(m);
+        tidy();
+        closeSheet();
+        render();
+      }).catch(function (e) {
+        draft.error = 'Couldn\'t post: ' + (e && e.message ? e.message : 'try again');
+        drawSheet();
+      });
+    }
+    function togglePin() {
+      var m = Object.assign({}, draft.message, { important: !draft.message.important });
+      store.set('msg:' + m.id, m).then(function () {
+        state.messages = state.messages.map(function (x) { return x.id === m.id ? m : x; });
+        closeSheet();
+        render();
+      });
+    }
+    function removeMessage() {
+      if (!draft.armed) { draft.armed = true; drawSheet(); return; }
+      var id = draft.message.id;
+      store.remove('msg:' + id).then(function () {
+        state.messages = state.messages.filter(function (x) { return x.id !== id; });
+        closeSheet();
+        render();
+      });
+    }
+
+    // --- taps -----------------------------------------------------------------------------------
+    app.addEventListener('click', function (event) {
+      if (HIDE_WRITE) return;
+      if (event.target.closest('[data-write]')) { openWrite(); return; }
+      var card = event.target.closest('[data-open]');
+      if (card) openMessage(card.getAttribute('data-open'));
     });
+    sheet.addEventListener('click', function (event) {
+      var t = event.target;
+      if (draft && draft.kind === 'read' && draft.armed && !t.closest('[data-delete]')) { draft.armed = false; drawSheet(); }
+      var el;
+      if ((el = t.closest('[data-from]'))) { draft.from = +el.getAttribute('data-from'); drawSheet(); return; }
+      if (t.closest('[data-important]')) { draft.important = !draft.important; drawSheet(); return; }
+      if (t.closest('[data-close]')) { closeSheet(); return; }
+      if (t.closest('[data-post]')) { post(); return; }
+      if (t.closest('[data-pin]')) { togglePin(); return; }
+      if (t.closest('[data-delete]')) { removeMessage(); return; }
+    });
+    sheet.addEventListener('input', function (event) {
+      if (event.target.tagName !== 'TEXTAREA') return;
+      var count = sheet.querySelector('.count');
+      if (count) count.textContent = event.target.value.length + '/' + MAX_LENGTH;
+    });
+    sheet.addEventListener('keydown', function (event) { if (event.key === 'Escape') closeSheet(); });
+
+    // --- start ------------------------------------------------------------------------------------
+    load();
+    // A message from another display arrives within half a minute; "5 min
+    // ago" moves on by itself.
+    setInterval(function () { if (!document.hidden && sheet.hidden) load(); }, 30 * 1000);
+    document.addEventListener('visibilitychange', function () { if (!document.hidden && sheet.hidden) load(); });
+  })();
   </script>
 </body>
 </html>
