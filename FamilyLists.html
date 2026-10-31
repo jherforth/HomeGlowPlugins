@@ -1,0 +1,1070 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Family Lists</title>
+  <!--
+    Family Lists — a generic shared-list widget for HomeGlow (upstream-ready).
+
+    One widget, many list types. A list has a `type` that controls which
+    fields the UI shows, but every list shares the same core: add, check,
+    uncheck, and (in Manage view) uncheck all,
+    search, sort, filter, bulk add, rename lists,
+    and a Rearrange mode with ↑/↓ buttons.
+    Checked items are never deleted in bulk: an item disappears only
+    when it is picked for removal (its ✕, tapped twice) or its whole
+    list is deleted. There is deliberately no undo — every removal is
+    an explicit two-tap act.
+    The widget has two views. The dashboard widget is always Simple:
+    a title row — title on the left, + Add and a settings gear
+    upper right (in Manage view the gear becomes a back arrow) —
+    with the list tabs on their own row below, and
+    condensed rows with
+    working checkboxes — no management controls, and no item counts
+    anywhere (no stats row, no progress bar, no count in the
+    subtitle). The title is always plain
+    "Family Lists" — never an emoji. The grocery list's own tab
+    carries the 🛒 cart emoji after its name ("Groceries 🛒");
+    custom tabs show just the name, with no type suffix anywhere.
+    Manage is today's full
+    UI; its header button is a back arrow that switches back to
+    Simple. A fresh load
+    always renders Simple; only a URL ?view=manage or ?view=simple
+    param wins for that load. Manage is entered from the widget's
+    settings gear (upper right) or a ?view=manage URL — no saved view
+    is read, so a stale per-display preference can never flip the
+    dashboard to Manage. Adding and editing happen in a
+    dialog in Manage view; Simple has a minimal quick-add dialog
+    (name + quantity only). No field grid sits permanently on the
+    widget. The widget reflows with its dashboard size via container
+    queries on the wrapper.
+
+    List types (templates):
+      grocery — quantities, units, store sections, and freeform store
+                 tags (user-defined; the store filter and store
+                 suggestions come from stores already on the list,
+                 never a preset retailer list). This is the
+                 default first list. A grocery item's section is
+                 guessed from its name when it is added (anything the
+                 guesser cannot place lands in Other) and can be fixed
+                 by hand with the section picker in the edit dialog.
+                 The optional per-list "Group by section"
+                 toggle renders items under section headers.
+      custom   — freeform checklist with an optional category.
+
+    Storage (the contract other writers must follow — Other integrations
+    assistants, etc. — write this same document, never a private format):
+      HomeGlow.storage key "lists", value:
+        { version: 1,
+          lists: [ { id, name, type, items: [ item ] } ],
+          updatedAt: ISO timestamp }
+      list: { id, name, type, groupSections (bool, grocery only),
+              items: [ item ] }
+      item: { id, name, qty (number|null), unit (string),
+              category (string — the grocery section, or a freeform
+              category on custom lists), store (string),
+              checked (bool), checkedAt (ISO|null), createdAt (ISO),
+              source (a short tag naming the item's origin, e.g. "manual" or "import") }
+      Unknown fields on read are tolerated, never a crash: a list
+      whose template was removed falls back to custom, and an item
+      still works if it carries fields this version no longer
+      writes (note, assignedTo, price, and friends are ignored).
+      The widget polls storage (default every 10s, setting `pollSeconds`)
+      so writes from another display
+      appear without a reload. Polling never clobbers an in-progress edit:
+      a poll is skipped while the add form or an inline edit is dirty.
+      Concurrent edits from two displays: last write wins (no merge —
+      the newest saved document replaces the old one).
+
+    No backend changes, no hardcoded household data, no retailer lock-in.
+  -->
+  <script type="application/json" id="homeglow-manifest">
+  {
+    "manifestVersion": 1,
+    "id": "family-lists",
+    "name": "Family Lists",
+    "description": "Shared family lists in one widget: groceries with quantities and store sections, plus custom lists. Check items off on the wall, filter by store.",
+    "apiVersion": "v1",
+    "storage": true,
+    "settings": [
+      {
+        "key": "pollSeconds",
+        "label": "How often to check for changes from other displays (seconds)",
+        "type": "number",
+        "default": 10,
+        "scope": "household"
+      }
+    ]
+  }
+  </script>
+  <link rel="stylesheet" href="/index.css">
+  <script src="/plugin-sdk/v1.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: transparent !important; }
+    body {
+      font-family: var(--hg-font-body, 'Inter', system-ui, -apple-system, sans-serif);
+      font-size: 0.9rem;
+      color: var(--text, #333);
+      padding: 0.75rem;
+    }
+    [data-theme="dark"] body { color: var(--text, #d6d6e8); }
+    .wrap { width: 100%; max-height: calc(100vh - 1.5rem); overflow-y: auto; container-type: inline-size; }
+    h2.title { font-size: 1.15rem; font-weight: 800; margin: 0 0 0.25rem 0; }
+    .subtitle { font-size: 0.75rem; opacity: 0.75; margin: 0 0 0.75rem 0; }
+    .row { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
+    /* Header: two rows, same height as before. Row 1 is the title row —
+       title on the left, + Add and the settings gear upper right.
+       Row 2 is the list tabs alone, scrolling horizontally inside the
+       row and never wrapping, so the header never grows at narrow
+       widths; chips and buttons never shrink (the tabs scroll
+       instead). */
+    #titleRow { flex-wrap: nowrap; align-items: center; }
+    #titleRow h2.title { flex: 1 1 auto; min-width: 0; margin: 0; }
+    #tabsRow { flex-wrap: nowrap; }
+    #listTabs { flex: 1 1 auto; min-width: 0; flex-wrap: nowrap; overflow-x: auto; }
+    #listTabs .chip { flex-shrink: 0; }
+    #headerActions { flex-shrink: 0; flex-wrap: nowrap; }
+    #headerActions .btn { flex-shrink: 0; }
+    .chip {
+      border: 1px solid var(--border, rgba(128,128,128,0.35));
+      background: rgba(255,255,255,0.08);
+      color: inherit; border-radius: 999px; padding: 0.35rem 0.75rem;
+      cursor: pointer; font-size: 0.8rem; font-weight: 600;
+    }
+    .chip.active { background: var(--accent, #00ddeb); color: #fff; border-color: transparent; }
+    button { cursor: pointer; font-family: inherit; }
+    .btn {
+      border: 1px solid var(--border, rgba(128,128,128,0.35));
+      background: rgba(255,255,255,0.1); color: inherit; border-radius: 8px;
+      padding: 0.45rem 0.8rem; font-size: 0.82rem; font-weight: 600;
+    }
+    .btn.primary { background: var(--accent, #00a8b5); color: #fff; border-color: transparent; }
+    .btn.danger { color: #e5484d; }
+    input, select, textarea {
+      box-sizing: border-box; min-width: 0;
+      font-family: inherit; font-size: 0.9rem; color: inherit;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid var(--border, rgba(128,128,128,0.35));
+      border-radius: 8px; padding: 0.45rem 0.6rem;
+    }
+    [data-theme="dark"] input, [data-theme="dark"] select, [data-theme="dark"] textarea {
+      background: rgba(30,30,50,0.35);
+    }
+    select option { color: #222; }
+    .card {
+      background: rgba(255,255,255,0.06);
+      border: 1px solid var(--border, rgba(128,128,128,0.25));
+      border-radius: 12px; padding: 0.75rem; margin-bottom: 0.75rem;
+    }
+    [data-theme="dark"] .card { background: rgba(30,30,50,0.25); }
+    /* Edit dialog must never shift off-screen on narrow phones: the
+       grid tracks allow shrinking below item min-content (long unit
+       prompts, default input widths), fields shrink inside their
+       tracks, and the dialog's own width includes its padding. */
+    .addgrid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 0.7fr) minmax(0, 1fr) minmax(0, 1fr); gap: 0.5rem; margin-bottom: 0.5rem; }
+    .addgrid .wide { grid-column: span 2; }
+    @media (max-width: 560px) { .addgrid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .addgrid .wide { grid-column: span 2; } }
+    .toolbar { display: flex; gap: 0.5rem; flex-wrap: wrap; margin: 0.5rem 0; align-items: center; }
+    .toolbar input[type="search"] { flex: 1; min-width: 140px; }
+    .grouphead {
+      font-size: 0.75rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;
+      opacity: 0.7; margin: 0.9rem 0 0.6rem 0;
+    }
+    .item {
+      display: flex; gap: 0.6rem; align-items: flex-start;
+      background: rgba(255,255,255,0.07); border: 1px solid var(--border, rgba(128,128,128,0.2));
+      border-radius: 10px; padding: 0.6rem 0.7rem; margin-bottom: 0.45rem;
+    }
+    [data-theme="dark"] .item { background: rgba(30,30,50,0.3); }
+    .item.checked { opacity: 0.65; }
+    .item.checked .iname { text-decoration: line-through; }
+    .check {
+      width: 28px; height: 28px; min-width: 28px; border-radius: 8px; cursor: pointer;
+      border: 2px solid var(--accent, #00a8b5); background: transparent;
+      font-size: 1rem; line-height: 1; color: #fff; padding: 0;
+    }
+    .check.on { background: var(--accent, #00a8b5); }
+    .iname { font-weight: 650; font-size: 0.95rem; }
+    .imeta { font-size: 0.78rem; opacity: 0.8; margin-top: 0.15rem; }
+    .iname, .imeta { overflow-wrap: anywhere; }
+    .iactions { margin-left: auto; display: flex; gap: 0.3rem; flex-shrink: 0; }
+    .iconbtn { background: transparent; border: none; color: inherit; opacity: 0.7; font-size: 0.95rem; padding: 0.45rem 0.6rem; }
+    .iconbtn:hover { opacity: 1; }
+    /* Rearrange mode: ↑/↓ buttons with
+       proper touch-sized targets — the single reorder mechanism. */
+    .reorder { display: flex; gap: 0.3rem; flex-shrink: 0; align-self: center; }
+    .moveBtn { min-width: 44px; min-height: 44px; padding: 0.3rem; font-size: 1.15rem; line-height: 1; background: rgba(255,255,255,0.1); border: 1px solid var(--border, rgba(128,128,128,0.35)); border-radius: 8px; color: inherit; cursor: pointer; }
+    .moveBtn:disabled { opacity: 0.35; cursor: default; }
+    .empty { text-align: center; opacity: 0.7; padding: 1.25rem 0.5rem; font-size: 0.9rem; }
+    .small { font-size: 0.78rem; opacity: 0.8; }
+    .hidden { display: none !important; }
+    /* Add dialog: creation and editing live behind one + button, not a
+       permanent field grid. Native <dialog> gives backdrop + Esc. */
+    dialog#addDialog { box-sizing: border-box; border: 1px solid var(--border, rgba(128,128,128,0.35)); border-radius: 12px; padding: 1rem; width: calc(100% - 2rem); max-width: 560px; background: rgba(255,255,255,0.98); color: #333; }
+    [data-theme="dark"] dialog#addDialog { background: rgba(30,30,50,0.98); color: var(--text, #d6d6e8); }
+    dialog#addDialog::backdrop { background: rgba(0,0,0,0.45); }
+    /* Store pill: hidden in Manage view (store already shows in the
+       meta line); shown in condensed Simple rows. */
+    .storepill { display: none; }
+    /* Simple view: the dashboard widget, always. Header is two rows —
+       title row (title left, + Add and the settings gear upper right;
+       in Manage view the gear is a back arrow to Simple)
+       plus the tabs row below; the list is condensed single-line rows with
+       working checkboxes and a store pill. Every management control
+       hides here (it lives in Manage view); the full add dialog's
+       extra fields and bulk add hide too, leaving
+       quick-add. There is no stats row or progress bar anywhere —
+       item counts were removed as not useful. The
+       Manage button row hides too, so Simple adds no second row —
+       except while a status message is showing, so a save warning still
+       surfaces. Manage is entered from the settings gear. */
+    .simple .toolbar,
+    .simple #newListBtn, .simple #renameListBtn, .simple #renameRow, .simple #manageBtnRow,
+    .simple #newListCard,
+    .simple #subtitle,
+    .simple .imeta, .simple #footNote,
+    .simple .iactions,
+    .simple #addDialog details { display: none !important; }
+    /* Grouped lists still show their section headers in Simple too, compact. */
+    .simple .grouphead { margin: 0.5rem 0 0.5rem 0; }
+    /* In Simple the tabs row is the last header element before the
+       items (Manage's control rows are hidden), so it needs its own
+       breathing room below or the first item touches the tabs — and
+       above, or the + Add button sits flush on the list tabs: with
+       the subtitle hidden, the title row ends exactly where the tabs
+       begin. */
+    .simple #tabsRow { margin: 0.5rem 0; }
+    .simple #manageBtnRow:has(#statusLine:not(:empty)) { display: flex !important; }
+    .simple .item { padding: 0.4rem 0.6rem; margin-bottom: 0.3rem; }
+    .simple .iname { font-size: 1rem; }
+    .simple .storepill { display: inline-block; align-self: center; flex-shrink: 0; font-size: 0.72rem; font-weight: 700; padding: 0.2rem 0.55rem; border-radius: 999px; background: rgba(0,168,181,0.18); }
+    /* The widget reflows with its dashboard size: the iframe viewport is
+       the widget size, so container queries on .wrap drive the tiers. */
+    @container (max-width: 520px) {
+      .item { padding: 0.45rem 0.55rem; }
+      .iname { font-size: 0.9rem; }
+      .imeta { font-size: 0.72rem; }
+      h2.title { font-size: 1rem; }
+    }
+    @container (min-width: 900px) {
+      .item { padding: 0.75rem 0.9rem; }
+      .iname { font-size: 1.1rem; }
+      .check { width: 34px; height: 34px; min-width: 34px; }
+    }
+    details summary { cursor: pointer; font-weight: 650; font-size: 0.85rem; margin: 0.5rem 0; }
+    textarea.bulk { width: 100%; min-height: 90px; }
+  </style>
+</head>
+<body>
+  <div class="wrap" id="wrap">
+    <div class="row" id="titleRow">
+      <h2 class="title" id="widgetTitle">Family Lists</h2>
+      <div class="row" id="headerActions">
+        <button class="btn primary" id="addBtn" type="button">+ Add item</button>
+        <button class="btn" id="settingsBtn" type="button" title="Manage lists" aria-label="Manage lists">⚙️</button>
+      </div>
+    </div>
+    <p class="subtitle" id="subtitle">Shared lists for the household.</p>
+
+    <div class="row" id="tabsRow">
+      <div class="row" id="listTabs" role="group" aria-label="Lists"></div>
+    </div>
+    <div class="row" id="manageBtnRow" style="margin-top:0.5rem;">
+      <button class="btn" id="newListBtn" type="button">+ New list</button>
+      <button class="btn" id="renameListBtn" type="button">✎ Rename list</button>
+      <span class="small" id="statusLine" aria-live="polite"></span>
+    </div>
+
+    <div class="row hidden" id="renameRow" style="margin-top:0.5rem;">
+      <input id="renameInput" aria-label="New list name" style="flex:1;min-width:160px;">
+      <button class="btn primary" id="renameSaveBtn" type="button">Save name</button>
+      <button class="btn" id="renameCancelBtn" type="button">Cancel</button>
+    </div>
+
+    <div class="card hidden" id="newListCard">
+      <div class="row">
+        <input id="newListName" placeholder="List name, e.g. Weekly shop" aria-label="New list name" style="flex:1;min-width:160px;">
+        <select id="newListType" aria-label="List template">
+          <option value="grocery">Grocery</option>
+          <option value="custom">Custom</option>
+        </select>
+        <button class="btn primary" id="createListBtn" type="button">Create</button>
+        <button class="btn" id="cancelListBtn" type="button">Cancel</button>
+      </div>
+    </div>
+
+    <dialog id="addDialog" aria-label="Add or edit item">
+      <form id="addForm">
+        <div class="addgrid">
+          <input id="fName" placeholder="Add an item… (e.g. 2x oat milk)" aria-label="Item name" autocomplete="off" class="wide">
+          <input id="fQty" type="number" min="0" step="any" placeholder="Qty" aria-label="Quantity">
+          <input id="fUnit" placeholder="Unit (lbs, gal…)" aria-label="Unit">
+          <select id="fSection" aria-label="Section"></select>
+          <input id="fCategory" placeholder="Category (optional)" aria-label="Category" list="catList">
+          <datalist id="catList"></datalist>
+          <input id="fStore" placeholder="Store (optional, any name)" aria-label="Store" list="storeList">
+          <datalist id="storeList"></datalist>
+        </div>
+        <div class="row">
+          <button class="btn primary" type="submit">Add item</button>
+          <button class="btn" id="cancelAddBtn" type="button">Cancel</button>
+          <span class="small">Tip: “2x milk” or “2 lbs chicken” in the name box parses quantity automatically.</span>
+        </div>
+      </form>
+      <details>
+        <summary>Bulk add (one item per line)</summary>
+        <textarea class="bulk" id="bulkBox" placeholder="milk&#10;2x eggs&#10;chicken thighs"></textarea>
+        <div class="row" style="margin-top:0.5rem;">
+          <button class="btn primary" id="bulkBtn" type="button">Add all lines</button>
+          <span class="small" id="bulkState"></span>
+        </div>
+      </details>
+    </dialog>
+
+    <div class="toolbar">
+      <input type="search" id="searchBox" placeholder="Search this list…" aria-label="Search this list">
+      <select id="sortSel" aria-label="Sort">
+        <option value="entry">Sort: Entry order</option>
+        <option value="alpha">Sort: A–Z</option>
+        <option value="recent">Sort: Recently added</option>
+      </select>
+      <select id="storeFilter" aria-label="Filter by store">
+        <option value="">All stores</option>
+      </select>
+      <label class="small"><input type="checkbox" id="showChecked" checked> Show checked</label>
+      <button class="btn" id="uncheckAllBtn" type="button">Uncheck all</button>
+      <button class="btn" id="rearrangeBtn" type="button" aria-pressed="false">Rearrange</button>
+      <button class="btn danger" id="deleteListBtn" type="button">Delete this list</button>
+      <label class="small" id="groupLabel"><input type="checkbox" id="groupSections"> Group by section</label>
+    </div>
+
+    <div id="items"></div>
+
+    <p class="small" id="footNote" style="margin-top:0.75rem;"></p>
+  </div>
+  <script>
+  (function () {
+    'use strict';
+    var $ = function (id) { return document.getElementById(id); };
+    var LS_KEY = 'homeglowFamilyLists';
+    var DOC_KEY = 'lists';
+
+    // Grocery sections, in store-walk order. An item's `category` field
+    // holds its section on grocery lists; anything the guesser cannot
+    // place lands in Other. Legacy section names map via aliases below
+    // so old documents still render under the right header.
+    var SECTION_ORDER = ['Produce', 'Dairy', 'Meat & Seafood', 'Bakery', 'Pantry', 'Frozen', 'Household', 'Other'];
+    var SECTION_ALIASES = { 'Dairy & Eggs': 'Dairy', 'Dairy and Eggs': 'Dairy', 'Meat': 'Meat & Seafood', 'Seafood': 'Meat & Seafood', 'Snacks & Beverages': 'Pantry', 'Snacks': 'Pantry', 'Beverages': 'Pantry' };
+    var TEMPLATES = {
+      grocery: { label: 'Grocery', fields: ['qty', 'unit', 'section', 'store'] },
+      custom: { label: 'Custom', fields: ['category'] }
+    };
+    // Section guesser: multi-word phrases win over single words, so
+    // "green beans" lands in Produce and "chicken broth" in Pantry even
+    // though "beans" and "chicken" alone point elsewhere. Matching is
+    // on whole words, so "eggplant" never matches Dairy "egg".
+    // After phrases, the head noun decides: words are scanned LAST
+    // to FIRST, so "apple crisps" is Pantry (crisps), "banana bread"
+    // is Bakery (bread), and "strawberry yogurt" is Dairy (yogurt) —
+    // a modifier word must never beat the head noun. Two prefix
+    // rules sit ahead of the scan: a leading "frozen" puts the item
+    // in Frozen, and a trailing "oil" puts it in Pantry.
+    var SECTION_PHRASES = {
+      'Produce': ['green beans', 'sweet potato', 'bell pepper', 'iceberg lettuce', 'romaine lettuce'],
+      'Dairy': ['sour cream', 'cottage cheese', 'cream cheese', 'half and half', 'whipped cream'],
+      'Meat & Seafood': ['pot pie', 'hot dog', 'hot dogs'],
+      'Bakery': ['sourdough bread', 'french bread'],
+      'Pantry': ['chicken broth', 'beef broth', 'vegetable broth', 'peanut butter', 'almond butter', 'soy sauce', 'olive oil', 'vegetable oil', 'black pepper', 'black beans', 'baked beans', 'mac and cheese', 'tomato sauce', 'tomato paste', 'pasta sauce'],
+      'Frozen': ['ice cream', 'frozen pizza', 'frozen vegetables', 'frozen fruit', 'corn dog', 'corn dogs'],
+      'Household': ['paper towel', 'toilet paper', 'trash bag', 'dish soap', 'laundry detergent', 'fabric softener', 'paper napkin', 'plastic wrap', 'aluminum foil']
+    };
+    var SECTION_WORDS = {
+      'Frozen': ['frozen', 'popsicle', 'gelato', 'sorbet', 'nugget', 'nuggets'],
+      'Produce': ['apple', 'apples', 'banana', 'bananas', 'avocado', 'avocados', 'tomato', 'tomatoes', 'lettuce', 'spinach', 'kale', 'carrot', 'carrots', 'potato', 'potatoes', 'onion', 'onions', 'garlic', 'cucumber', 'cucumbers', 'broccoli', 'cauliflower', 'berry', 'berries', 'strawberry', 'strawberries', 'blueberry', 'blueberries', 'raspberry', 'raspberries', 'grape', 'grapes', 'lemon', 'lemons', 'lime', 'limes', 'orange', 'oranges', 'melon', 'melons', 'peach', 'peaches', 'pear', 'pears', 'plum', 'plums', 'mango', 'mangos', 'pineapple', 'pineapples', 'cilantro', 'parsley', 'basil', 'mint', 'salad', 'mushroom', 'mushrooms', 'zucchini', 'squash', 'eggplant', 'celery', 'asparagus', 'corn', 'peas', 'fruit', 'vegetable', 'vegetables', 'veggie', 'veggies', 'herb', 'herbs', 'tofu'],
+      'Dairy': ['milk', 'egg', 'eggs', 'cheese', 'butter', 'yogurt', 'yogurts', 'yoghurt', 'cream', 'buttermilk', 'kefir'],
+      'Meat & Seafood': ['chicken', 'beef', 'pork', 'turkey', 'lamb', 'sausage', 'bacon', 'ham', 'steak', 'salmon', 'shrimp', 'tuna', 'fish', 'seafood', 'crab', 'lobster', 'meat', 'deli', 'pepperoni', 'salami', 'jerky', 'prosciutto', 'pastrami', 'chorizo', 'meatball', 'meatballs', 'scallop', 'scallops'],
+      'Bakery': ['bread', 'bagel', 'bagels', 'muffin', 'muffins', 'croissant', 'croissants', 'tortilla', 'tortillas', 'bun', 'buns', 'roll', 'rolls', 'pita', 'naan', 'cake', 'pie', 'donut', 'donuts', 'doughnut', 'doughnuts', 'pastry', 'pastries', 'baguette', 'sourdough', 'brioche', 'ciabatta'],
+      'Pantry': ['rice', 'pasta', 'noodle', 'noodles', 'flour', 'sugar', 'salt', 'oil', 'vinegar', 'sauce', 'ketchup', 'mustard', 'mayo', 'mayonnaise', 'cereal', 'oats', 'oatmeal', 'granola', 'cracker', 'crackers', 'chip', 'chips', 'crisp', 'crisps', 'nut', 'nuts', 'almond', 'almonds', 'peanut', 'peanuts', 'jam', 'jelly', 'honey', 'syrup', 'coffee', 'tea', 'chocolate', 'spice', 'spices', 'soup', 'broth', 'beans', 'lentil', 'lentils', 'quinoa', 'cookie', 'cookies', 'candy', 'popcorn', 'pretzel', 'pretzels', 'snack', 'snacks', 'soda', 'juice', 'water', 'drink', 'drinks', 'sparkling', 'seltzer', 'baking', 'yeast', 'vanilla', 'cinnamon'],
+      'Household': ['soap', 'shampoo', 'detergent', 'towel', 'towels', 'tissue', 'tissues', 'trash', 'cleaning', 'sponge', 'sponges', 'toothpaste', 'deodorant', 'laundry', 'napkin', 'napkins', 'foil', 'wrap', 'paper', 'bleach', 'wipes', 'diaper', 'diapers', 'lotion', 'razor', 'razors']
+    };
+    function guessSection(name) {
+      var norm = ' ' + String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim() + ' ';
+      if (!norm.trim()) return 'Other';
+      var sec;
+      for (sec in SECTION_PHRASES) {
+        var phrases = SECTION_PHRASES[sec];
+        for (var i = 0; i < phrases.length; i++) {
+          if (norm.indexOf(' ' + phrases[i] + ' ') !== -1) return sec;
+        }
+      }
+      // Any "<fruit> juice" is a pantry item, not produce.
+      if (norm.indexOf(' juice ') !== -1) return 'Pantry';
+      // A leading "frozen" wins over the food word: "frozen broccoli"
+      // lives in the freezer aisle, not Produce.
+      if (norm.slice(0, 8) === ' frozen ') return 'Frozen';
+      // Any "<food> oil" is a pantry item: the head noun (oil) beats
+      // the modifier ("avocado oil" is Pantry, not Produce).
+      if (norm.slice(-5) === ' oil ') return 'Pantry';
+      // Head-noun scan: last word first, so a modifier in any section
+      // never beats the head noun's section.
+      var wordSection = {};
+      for (sec in SECTION_WORDS) {
+        var list = SECTION_WORDS[sec];
+        for (var j = 0; j < list.length; j++) {
+          if (!wordSection[list[j]]) wordSection[list[j]] = sec;
+        }
+      }
+      var tokens = norm.split(' ');
+      for (var k = tokens.length - 1; k >= 0; k--) {
+        if (tokens[k] && wordSection[tokens[k]]) return wordSection[tokens[k]];
+      }
+      return 'Other';
+    }
+    // The section an item renders under: its stored category when that
+    // is a real section (with legacy aliases normalized), else a fresh
+    // guess from its name. Custom lists have no sections.
+    function sectionOf(list, it) {
+      if (list.type !== 'grocery') return it.category || '';
+      var c = it.category || '';
+      if (SECTION_ALIASES[c]) c = SECTION_ALIASES[c];
+      if (SECTION_ORDER.indexOf(c) !== -1) return c;
+      return guessSection(it.name);
+    }
+    // Section picker options: Auto (guess from name) + fixed sections.
+    (function initSectionOptions() {
+      var sel = $('fSection');
+      var auto = document.createElement('option'); auto.value = ''; auto.textContent = 'Section: auto (guess from name)'; sel.appendChild(auto);
+      SECTION_ORDER.forEach(function (s) { var o = document.createElement('option'); o.value = s; o.textContent = s; sel.appendChild(o); });
+    })();
+
+    var state = null;           // { version:1, lists:[...], updatedAt }
+    var activeListId = null;
+    var settings = { pollSeconds: 10 };
+    var editingId = null;       // item id being inline-edited
+    var dirty = false;          // add form / edit in progress -> skip poll
+    var confirmDeleteUntil = 0; // inline two-tap confirm for Delete list
+    var confirmRemoveId = null; // item id awaiting two-tap remove confirm
+    var confirmRemoveUntil = 0;
+    var recoveryPending = false; // boot storage read failed: never write the in-memory default remotely
+    var saveWarned = false;      // a save-failure warning is showing
+    var pollTimer = null;
+    var rearrangeMode = false; // Manage reorder via ↑/↓ buttons
+
+    function uid() { return 'i' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+    function nowIso() { return new Date().toISOString(); }
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+      });
+    }
+    // "2x milk", "2 lbs chicken thighs", "3 eggs" -> { qty, unit, name }
+    function parseLeadQty(text) {
+      var t = String(text || '').trim();
+      var m = t.match(/^(\d+(?:\.\d+)?)\s*(?:x|×)\s+(.+)$/i);
+      if (m) return { qty: parseFloat(m[1]), unit: '', name: m[2].trim() };
+      m = t.match(/^(\d+(?:\.\d+)?)\s+([a-zA-Z]+)\s+(.+)$/);
+      if (m && ['lb', 'lbs', 'oz', 'kg', 'g', 'gal', 'qt', 'pt', 'l', 'cup', 'cups', 'liter', 'liters', 'litre', 'litres', 'ml', 'milliliter', 'milliliters', 'pint', 'pints', 'quart', 'quarts', 'dozen', 'pack', 'packs', 'bag', 'bags', 'box', 'boxes', 'can', 'cans', 'bottle', 'bottles'].indexOf(m[2].toLowerCase()) !== -1) {
+        return { qty: parseFloat(m[1]), unit: m[2], name: m[3].trim().replace(/^of\s+/i, '') };
+      }
+      m = t.match(/^(\d+(?:\.\d+)?)\s+(.+)$/);
+      if (m) return { qty: parseFloat(m[1]), unit: '', name: m[2].trim() };
+      return { qty: null, unit: '', name: t };
+    }
+
+    function defaultState() {
+      // First run starts with an empty Groceries list — no seeded items.
+      // (An earlier version seeded one Milk item here; it looked like a
+      // real household item, so it was removed.)
+      return { version: 1, updatedAt: nowIso(), lists: [
+        { id: uid(), name: 'Groceries', type: 'grocery', items: [] }
+      ] };
+    }
+    function activeList() {
+      if (!state) return null;
+      return state.lists.filter(function (l) { return l.id === activeListId; })[0] || state.lists[0] || null;
+    }
+    // Unknown types (e.g. a stored list whose template was removed)
+    // fall back to custom instead of crashing the widget.
+    function templateOf(list) { return TEMPLATES[list.type] || TEMPLATES.custom; }
+    function hasField(list, f) { return templateOf(list).fields.indexOf(f) !== -1; }
+
+    // ---- storage: SDK first, localStorage fallback (standalone preview) ----
+    function sdkOk() {
+      try { return !!(window.HomeGlow && window.HomeGlow.storage && window.HomeGlow.pluginId); } catch (e) { return false; }
+    }
+    function loadRemote() {
+      if (sdkOk()) return window.HomeGlow.storage.get(DOC_KEY);
+      try {
+        var raw = localStorage.getItem(LS_KEY);
+        return Promise.resolve(raw ? JSON.parse(raw) : null);
+      } catch (e) { return Promise.resolve(null); }
+    }
+    function saveRemote(doc) {
+      doc.updatedAt = nowIso();
+      if (sdkOk()) {
+        if (recoveryPending) {
+          // Boot read failed: never write the in-memory default over the
+          // household's real document. Park the edit on this display only;
+          // the poll loop adopts the recovered document when it appears.
+          try { localStorage.setItem(LS_KEY, JSON.stringify(doc)); } catch (e) {}
+          return Promise.resolve();
+        }
+        return window.HomeGlow.storage.set(DOC_KEY, doc).then(function () {
+          if (saveWarned) { saveWarned = false; setStatus(''); }
+        }).catch(function () {
+          try { localStorage.setItem(LS_KEY, JSON.stringify(doc)); } catch (e) {}
+          saveWarned = true; setStatus('⚠️ Couldn’t save to the household list — kept on this display only.');
+        });
+      }
+      try { localStorage.setItem(LS_KEY, JSON.stringify(doc)); } catch (e) {}
+      return Promise.resolve();
+    }
+    function loadSettings() {
+      if (window.HomeGlow && window.HomeGlow.settings && typeof window.HomeGlow.settings.get === 'function') {
+        return window.HomeGlow.settings.get().then(function (s) {
+          if (s && typeof s === 'object') {
+            if (typeof s.pollSeconds === 'number' && s.pollSeconds >= 5) settings.pollSeconds = s.pollSeconds;
+          }
+        }).catch(function () {});
+      }
+      return Promise.resolve();
+    }
+    function save() { return saveRemote(state).then(renderMeta); }
+
+    // ---- rendering ----
+    // The widget header title is always plain "Family Lists" — the
+    // cart emoji never appears there. It lives on the grocery list's
+    // own tab instead (see renderTabs).
+    function renderTitle() {
+      $('widgetTitle').textContent = 'Family Lists';
+    }
+    function renderTabs() {
+      var tabs = $('listTabs'); tabs.innerHTML = '';
+      state.lists.forEach(function (l) {
+        var b = document.createElement('button');
+        b.className = 'chip' + (l.id === activeListId ? ' active' : '');
+        b.type = 'button'; b.textContent = l.name + (l.type === 'grocery' ? ' 🛒' : '');
+        b.setAttribute('aria-pressed', l.id === activeListId ? 'true' : 'false');
+        b.onclick = function () { if (editingId) endEdit(); cancelRename(); resetConfirms(); activeListId = l.id; render(); };
+        tabs.appendChild(b);
+      });
+    }
+    function renderMeta() {
+      var list = activeList(); if (!list) return;
+      // The subtitle names the list type only — item counts (total and
+      // checked) were removed as not useful, along with the stats row
+      // and progress bar.
+      $('subtitle').textContent = templateOf(list).label + ' list';
+      // Category datalist for custom lists: categories already used on
+      // this list. (Grocery lists use the fixed section picker instead.)
+      var cl = $('catList'); cl.innerHTML = '';
+      list.items.map(function (i) { return i.category; }).filter(Boolean).filter(function (v, i, a) { return a.indexOf(v) === i; }).forEach(function (c) { var o = document.createElement('option'); o.value = c; cl.appendChild(o); });
+      // Store filter + store suggestions come ONLY from stores already
+      // used on this household's lists — no preset retailer list. A
+      // store tag typed once becomes filterable and
+      // suggested from then on.
+      (function () {
+        var cur = $('storeFilter').value;
+        var seen = {};
+        var stores = [];
+        list.items.map(function (i) { return i.store; }).filter(Boolean).forEach(function (s) {
+          if (!seen[s]) { seen[s] = true; stores.push(s); }
+        });
+        $('storeFilter').innerHTML = '';
+        var all = document.createElement('option'); all.value = ''; all.textContent = 'All stores'; $('storeFilter').appendChild(all);
+        stores.forEach(function (s) { var o = document.createElement('option'); o.value = s; o.textContent = s; $('storeFilter').appendChild(o); });
+        $('storeFilter').value = stores.indexOf(cur) !== -1 ? cur : '';
+        var sl = $('storeList'); sl.innerHTML = '';
+        var allStores = {};
+        state.lists.forEach(function (l) { l.items.forEach(function (i) { if (i.store) allStores[i.store] = true; }); });
+        Object.keys(allStores).forEach(function (s) { var o = document.createElement('option'); o.value = s; sl.appendChild(o); });
+      })();
+      // field visibility by template
+      $('fQty').classList.toggle('hidden', !hasField(list, 'qty'));
+      $('fUnit').classList.toggle('hidden', !hasField(list, 'unit'));
+      $('fSection').classList.toggle('hidden', !hasField(list, 'section'));
+      $('fCategory').classList.toggle('hidden', !hasField(list, 'category'));
+      $('fStore').classList.toggle('hidden', !hasField(list, 'store'));
+      $('storeFilter').classList.toggle('hidden', !hasField(list, 'store'));
+      // Section grouping is a grocery feature.
+      $('groupLabel').classList.toggle('hidden', list.type !== 'grocery');
+      $('groupSections').checked = !!list.groupSections;
+      // Simple quick-add shows name + quantity only, whatever the
+      // template: force qty visible and the rest hidden. (Manage
+      // uses the template-driven toggles above.)
+      if (currentView === 'simple') {
+        $('fQty').classList.remove('hidden');
+        ['fUnit', 'fSection', 'fCategory', 'fStore'].forEach(function (id) { $(id).classList.add('hidden'); });
+      }
+      $('footNote').textContent = 'Changes save to this household\'s list and appear on every display.';
+    }
+    function itemMeta(list, it) {
+      // Quantity + unit live on the name line now (see renderItems), so
+      // the meta line carries the section/category and store only.
+      // Grouped grocery lists already show the section as a header, so
+      // the meta line repeats it only when the list is flat.
+      var parts = [];
+      if (list.type === 'grocery') { if (!list.groupSections) parts.push(sectionOf(list, it)); }
+      else if (it.category) parts.push(it.category);
+      if (it.store) parts.push('📍 ' + it.store);
+      return parts.join(' · ');
+    }
+    // Rearrange mode: move an item one step
+    // within its rendered chunk — within its section when grouped,
+    // globally when flat. The move is applied to list.items adjacent
+    // to the neighbouring visible item, then saved immediately.
+    // Cross-section moves stay on the section picker (the category
+    // is never changed here). Sort is forced to
+    // entry while rearranging, so the rows on screen are the order
+    // being edited.
+    function moveItemInChunk(list, it, dir, chunk) {
+      if (!chunk) return false;
+      var idx = chunk.indexOf(it);
+      if (idx < 0) return false;
+      var ni = idx + dir;
+      if (ni < 0 || ni >= chunk.length) return false;
+      var neighbor = chunk[ni];
+      var from = list.items.indexOf(it);
+      list.items.splice(from, 1);
+      var to = list.items.indexOf(neighbor);
+      if (dir > 0) to += 1;
+      list.items.splice(to, 0, it);
+      return true;
+    }
+    function renderItems() {
+      var list = activeList(); if (!list) return;
+      // Simple ignores every management control (they are hidden, so a
+      // leftover filter from Manage must never continue filtering here):
+      // no search, no store filter, checked always shown, default sort.
+      var isSimple = currentView === 'simple';
+      var q = isSimple ? '' : ($('searchBox').value || '').trim().toLowerCase();
+      var storeF = isSimple ? '' : $('storeFilter').value;
+      var showChecked = isSimple ? true : $('showChecked').checked;
+      var sort = isSimple ? 'entry' : $('sortSel').value;
+      var grouped = list.type === 'grocery' && !!list.groupSections;
+      var items = list.items.slice();
+      if (q) items = items.filter(function (i) { return (i.name + ' ' + (i.category || '') + ' ' + (i.store || '')).toLowerCase().indexOf(q) !== -1; });
+      if (storeF) items = items.filter(function (i) { return i.store === storeF; });
+      if (!showChecked) items = items.filter(function (i) { return !i.checked; });
+      // Entry order is the list's own order (the order items were added,
+      // or the order Rearrange left them in). A–Z and
+      // Recently added apply within each section when grouped, globally
+      // when flat. There is no category sort anymore: section order is
+      // what the Group-by-section toggle is for.
+      function sortChunk(chunk) {
+        if (sort === 'alpha') chunk.sort(function (a, b) { return a.name.localeCompare(b.name); });
+        else if (sort === 'recent') chunk.sort(function (a, b) { return (b.createdAt || '').localeCompare(a.createdAt || ''); });
+        return chunk;
+      }
+      var box = $('items'); box.innerHTML = '';
+      if (!items.length) { box.innerHTML = '<div class="empty">' + (list.items.length ? 'Nothing matches those filters.' : (isSimple ? 'Nothing here yet — tap + Add to get started.' : 'Nothing here yet — tap + Add item to get started.')) + '</div>'; return; }
+      function renderRow(it, chunk) {
+        var row = document.createElement('div'); row.className = 'item' + (it.checked ? ' checked' : '');
+        var cb = document.createElement('button');
+        cb.className = 'check' + (it.checked ? ' on' : ''); cb.type = 'button';
+        cb.setAttribute('aria-label', (it.checked ? 'Uncheck ' : 'Check ') + it.name);
+        cb.textContent = it.checked ? '✓' : '';
+        cb.onclick = function () { it.checked = !it.checked; it.checkedAt = it.checked ? nowIso() : null; maybeCelebrate(list); save().then(render); };
+        var mid = document.createElement('div'); mid.style.flex = '1'; mid.style.minWidth = '0';
+        var qtyPrefix = (it.qty != null) ? it.qty + (it.unit ? ' ' + it.unit : '') + ' ' : '';
+        var nm = document.createElement('div'); nm.className = 'iname'; nm.textContent = qtyPrefix + it.name;
+        var mt = document.createElement('div'); mt.className = 'imeta'; mt.textContent = itemMeta(list, it);
+        mid.appendChild(nm); if (mt.textContent) mid.appendChild(mt);
+        row.appendChild(cb); row.appendChild(mid);
+        if (it.store) { var pill = document.createElement('span'); pill.className = 'storepill'; pill.textContent = it.store; row.appendChild(pill); }
+        // Rearrange mode: ↑ moves the item
+        // one step up, ↓ one step down, within its rendered chunk —
+        // within its section when grouped, globally when flat.
+        // Buttons at the chunk boundaries are disabled. Moves save
+        // immediately.
+        if (!isSimple && rearrangeMode) {
+          var ro = document.createElement('div'); ro.className = 'reorder';
+          var up = document.createElement('button'); up.className = 'moveBtn'; up.type = 'button'; up.textContent = '↑';
+          up.setAttribute('aria-label', 'Move ' + it.name + ' up');
+          var down = document.createElement('button'); down.className = 'moveBtn'; down.type = 'button'; down.textContent = '↓';
+          down.setAttribute('aria-label', 'Move ' + it.name + ' down');
+          var ci = chunk ? chunk.indexOf(it) : -1;
+          up.disabled = ci <= 0;
+          down.disabled = ci < 0 || ci >= chunk.length - 1;
+          up.onclick = function () { if (moveItemInChunk(list, it, -1, chunk)) save().then(render); };
+          down.onclick = function () { if (moveItemInChunk(list, it, 1, chunk)) save().then(render); };
+          ro.appendChild(up); ro.appendChild(down);
+          row.appendChild(ro);
+        }
+        // Simple has no per-item edit/remove: rows are for checking off
+        // only. (Manage builds the same actions block below.)
+        if (!isSimple) {
+        var acts = document.createElement('div'); acts.className = 'iactions';
+        var eb = document.createElement('button'); eb.className = 'iconbtn editbtn'; eb.type = 'button'; eb.textContent = '✎'; eb.title = 'Edit';
+        eb.setAttribute('aria-label', 'Edit ' + it.name);
+        eb.onclick = function () { startEdit(list, it); };
+        var db = document.createElement('button'); db.className = 'iconbtn'; db.type = 'button';
+        var removePending = (confirmRemoveId === it.id && Date.now() < confirmRemoveUntil);
+        db.textContent = removePending ? '✓?' : '✕'; db.title = removePending ? 'Tap again to remove' : 'Remove';
+        db.setAttribute('aria-label', (removePending ? 'Confirm remove ' : 'Remove ') + it.name);
+        db.onclick = function () {
+          if (confirmRemoveId === it.id && Date.now() < confirmRemoveUntil) {
+            confirmRemoveId = null; confirmRemoveUntil = 0;
+            list.items = list.items.filter(function (x) { return x.id !== it.id; }); save().then(render);
+          } else {
+            confirmRemoveId = it.id; confirmRemoveUntil = Date.now() + 4000;
+            render();
+            setTimeout(function () { if (confirmRemoveId === it.id && Date.now() >= confirmRemoveUntil) { confirmRemoveId = null; render(); } }, 4100);
+          }
+        };
+        acts.appendChild(eb); acts.appendChild(db);
+        row.appendChild(acts);
+        }
+        box.appendChild(row);
+      }
+      if (grouped) {
+        SECTION_ORDER.forEach(function (sec) {
+          var chunk = sortChunk(items.filter(function (i) { return sectionOf(list, i) === sec; }));
+          if (!chunk.length) return;
+          var h = document.createElement('div'); h.className = 'grouphead'; h.textContent = sec; box.appendChild(h);
+          chunk.forEach(function (x) { renderRow(x, chunk); });
+        });
+      } else {
+        var flat = sortChunk(items);
+        flat.forEach(function (x) { renderRow(x, flat); });
+      }
+    }
+    function maybeCelebrate(list) {
+      if (list.items.length && list.items.every(function (i) { return i.checked; })) {
+        try { if (window.HomeGlow && window.HomeGlow.celebrate) window.HomeGlow.celebrate(); } catch (e) {}
+      }
+    }
+    function render() { renderTitle(); renderTabs(); renderMeta(); renderItems(); }
+
+    // ---- editing ----
+    // Adds and edits both happen in the add dialog: the form is prefilled
+    // for an edit, with the submit button relabelled to Save changes.
+    function startEdit(list, it) {
+      if (editingId) { render(); }
+      editingId = it.id; dirty = true;
+      $('fName').value = it.name;
+      $('fQty').value = it.qty != null ? it.qty : '';
+      $('fUnit').value = it.unit || '';
+      if (list.type === 'grocery') $('fSection').value = sectionOf(list, it);
+      else $('fCategory').value = it.category || '';
+      $('fStore').value = it.store || '';
+      document.querySelector('#addForm button[type="submit"]').textContent = 'Save changes';
+      // Bulk add is disabled while an edit draft is open: adding lines
+      // behind the edit form would silently discard the draft's context.
+      $('bulkBtn').disabled = true; $('bulkBox').disabled = true;
+      var d = $('addDialog'); if (!d.open) d.showModal();
+      $('fName').focus();
+    }
+    function endEdit() {
+      editingId = null; dirty = false;
+      document.querySelector('#addForm button[type="submit"]').textContent = 'Add item';
+      $('addForm').reset();
+      $('bulkBtn').disabled = false; $('bulkBox').disabled = false;
+      var d = $('addDialog'); if (d && d.open) d.close();
+    }
+
+    // ---- list confirms + rename ----
+    // The two-tap confirms are per-list in effect but live in global
+    // timers, so switching tabs, creating, or deleting a list resets
+    // them — otherwise an armed confirm could delete from a list that
+    // was never armed.
+    function resetConfirms() {
+      confirmDeleteUntil = 0;
+      confirmRemoveId = null; confirmRemoveUntil = 0;
+      $('deleteListBtn').textContent = 'Delete this list';
+    }
+    // Rename is inline (no prompt()/alert() — modal dialogs are blocked
+    // in the sandboxed plugin iframe): the button swaps for a text input
+    // prefilled with the current name. Enter saves, Esc cancels. Only the
+    // name changes; the list id is untouched.
+    var renamingListId = null;
+    function openRename() {
+      var list = activeList(); if (!list) return;
+      renamingListId = list.id;
+      $('renameInput').value = list.name;
+      $('renameRow').classList.remove('hidden');
+      $('renameListBtn').classList.add('hidden');
+      $('renameInput').focus(); $('renameInput').select();
+    }
+    function cancelRename() {
+      renamingListId = null;
+      $('renameRow').classList.add('hidden');
+      $('renameListBtn').classList.remove('hidden');
+    }
+    function saveRename() {
+      var list = null;
+      if (renamingListId) state.lists.forEach(function (l) { if (l.id === renamingListId) list = l; });
+      if (!list) { cancelRename(); return; }
+      var name = $('renameInput').value.trim();
+      if (name && name !== list.name) {
+        list.name = name;
+        save().then(render);
+      }
+      cancelRename();
+    }
+
+    // ---- actions ----
+    function addItem(partial) {
+      var list = activeList(); if (!list) return;
+      var parsed = parseLeadQty(partial.name || '');
+      var item = {
+        id: uid(), name: parsed.name, qty: partial.qty != null ? partial.qty : parsed.qty,
+        unit: partial.unit ? partial.unit : parsed.unit,
+        category: partial.category || (list.type === 'grocery' ? guessSection(parsed.name) : ''),
+        store: partial.store || '',
+        checked: false, checkedAt: null,
+        createdAt: nowIso(), source: partial.source || 'manual'
+      };
+      if (!item.name) return;
+      list.items.push(item);
+    }
+    function setStatus(msg) { $('statusLine').textContent = msg || ''; }
+
+    // ---- wiring ----
+    $('addForm').addEventListener('submit', function (e) {
+      e.preventDefault();
+      var list = activeList(); if (!list) return;
+      var name = $('fName').value.trim(); if (!name) return;
+      // Simple quick-add is name + quantity only: every other field
+      // takes the addItem defaults (grocery section guessed from name).
+      // Manage passes only the fields its template shows, so a stale
+      // hidden input can never leak into another template's item.
+      var partial;
+      if (currentView === 'simple') {
+        partial = { name: name, qty: $('fQty').value ? parseFloat($('fQty').value) : null };
+      } else if (list.type === 'grocery') {
+        partial = { name: name, qty: $('fQty').value ? parseFloat($('fQty').value) : null, unit: $('fUnit').value.trim(), category: $('fSection').value || guessSection(name), store: $('fStore').value.trim() };
+      } else {
+        partial = { name: name, qty: null, category: $('fCategory').value.trim() };
+      }
+      if (editingId && currentView !== 'simple') {
+        var it = null; list.items.forEach(function (x) { if (x.id === editingId) it = x; });
+        if (it) {
+          var p = parseLeadQty(name);
+          it.name = p.name;
+          if (list.type === 'grocery') {
+            it.qty = partial.qty != null ? partial.qty : p.qty; it.unit = partial.unit || p.unit;
+            it.category = partial.category; it.store = partial.store;
+          } else {
+            // Custom lists have no qty/unit dialog fields: a leading
+            // quantity in the edited name still updates qty, but an
+            // edit never wipes a qty/unit the dialog cannot show.
+            if (p.qty != null) it.qty = p.qty;
+            it.category = partial.category;
+          }
+        }
+      } else { addItem(partial); }
+      endEdit();
+      save().then(render);
+    });
+    ['fName', 'fQty', 'fUnit', 'fSection', 'fCategory', 'fStore'].forEach(function (id) {
+      $(id).addEventListener('input', function () { dirty = true; });
+      $(id).addEventListener('blur', function () { dirty = false; });
+    });
+    $('searchBox').addEventListener('input', renderItems);
+    $('sortSel').addEventListener('change', renderItems);
+    $('storeFilter').addEventListener('change', renderItems);
+    $('showChecked').addEventListener('change', renderItems);
+    // New grocery lists default to the name "Grocery" (editable, not
+    // forced): pre-fill it whenever the name box is empty and the
+    // grocery template is picked, and fall back to it on create.
+    // The prefill is tracked separately from typed input: switching
+    // the template to Custom clears a still-untouched "Grocery"
+    // default instead of leaving a grocery name on a custom list,
+    // while a name the user typed is never cleared by a switch.
+    var newListNameIsPrefill = false;
+    function prefillNewListName() { var n = $('newListName'); if (!n.value.trim() && $('newListType').value === 'grocery') { n.value = 'Grocery'; newListNameIsPrefill = true; } }
+    $('newListName').addEventListener('input', function () { newListNameIsPrefill = false; });
+    $('newListBtn').onclick = function () { $('newListCard').classList.toggle('hidden'); if (!$('newListCard').classList.contains('hidden')) { prefillNewListName(); $('newListName').focus(); } };
+    $('newListType').addEventListener('change', function () {
+      if ($('newListType').value === 'custom' && newListNameIsPrefill) { $('newListName').value = ''; newListNameIsPrefill = false; }
+      else prefillNewListName();
+    });
+    $('addBtn').onclick = function () {
+      // Simple quick-add must never inherit stale hidden-field values
+      // from a Manage session: start from a clean form.
+      if (currentView === 'simple') $('addForm').reset();
+      var d = $('addDialog'); if (!d.open) d.showModal(); $('fName').focus();
+    };
+    $('cancelAddBtn').onclick = function () { endEdit(); };
+    $('addDialog').addEventListener('close', function () { dirty = false; $('bulkState').textContent = ''; if (editingId) endEdit(); });
+    $('addDialog').addEventListener('click', function (e) { if (e.target === $('addDialog')) $('addDialog').close(); });
+    $('cancelListBtn').onclick = function () { $('newListCard').classList.add('hidden'); $('newListName').value = ''; newListNameIsPrefill = false; };
+    $('createListBtn').onclick = function () {
+      var type = $('newListType').value;
+      var name = $('newListName').value.trim();
+      if (!name) { if (type === 'grocery') name = 'Grocery'; else return; }
+      cancelRename(); resetConfirms();
+      var list = { id: uid(), name: name, type: type, items: [], groupSections: false };
+      state.lists.push(list); activeListId = list.id;
+      $('newListCard').classList.add('hidden'); $('newListName').value = ''; newListNameIsPrefill = false;
+      save().then(render);
+    };
+    $('renameListBtn').onclick = function () { openRename(); };
+    $('renameCancelBtn').onclick = function () { cancelRename(); };
+    $('renameSaveBtn').onclick = function () { saveRename(); };
+    $('renameInput').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') saveRename();
+      else if (e.key === 'Escape') cancelRename();
+    });
+    // View model: the dashboard widget is ALWAYS Simple. A fresh load
+    // renders Simple; only a ?view=manage / ?view=simple URL param
+    // wins for that load. The old per-display saved view
+    // (homeglowFamilyLists.view, and the display-mode key before it)
+    // is intentionally NOT read: a stale saved value must never flip
+    // the dashboard to Manage. Manage is entered from the widget's
+    // settings gear (upper right) or a ?view=manage URL, and in
+    // Manage the same header button is a back arrow that returns
+    // to Simple. View switches are
+    // in-memory only — nothing is written back to the saved view.
+    var currentView = 'simple';
+    function resolveView() {
+      try {
+        var m = (window.location.search || '').match(/[?&]view=(manage|simple)(?:&|$)/);
+        if (m) return m[1];
+      } catch (e) {}
+      return 'simple';
+    }
+    function applyView(view) {
+      currentView = view;
+      document.body.classList.toggle('simple', view === 'simple');
+      $('addBtn').textContent = view === 'simple' ? '+ Add' : '+ Add item';
+      // One header button, both directions: the settings gear in
+      // Simple, a back arrow in Manage.
+      $('settingsBtn').textContent = view === 'simple' ? '⚙️' : '⬅️';
+      $('settingsBtn').title = view === 'simple' ? 'Manage lists' : 'Back to Simple view';
+      $('settingsBtn').setAttribute('aria-label', view === 'simple' ? 'Manage lists' : 'Back to Simple view');
+    }
+    function setView(view) {
+      applyView(view);
+      resetConfirms(); cancelRename();
+      if (view === 'simple' && rearrangeMode) {
+        rearrangeMode = false;
+        $('sortSel').disabled = false;
+        $('rearrangeBtn').textContent = 'Rearrange';
+        $('rearrangeBtn').setAttribute('aria-pressed', 'false');
+      }
+      render();
+    }
+    $('settingsBtn').onclick = function () { setView(currentView === 'simple' ? 'manage' : 'simple'); };
+    // Resolve before the first render (boot calls render() after state
+    // loads); no render here — state is not loaded yet.
+    currentView = resolveView();
+    applyView(currentView);
+    $('groupSections').addEventListener('change', function () {
+      var list = activeList(); if (!list) return;
+      list.groupSections = $('groupSections').checked;
+      save().then(render);
+    });
+    $('uncheckAllBtn').onclick = function () {
+      var list = activeList(); if (!list) return;
+      if (!list.items.some(function (i) { return i.checked; })) return;
+      list.items.forEach(function (i) { i.checked = false; i.checkedAt = null; });
+      save().then(render);
+    };
+    // Rearrange mode: the toolbar button
+    // toggles ↑/↓ buttons on every Manage row. While rearranging,
+    // the sort is forced to entry order (and the sort control
+    // locked) so the rows on screen are the order being edited.
+    $('rearrangeBtn').onclick = function () {
+      if (!activeList()) return;
+      rearrangeMode = !rearrangeMode;
+      if (rearrangeMode) {
+        $('sortSel').value = 'entry';
+        $('sortSel').disabled = true;
+        $('rearrangeBtn').textContent = 'Done';
+        $('rearrangeBtn').setAttribute('aria-pressed', 'true');
+      } else {
+        $('sortSel').disabled = false;
+        $('rearrangeBtn').textContent = 'Rearrange';
+        $('rearrangeBtn').setAttribute('aria-pressed', 'false');
+      }
+      render();
+    };
+    $('deleteListBtn').onclick = function () {
+      if (state.lists.length <= 1) { setStatus('You need at least one list.'); setTimeout(function () { setStatus(''); }, 3000); return; }
+      var list = activeList();
+      if (Date.now() < confirmDeleteUntil) {
+        state.lists = state.lists.filter(function (l) { return l.id !== list.id; });
+        activeListId = state.lists[0].id;
+        resetConfirms(); cancelRename();
+        save().then(render);
+      } else {
+        confirmDeleteUntil = Date.now() + 4000;
+        $('deleteListBtn').textContent = 'Tap again to delete “' + list.name + '”';
+        setTimeout(function () { if (Date.now() >= confirmDeleteUntil) $('deleteListBtn').textContent = 'Delete this list'; }, 4100);
+      }
+    };
+    $('bulkBtn').onclick = function () {
+      if (editingId) return; // belt-and-braces: inputs are disabled while editing
+      var lines = $('bulkBox').value.split('\n').map(function (s) { return s.trim(); }).filter(Boolean);
+      lines.forEach(function (line) { addItem({ name: line, source: 'import' }); });
+      $('bulkState').textContent = lines.length ? lines.length + ' item(s) added.' : '';
+      $('bulkBox').value = '';
+      save().then(render);
+    };
+
+    // ---- polling: pick up other-display writes ----
+    function poll(force) {
+      return loadRemote().then(function (remote) {
+        if (!remote || !Array.isArray(remote.lists) || remote.lists.length === 0) return;
+        if (!force && dirty) return; // never clobber an in-progress edit
+        if (recoveryPending) {
+          // Boot read failed and storage is back: adopt the real document
+          // regardless of timestamps (the in-memory default is newer by
+          // construction). Any edit made to the default meanwhile is
+          // dropped — that beats overwriting the household's list.
+          recoveryPending = false;
+          if (saveWarned) { saveWarned = false; setStatus(''); }
+          var prevActive = activeListId;
+          state = remote;
+          if (!state.lists.filter(function (l) { return l.id === prevActive; }).length) prevActive = state.lists[0] ? state.lists[0].id : null;
+          activeListId = prevActive;
+          render(); return;
+        }
+        if (remote.updatedAt && state.updatedAt && remote.updatedAt <= state.updatedAt && !force) return;
+        if (JSON.stringify(remote) === JSON.stringify(state)) return;
+        var prevActive = activeListId;
+        state = remote;
+        if (!state.lists.filter(function (l) { return l.id === prevActive; }).length) prevActive = state.lists[0] ? state.lists[0].id : null;
+        activeListId = prevActive;
+        render();
+      }).catch(function () {});
+    }
+    function startPolling() {
+      if (pollTimer) clearInterval(pollTimer);
+      pollTimer = setInterval(function () { poll(false); }, Math.max(5, settings.pollSeconds) * 1000);
+    }
+
+    // ---- boot ----
+    // A storage failure must never blank the widget, and must never
+    // clobber the household's real list: a failed read (as opposed to a
+    // missing key, i.e. first run) retains the default list in memory only.
+    // Nothing is written remotely until storage reads succeed again, and
+    // the poll loop adopts the recovered document when it appears.
+    // Worst case during an outage, an edit made to the in-memory default
+    // is dropped when the real document recovers — that beats overwriting
+    // the household's list with the empty default. A present-but-malformed
+    // document (wrong shape, empty lists) is treated like a failed read,
+    // not like first run, for the same reason.
+    loadSettings().then(function () {
+      return loadRemote().then(function (remote) { return { remote: remote, failed: false }; }, function () { return { remote: null, failed: true }; });
+    }).then(function (res) {
+      var remote = res.remote;
+      var haveRemote = !!(remote && Array.isArray(remote.lists) && remote.lists.length > 0);
+      // A present-but-malformed remote (not a failed read, not first run)
+      // is parked exactly like a failed read: in-memory default, and
+      // NEVER a remote write of it — overwriting would destroy the
+      // household's document instead of recovering it.
+      var malformed = !!(remote && !haveRemote);
+      recoveryPending = res.failed || malformed;
+      state = haveRemote ? remote : defaultState();
+      activeListId = state.lists[0] ? state.lists[0].id : null;
+      if (!haveRemote && !recoveryPending) saveRemote(state).catch(function () {});
+      render(); startPolling();
+    });
+  })();
+  </script>
+</body>
+</html>
