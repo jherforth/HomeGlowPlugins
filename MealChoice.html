@@ -1,0 +1,1327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Meal Choice</title>
+  <!--
+    Meal Choice — a generic meal-picker widget for HomeGlow.
+
+    A calendar week view (Monday-Friday by default, weekends optional).
+    Today highlighted when visible, past days locked. Tap a day and each
+    person chooses their meals from parent-managed options. Picks are
+    per day, per person, per meal, and a person may pick several
+    options for one meal (no cap), so several people choose
+    independently and one person can pick two snacks. Four meals exist — Breakfast, Snack, Lunch, Dinner —
+    each toggleable from Manage; only enabled meals show rows or tabs.
+    Lunch is on by default, the others off. Picks for one meal never
+    touch another meal's picks, and turning a meal off hides it but
+    keeps its saved picks, so re-enabling restores them.
+    Every display shows the same people: the household selection in
+    the shared doc. There is no per-display filter.
+
+    People come from the household itself, not from a create form:
+    Manage reads the HomeGlow user list (GET /api/users, a read-only
+    core route the plugin request policy allows plugins with their
+    frame token) and parents select which users are meal choosers.
+    Each user shows their household profile picture when set, else a
+    generic glyph. Nothing is hardcoded and no household data ships in
+    the code. First run starts with nobody selected — select users in
+    Manage. Each option has a name plus an emoji and a color, so
+    pre-readers can choose by picture-like symbol.
+    An option may also carry an imageUrl (a remote http(s) picture URL),
+    shown when set, with the emoji as fallback. There is no picture
+    upload in v1: plugin frames cannot reach an upload route (their
+    token only covers their own plugin storage/settings/ha/notify
+    routes, plus the documented read-only core routes), and the whole
+    document must fit the 64 KB per-key storage cap, which rules out
+    full photos as data URLs. See MealChoice.md.
+
+    The week view fits its container: it shows a window of days
+    starting at the next meal to pick (tomorrow, or the next school
+    day when tomorrow is not one), and the number of days shown grows
+    with the widget's actual width — a small widget shows only that
+    next day, a large one shows the full week. Manage's "Days to show"
+    setting (1-5, default 1) caps how many days ahead appear, so a
+    household can ask for just the next day even on a wide display;
+    narrow displays still show fewer when the cards don't fit. Day
+    cards stretch to fill the row. ‹/› step the window one shown day
+    at a time; Today returns to the next meal to pick. Every pick row in the week view and the
+    Today box carries its chooser (picture or generic glyph) and its
+    meal label, with a divider between rows, so it is always clear
+    who chose what for which meal.
+
+    Storage (the contract other writers must follow):
+      HomeGlow.storage key "data", value:
+        { version: 1,
+          selectedUserIds: [ <core user id, number> ],
+          options: [ { id, name, emoji, color, meals: ["lunch"], imageUrl: null } ],
+          picks: { lunch: { "YYYY-MM-DD": { "u<userId>": ["<optionId>", ...] } },
+                   snack: { ... }, breakfast: { ... }, dinner: { ... } },
+          enabledMeals: ["lunch"],
+          showWeekends: false,
+          daysToShow: 1,
+          updatedAt: ISO timestamp }
+    An option's `meals` is the configurable set of meals it appears
+    in, any subset of breakfast/snack/lunch/dinner (at least one).
+    Legacy docs carry `serves` instead ('lunch' | 'snack' | 'both'):
+    on load, serves maps to meals ('lunch' -> ["lunch"], 'snack' ->
+    ["snack"], 'both' -> ["lunch", "snack"] — both predates
+    breakfast/dinner, so it never means all four), and options
+    without either field count as ["lunch"], so older documents need
+    no rewrite; the next save persists the meals shape.
+    Picks live in the single `picks` map, one sub-map per meal.
+    Legacy docs carry `choices` (lunch picks) and `snackChoices`
+    instead: on load, choices maps to picks.lunch and snackChoices
+    to picks.snack, so no pick is ever lost; a person-slot holding a
+    single option id (the pre-multi-pick shape) wraps to a one-element
+    list on load. The next save persists the picks shape. Legacy docs carry `snackChoicesEnabled` instead
+    of `enabledMeals`: true maps to ["lunch", "snack"], absent/false
+    to ["lunch"]. enabledMeals defaults to ["lunch"], and while a
+    meal is off no UI for it renders and no data for it is written.
+    The legacy `people` array and choices keyed by custom person ids,
+    from before users came from the household list, are preserved in
+    the document untouched on save but are no longer rendered.
+    showWeekends is household-wide (all displays share it), as are
+    enabledMeals, daysToShow, and the people selection
+    (selectedUserIds).
+    The meal toggles are household-wide too: turning a meal off hides
+    its picks everywhere but keeps them saved.
+    Older docs without showWeekends default to false.
+    Choices are local dates (YYYY-MM-DD from local parts, never UTC).
+    The widget polls storage (default every 10s, setting `pollSeconds`)
+    so choices from another display appear without a reload. Polling
+    never clobbers an in-progress edit: a refresh is skipped while any
+    dialog is open. Concurrent edits: last write wins.
+
+    What it deliberately does NOT do: prices, reminders or due dates
+    (those belong to chores), or any integration with other apps. Picks
+    are just picks; adding or removing one is one tap each.
+  -->
+  <script type="application/json" id="homeglow-manifest">
+  {
+    "manifestVersion": 1,
+    "id": "meal-choice",
+    "name": "Meal Choice",
+    "description": "Pick the day's meals: a week view where each person taps a day and chooses breakfast, snack, lunch, or dinner from parent-managed options, shown with big emoji so pre-readers can choose too.",
+    "apiVersion": "v1",
+    "storage": true,
+    "settings": [
+      {
+        "key": "pollSeconds",
+        "label": "How often to check for choices from other displays (seconds)",
+        "type": "number",
+        "default": 10,
+        "scope": "household"
+      }
+    ]
+  }
+  </script>
+  <link rel="stylesheet" href="/index.css">
+  <script src="/plugin-sdk/v1.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: transparent !important; }
+    body {
+      font-family: var(--hg-font-body, 'Inter', system-ui, -apple-system, sans-serif);
+      font-size: 0.95rem;
+      color: var(--text, #333);
+      padding: 0.75rem;
+    }
+    [data-theme="dark"] body { color: var(--text, #d6d6e8); }
+    .wrap { width: 100%; max-height: calc(100vh - 1.5rem); overflow-y: auto; container-type: inline-size; }
+    h1 { font-size: 1.25rem; margin: 0; }
+    button { font: inherit; cursor: pointer; }
+    .head { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.25rem; }
+    .head .spacer { flex: 1; }
+    .navbtn, .managebtn, .todaybtn {
+      border: 1px solid var(--border, #ccc); border-radius: 10px;
+      background: var(--card, rgba(255,255,255,0.6)); color: inherit;
+      padding: 0.5rem 0.8rem; min-height: 44px;
+    }
+    [data-theme="dark"] .navbtn, [data-theme="dark"] .managebtn, [data-theme="dark"] .todaybtn {
+      background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.2);
+    }
+    .weeklabel { font-weight: 600; margin: 0.25rem 0 0.75rem; }
+    .banner {
+      border: 1px dashed var(--border, #ccc); border-radius: 12px;
+      padding: 0.75rem; margin-bottom: 0.75rem;
+    }
+    .banner button { margin-top: 0.5rem; }
+    .todaybox {
+      border-radius: 12px; padding: 0.75rem; margin-bottom: 0.75rem;
+      background: var(--card, rgba(255,255,255,0.6));
+      border: 1px solid var(--border, #ddd);
+    }
+    [data-theme="dark"] .todaybox { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.15); }
+    .todaybox h2 { font-size: 1rem; margin: 0 0 0.5rem; }
+    .todayperson + .todayperson { border-top: 1px solid rgba(0,0,0,0.12); margin-top: 0.25rem; padding-top: 0.25rem; }
+    [data-theme="dark"] .todayperson + .todayperson { border-top-color: rgba(255,255,255,0.15); }
+    .todayperson .personhead { display: flex; align-items: center; gap: 0.5rem; font-weight: 700; padding: 0.3rem 0 0.1rem; }
+    .todayperson .avatar { width: 26px; height: 26px; object-fit: cover; border-radius: 50%; flex: none; }
+    .todayperson .avatar-fallback { font-size: 1.3rem; }
+    .todaymeal { display: flex; align-items: center; gap: 0.5rem; padding: 0.3rem 0; }
+    .todaymeal .choice { font-weight: 600; }
+    .todaymeal .choice .em { font-size: 1.4rem; }
+    .personchip {
+      display: inline-flex; align-items: center; gap: 0.4rem;
+      border: 1px solid var(--border, #ccc); border-radius: 999px;
+      padding: 0.35rem 0.7rem; min-height: 44px; background: transparent; color: inherit;
+    }
+    .personchip[aria-pressed="true"] { outline: 3px solid var(--accent, #4a90d9); outline-offset: 1px; }
+    .dot { width: 14px; height: 14px; border-radius: 50%; flex: none; }
+    .daygrid { display: grid; gap: 0.6rem; grid-template-columns: 1fr; }
+    @container (min-width: 560px) { .daygrid { grid-template-columns: 1fr 1fr; } }
+    @container (min-width: 900px) { .daygrid.cols5 { grid-template-columns: repeat(5, 1fr); } .daygrid.cols7 { grid-template-columns: repeat(7, 1fr); } }
+    .daycard {
+      text-align: left; border-radius: 14px; padding: 0.6rem;
+      border: 1px solid var(--border, #ddd); color: inherit;
+      background: var(--card, rgba(255,255,255,0.55)); min-height: 120px;
+    }
+    [data-theme="dark"] .daycard { background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.15); }
+    .daycard.today { outline: 3px solid var(--accent, #4a90d9); outline-offset: 1px; }
+    .daycard.past { opacity: 0.55; cursor: default; }
+    .daycard .dow { font-weight: 700; }
+    .daycard .dnum { font-size: 1.4rem; font-weight: 700; line-height: 1.1; }
+    .daycard .todaypill { font-size: 0.75rem; font-weight: 700; }
+    .persongroup + .persongroup { border-top: 1px solid rgba(0,0,0,0.12); margin-top: 0.25rem; padding-top: 0.25rem; }
+    [data-theme="dark"] .persongroup + .persongroup { border-top-color: rgba(255,255,255,0.15); }
+    /* Divider between meal subgroups within a person (e.g. Snack above
+       Lunch), same visible 1px line as between people — a snack pick
+       must never visually run into the lunch picks below it. */
+    .mealsub + .mealsub { border-top: 1px solid rgba(0,0,0,0.12); margin-top: 0.25rem; padding-top: 0.25rem; }
+    [data-theme="dark"] .mealsub + .mealsub { border-top-color: rgba(255,255,255,0.15); }
+    .todaymeal + .todaymeal { border-top: 1px solid rgba(0,0,0,0.12); margin-top: 0.25rem; padding-top: 0.25rem; }
+    [data-theme="dark"] .todaymeal + .todaymeal { border-top-color: rgba(255,255,255,0.15); }
+    .persongroup .personhead { display: flex; align-items: center; gap: 0.4rem; font-weight: 700; padding: 0.2rem 0 0.1rem; }
+    .mealsub { display: flex; align-items: center; gap: 0.4rem; padding: 0.2rem 0; font-size: 0.9rem; }
+    .mealsub .em { font-size: 1.3rem; }
+    .mealsub .none { opacity: 0.6; }
+    .mealsub .pickstack, .todaymeal .pickstack { display: flex; flex-direction: column; gap: 0.1rem; }
+    .mealsub .pickstack .pick, .todaymeal .pickstack .pick { display: flex; align-items: center; gap: 0.4rem; }
+    /* Option pictures in pick rows replace the emoji, so they render
+       at roughly emoji size (1.4rem square, cropped, never stretched)
+       — an unconstrained photo at natural size used to blow rows up. */
+    .mealsub .pick img.em, .todaymeal .pick img.em { width: 1.4rem; height: 1.4rem; object-fit: cover; border-radius: 6px; flex: none; }
+    .manage h2 { font-size: 1.05rem; margin: 1rem 0 0.5rem; }
+    .mrow {
+      display: flex; align-items: center; gap: 0.5rem; padding: 0.45rem 0;
+      border-bottom: 1px solid var(--border, #eee);
+    }
+    [data-theme="dark"] .mrow { border-bottom-color: rgba(255,255,255,0.12); }
+    .mrow .nm { flex: 1; }
+    .mrow .flabel { flex: 1; }
+    /* Days to show sits right beside its label, not at the far edge. */
+    .mrow.tight .flabel { flex: none; }
+    #daysToShowSelect {
+      border: 1px solid var(--border, #ccc); border-radius: 10px;
+      background: var(--card, rgba(255,255,255,0.6)); color: inherit;
+      padding: 0.5rem 0.7rem; min-height: 44px; font: inherit;
+    }
+    [data-theme="dark"] #daysToShowSelect { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.2); }
+    .mrow input[type="checkbox"] { width: 22px; height: 22px; flex: none; accent-color: var(--accent, #4a90d9); }
+    .mrow .thumb { width: 40px; height: 40px; object-fit: cover; border-radius: 8px; flex: none; }
+    .mrow .em { font-size: 1.5rem; }
+    .mrow .avatar { width: 40px; height: 40px; object-fit: cover; border-radius: 50%; flex: none; }
+    .mrow .avatar-fallback { font-size: 1.5rem; flex: none; }
+    .personchip .avatar { width: 26px; height: 26px; object-fit: cover; border-radius: 50%; flex: none; }
+    .personchip .avatar-fallback { font-size: 1.3rem; }
+    .persongroup .avatar { width: 22px; height: 22px; object-fit: cover; border-radius: 50%; flex: none; }
+    .persongroup .avatar-fallback { font-size: 1.1rem; }
+    .smallbtn {
+      border: 1px solid var(--border, #ccc); border-radius: 8px; background: transparent;
+      color: inherit; padding: 0.35rem 0.6rem; min-height: 40px;
+    }
+    .smallbtn.danger.armed { background: #c0392b; color: #fff; border-color: #c0392b; }
+    .addbtn {
+      border: 1px solid var(--border, #ccc); border-radius: 10px; background: transparent;
+      color: inherit; padding: 0.5rem 0.9rem; min-height: 44px; margin-top: 0.5rem;
+    }
+    dialog {
+      border: 1px solid var(--border, #ccc); border-radius: 16px; padding: 1rem;
+      max-width: 560px; width: calc(100% - 2rem); color: var(--text, #333);
+      background: var(--card, #fff);
+    }
+    [data-theme="dark"] dialog { background: #2a2a3d; color: #d6d6e8; }
+    /* The food-options window is roomier than the pick dialogs so the
+       full option list stays usable on the wall display. */
+    #foodDialog { max-width: 720px; width: calc(100% - 1rem); max-height: 85vh; overflow-y: auto; }
+    dialog::backdrop { background: rgba(0,0,0,0.4); }
+    dialog h2 { margin: 0 0 0.75rem; font-size: 1.1rem; }
+    dialog label { display: block; font-weight: 600; margin: 0.6rem 0 0.25rem; }
+    dialog input[type="text"], dialog input[type="url"] {
+      width: 100%; font: inherit; padding: 0.5rem; border-radius: 8px;
+      border: 1px solid var(--border, #ccc); background: transparent; color: inherit;
+    }
+    .pickrow { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.25rem; }
+    .pickbtn {
+      font-size: 1.5rem; line-height: 1; border: 1px solid var(--border, #ccc);
+      border-radius: 10px; background: transparent; min-width: 48px; min-height: 48px;
+    }
+    .pickbtn[aria-pressed="true"] { outline: 3px solid var(--accent, #4a90d9); outline-offset: 1px; }
+    .swatch {
+      width: 40px; height: 40px; border-radius: 50%; border: 2px solid transparent; padding: 0;
+    }
+    .swatch[aria-pressed="true"] { border-color: var(--accent, #4a90d9); outline: 2px solid var(--accent, #4a90d9); outline-offset: 1px; }
+    .optgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; margin-top: 0.5rem; }
+    .optbtn {
+      border: 1px solid var(--border, #ccc); border-radius: 14px; background: transparent;
+      color: inherit; padding: 0.6rem 0.25rem; min-height: 96px;
+      display: flex; flex-direction: column; align-items: center; gap: 0.25rem;
+    }
+    .optbtn.chosen { outline: 3px solid var(--accent, #4a90d9); outline-offset: 1px; }
+    .optbtn .em { font-size: 2.2rem; line-height: 1; }
+    .optbtn .otimg { width: 56px; height: 56px; object-fit: cover; border-radius: 10px; }
+    .optbtn .nm { font-size: 0.85rem; font-weight: 600; text-align: center; overflow-wrap: anywhere; }
+    .mealbadge {
+      font-size: 0.75rem; font-weight: 600; border: 1px solid var(--border, #ccc);
+      border-radius: 999px; padding: 0.15rem 0.5rem; flex: none; white-space: nowrap;
+    }
+    .mealrow { display: flex; gap: 0.35rem; margin: 0.25rem 0 0.5rem; flex-wrap: wrap; }
+    .mealbtn {
+      border: 1px solid var(--border, #ccc); border-radius: 999px; background: transparent;
+      color: inherit; padding: 0.4rem 0.9rem; min-height: 40px; font-weight: 600;
+    }
+    .mealbtn[aria-pressed="true"] { outline: 3px solid var(--accent, #4a90d9); outline-offset: 1px; }
+    .mealsub .meallabel { font-size: 0.8rem; opacity: 0.75; }
+    /* Divider between person groups in a day card / Today box, so one
+       person's picks never visually run into the next person's, and
+       between meal subgroups within a person, so snack picks never
+       visually run into lunch picks — the person's name appears once. */
+    .dlgfoot { display: flex; gap: 0.5rem; margin-top: 1rem; flex-wrap: wrap; }
+    .dlgfoot .spacer { flex: 1; }
+    .hint { font-size: 0.85rem; opacity: 0.75; }
+    .sync { font-size: 0.85rem; margin-top: 0.75rem; min-height: 1.2em; }
+    .sync.warn { color: #c0392b; }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="head">
+      <h1>🍽️ Meal Choice</h1>
+      <span class="spacer"></span>
+      <button type="button" class="todaybtn" id="todayBtn">Today</button>
+      <button type="button" class="navbtn" id="prevBtn" aria-label="Previous day">‹</button>
+      <button type="button" class="navbtn" id="nextBtn" aria-label="Next day">›</button>
+      <button type="button" class="managebtn" id="manageBtn">Manage</button>
+    </div>
+    <div class="weeklabel" id="weekLabel"></div>
+
+    <div id="weekView">
+      <div id="emptyBanner" class="banner hidden"></div>
+      <div id="todayBox" class="todaybox hidden"></div>
+      <div class="daygrid" id="dayGrid"></div>
+    </div>
+
+    <div id="manageView" class="manage hidden">
+      <h2>Week view</h2>
+      <div id="displaySettings"></div>
+      <button type="button" class="addbtn" id="foodOptionsBtn">Food options</button>
+      <h2>People</h2>
+      <div id="peopleList"></div>
+    </div>
+
+    <div class="sync" id="syncLine" role="status"></div>
+  </div>
+
+  <dialog id="choiceDialog" aria-label="Choose a meal">
+    <h2 id="choiceTitle">Choose a meal</h2>
+    <div class="mealrow" id="choiceMeal"></div>
+    <div class="pickrow" id="choicePeople"></div>
+    <div class="optgrid" id="choiceOptions"></div>
+    <p class="hint">Tap options to add or remove them — a person can pick more than one.</p>
+    <div class="dlgfoot">
+      <button type="button" class="smallbtn" id="clearChoiceBtn">Clear choice</button>
+      <span class="spacer"></span>
+      <button type="button" class="navbtn" id="choiceDoneBtn">Done</button>
+    </div>
+  </dialog>
+
+  <dialog id="optionDialog" aria-label="Option">
+    <h2 id="optionTitle">Add option</h2>
+    <label for="optionName">Name</label>
+    <input type="text" id="optionName" maxlength="80" autocomplete="off">
+    <label>Symbol (emoji)</label>
+    <div class="pickrow" id="optionEmojiPick"></div>
+    <label for="optionEmojiCustom">Or type any emoji</label>
+    <input type="text" id="optionEmojiCustom" maxlength="12" autocomplete="off" placeholder="🍽️">
+    <label>Color</label>
+    <div class="pickrow" id="optionColorPick"></div>
+    <label for="optionImageUrl">Picture URL (optional)</label>
+    <input type="url" id="optionImageUrl" maxlength="500" autocomplete="off" placeholder="https://…">
+    <p class="hint">A remote picture URL shows instead of the emoji. Only http(s) links are accepted. Uploading a picture file is not supported yet.</p>
+    <label>Meals</label>
+    <div class="mealrow" id="optionMealsPick"></div>
+    <p class="hint">An option appears in the picker of every meal it is tagged with. At least one meal stays tagged.</p>
+    <div class="dlgfoot">
+      <button type="button" class="navbtn" id="optionSaveBtn">Save</button>
+      <button type="button" class="smallbtn" id="optionCancelBtn">Cancel</button>
+    </div>
+  </dialog>
+  <dialog id="foodDialog" aria-label="Food options">
+    <h2>Food options</h2>
+    <p class="hint">Pictures: an option can show a remote picture URL (see the form). Uploading pictures from inside the widget is not supported yet — emoji and color are the pre-reader-friendly choice for now.</p>
+    <div id="optionsList"></div>
+    <button type="button" class="addbtn" id="addOptionBtn">+ Add option</button>
+    <div class="dlgfoot">
+      <span class="spacer"></span>
+      <button type="button" class="navbtn" id="foodDoneBtn">Done</button>
+    </div>
+  </dialog>
+  <script>
+  (function () {
+    var DOC_KEY = 'data';
+    var LS_KEY = 'homeglowMealChoice.data';
+    var MAX_DOC_BYTES = 60000; // under the 64 KB server per-key cap
+    var COLORS = ['#e57373', '#f06292', '#ba68c8', '#7986cb', '#64b5f6', '#4db6ac', '#81c784', '#dce775', '#ffb74d', '#ff8a65'];
+    var FOOD_EMOJI = ['🥪', '🍕', '🍝', '🌮', '🥗', '🍎', '🍌', '🧀', '🥚', '🍗', '🥦', '🍓', '🥞', '🧇', '🥨', '🍩', '🍪', '🥛', '🧃', '🍫'];
+    // Food -> emoji keyword map for auto-defaulting a new option's emoji.
+    // Seeded from the household's proven option pairs (sandwich, egg,
+    // bagel, salami, yogurt, oats, salad, crackers, brats, sausage,
+    // cheese, pepperoni, strawberries, mango, tortilla, celery,
+    // chocolate, chicken salad, blueberry bagel, cashew butter) plus
+    // common foods. Matching is case-insensitive whole words; on
+    // multiple matches the longest keyword wins, so a phrase like
+    // "chicken salad" beats its parts ("salad", "crackers"). No match
+    // returns '' — the emoji stays unset, never a wrong guess.
+    var FOOD_EMOJI_MAP = [
+      ['blueberry bagel', '🥯'],
+      ['cashew butter', '🥬'],
+      ['chicken salad', '🥗'],
+      ['sandwich', '🥪'], ['bagel', '🥯'],
+      ['egg', '🥚'], ['eggs', '🥚'],
+      ['salami', '🥩'], ['sausage', '🍖'],
+      ['brat', '🌭'], ['brats', '🌭'],
+      ['yogurt', '🥣'], ['yoghurt', '🥣'],
+      ['oats', '🌾'], ['oatmeal', '🌾'],
+      ['salad', '🥗'], ['cracker', '🥨'], ['crackers', '🥨'],
+      ['cheese', '🧀'], ['pepperoni', '🍕'], ['pizza', '🍕'],
+      ['banana', '🍌'], ['apple', '🍎'], ['milk', '🥛'],
+      ['chicken', '🍗'], ['pasta', '🍝'], ['spaghetti', '🍝'],
+      ['taco', '🌮'], ['tacos', '🌮'],
+      ['carrot', '🥕'], ['carrots', '🥕'], ['broccoli', '🥦'],
+      ['strawberry', '🍓'], ['strawberries', '🍓'],
+      ['blueberry', '🫐'], ['blueberries', '🫐'],
+      ['mango', '🥭'], ['celery', '🥬'], ['butter', '🧈'],
+      ['chocolate', '🍫'], ['marshmallow', '🍫'], ['marshmallows', '🍫'],
+      ['tortilla', '🌽']
+    ];
+    function matchFoodEmoji(name) {
+      var padded = ' ' + (name || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim() + ' ';
+      var best = '', bestLen = 0;
+      FOOD_EMOJI_MAP.forEach(function (pair) {
+        if (pair[0].length > bestLen && padded.indexOf(' ' + pair[0] + ' ') !== -1) { best = pair[1]; bestLen = pair[0].length; }
+      });
+      return best;
+    }
+    // Reflect an (auto or manual) emoji value in the picker row's
+    // pressed states; a value outside the row simply clears them.
+    function syncEmojiPick(value) {
+      Array.prototype.forEach.call($('optionEmojiPick').children, function (x) {
+        x.setAttribute('aria-pressed', x.textContent === value ? 'true' : 'false');
+      });
+    }
+    // The four meals, in the order Adam listed them. The order also
+    // sets tab order, badge order, and row order everywhere.
+    var MEALS = [
+      { id: 'breakfast', label: 'Breakfast', emoji: '🍳' },
+      { id: 'snack', label: 'Snack', emoji: '🍿' },
+      { id: 'lunch', label: 'Lunch', emoji: '🍱' },
+      { id: 'dinner', label: 'Dinner', emoji: '🍲' }
+    ];
+    function mealDef(id) { for (var i = 0; i < MEALS.length; i++) { if (MEALS[i].id === id) return MEALS[i]; } return null; }
+    function mealLabel(id) { var m = mealDef(id); return m ? m.label : id; }
+
+    var state = null; // { version:1, selectedUserIds:[], options:[], choices:{}, updatedAt } (+ dormant legacy people)
+    var coreUsers = []; // household users from GET /api/users, excluding the id-0 bonus pseudo-user
+    var usersError = false;
+    var containerWidth = 0; // .wrap width in px, via ResizeObserver (0 = unmeasured: show the full week)
+    var settings = { pollSeconds: 10 };
+    var weekMonday = null; // Monday of the shown calendar week (set after state loads)
+    var windowStart = null; // first shown day of a paged window; null = auto (next meal to pick)
+    var view = 'week'; // 'week' | 'manage'
+    var dialogDateKey = null;
+    var dialogPersonId = null;
+    var dialogMeal = 'lunch'; // a meal id: which pick the choice dialog is setting
+    var dialogMeals = ['lunch']; // meal ids tagged on the option being edited in the option dialog
+    var dialogEmojiManual = false; // true once the user picks an emoji by hand (picker or custom field) — auto-default then stops
+    var editingOptionId = null;
+    var recoveryPending = false;
+    var syncWarned = false;
+    var pollTimer = null;
+    var armedDelete = {}; // id -> timeout handle for two-tap deletes
+
+    function uid() { return 'x' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+    function nowIso() { return new Date().toISOString(); }
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/[&<>\"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+      });
+    }
+    function $(id) { return document.getElementById(id); }
+    function startOfDay(d) { var x = new Date(d.getTime()); x.setHours(0, 0, 0, 0); return x; }
+    function addDays(d, n) { var x = new Date(d.getTime()); x.setDate(x.getDate() + n); return x; }
+    function dateKey(d) {
+      return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+    }
+    function fmtDay(d) {
+      return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    }
+    function todayKey() { return dateKey(new Date()); }
+    function isPastKey(key) { return key < todayKey(); }
+    function mondayOf(d) {
+      var x = startOfDay(d);
+      return addDays(x, -((x.getDay() + 6) % 7));
+    }
+    function defaultWeekMonday(now) {
+      now = now || new Date();
+      var mon = mondayOf(now);
+      // School days are Mon-Fri. On Sat/Sun with weekends hidden there is
+      // nothing pickable this week, so default to next week's Mon-Fri.
+      if (!state.showWeekends && (now.getDay() === 0 || now.getDay() === 6)) return addDays(mon, 7);
+      return mon;
+    }
+    function visibleDays() {
+      var days = [];
+      var count = state.showWeekends ? 7 : 5;
+      for (var i = 0; i < count; i++) days.push(addDays(weekMonday, i));
+      return days;
+    }
+    function todayIsChoosable() {
+      var dow = new Date().getDay();
+      return state.showWeekends || (dow !== 0 && dow !== 6);
+    }
+    function visiblePeople() {
+      // One household selection, used on every display: the
+      // per-display filter was removed, so the selected users are
+      // always the visible ones. (A stale localStorage filter key is
+      // cleared on boot and never read.)
+      return selectedPeople();
+    }
+    // ---- household users (Part 1): read-only core route, allowed for
+    // plugins with their frame token (server/utils/pluginRequestPolicy.js
+    // READ_ROUTES). The frame shim attaches the token to same-host
+    // fetches, so a plain fetch works; no SDK users method exists or
+    // is needed. Id 0 is the bonus pseudo-user and never renders on
+    // the dashboard, so it is never a lunch chooser.
+    function avatarUrl(u) {
+      var pp = u && u.profile_picture;
+      if (typeof pp !== 'string' || !pp) return null;
+      if (pp.indexOf('data:') === 0) return pp;
+      return '/Uploads/users/' + pp;
+    }
+    function userPerson(u) {
+      return { id: 'u' + u.id, userId: u.id, name: u.username, avatar: avatarUrl(u) };
+    }
+    function loadUsers() {
+      return fetch('/api/users').then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      }).then(function (list) {
+        if (!Array.isArray(list)) throw new Error('bad users payload');
+        coreUsers = list.filter(function (u) { return u && u.id !== 0 && u.username; });
+        usersError = false;
+        return coreUsers;
+      }).catch(function () {
+        usersError = true;
+        return coreUsers; // keep any previously loaded cache
+      });
+    }
+    function selectedPeople() {
+      var ids = (state && Array.isArray(state.selectedUserIds)) ? state.selectedUserIds : [];
+      var out = [];
+      ids.forEach(function (id) {
+        var u = null;
+        for (var i = 0; i < coreUsers.length; i++) { if (coreUsers[i].id === id) { u = coreUsers[i]; break; } }
+        if (u) out.push(userPerson(u));
+        else out.push({ id: 'u' + id, userId: id, name: 'User ' + id, avatar: null });
+      });
+      return out;
+    }
+    function personById(id) { return selectedPeople().filter(function (p) { return p.id === id; })[0] || null; }
+    function optionById(id) { return (state.options || []).filter(function (o) { return o.id === id; })[0] || null; }
+    // An option's meals: the configurable set of meals it appears in.
+    // Legacy docs carry `serves` instead: 'lunch' -> ['lunch'],
+    // 'snack' -> ['snack'], 'both' -> ['lunch', 'snack'] (both predates
+    // breakfast/dinner, so it never means all four). Options with
+    // neither field count as ['lunch'], so older documents need no
+    // rewrite; the next save persists the meals shape.
+    function mealsOf(o) {
+      if (o && Array.isArray(o.meals)) {
+        var out = [];
+        o.meals.forEach(function (m) { if (mealDef(m) && out.indexOf(m) === -1) out.push(m); });
+        if (out.length) return out;
+      }
+      if (o && o.serves === 'snack') return ['snack'];
+      if (o && o.serves === 'both') return ['lunch', 'snack'];
+      return ['lunch'];
+    }
+    function optionHasMeal(o, meal) { return mealsOf(o).indexOf(meal) !== -1; }
+    function isMealEnabled(meal) { return (state.enabledMeals || []).indexOf(meal) !== -1; }
+    function enabledMealDefs() { return MEALS.filter(function (m) { return isMealEnabled(m.id); }); }
+    // Picks: one sub-map per meal, { date: { person: optionId } }.
+    // A single generalized map replaces the old per-meal fields
+    // (choices, snackChoices); normalize() carries legacy picks over.
+    function mealPicks(meal) {
+      if (!state.picks) state.picks = {};
+      if (!state.picks[meal]) state.picks[meal] = {};
+      return state.picks[meal];
+    }
+    // Multi-pick: a person-slot holds an ARRAY of option ids (no cap).
+    // This accessor always returns an array, wrapping a legacy single
+    // id defensively so render paths never see a scalar.
+    function choicesForMeal(dateKeyStr, personId, meal) {
+      var day = mealPicks(meal)[dateKeyStr] || {};
+      var v = day[personId];
+      if (Array.isArray(v)) return v.filter(function (id) { return typeof id === 'string'; });
+      return (typeof v === 'string' && v) ? [v] : [];
+    }
+
+    // ---- storage: SDK first, localStorage fallback (standalone preview) ----
+    function sdkOk() {
+      try { return !!(window.HomeGlow && window.HomeGlow.storage && window.HomeGlow.pluginId); } catch (e) { return false; }
+    }
+    function loadRemote() {
+      if (sdkOk()) return window.HomeGlow.storage.get(DOC_KEY);
+      try {
+        var raw = localStorage.getItem(LS_KEY);
+        return Promise.resolve(raw ? JSON.parse(raw) : null);
+      } catch (e) { return Promise.resolve(null); }
+    }
+    function saveRemote(doc) {
+      doc.updatedAt = nowIso();
+      if (sdkOk()) {
+        if (recoveryPending) {
+          try { localStorage.setItem(LS_KEY, JSON.stringify(doc)); } catch (e) {}
+          return Promise.resolve();
+        }
+        return window.HomeGlow.storage.set(DOC_KEY, doc).then(function () {
+          if (syncWarned) { syncWarned = false; setSync(''); }
+        }).catch(function () {
+          try { localStorage.setItem(LS_KEY, JSON.stringify(doc)); } catch (e) {}
+          syncWarned = true;
+          setSync('⚠️ Couldn’t save to the household choices — kept on this display only.', true);
+        });
+      }
+      try { localStorage.setItem(LS_KEY, JSON.stringify(doc)); } catch (e) {}
+      return Promise.resolve();
+    }
+    function loadSettings() {
+      if (window.HomeGlow && window.HomeGlow.settings && typeof window.HomeGlow.settings.get === 'function') {
+        return window.HomeGlow.settings.get().then(function (s) {
+          if (s && typeof s === 'object' && typeof s.pollSeconds === 'number' && s.pollSeconds >= 5) {
+            settings.pollSeconds = s.pollSeconds;
+          }
+        }).catch(function () {});
+      }
+      return Promise.resolve();
+    }
+    function defaultState() {
+      // First run starts with nobody selected: select users in Manage.
+      // No example names — nothing here may look like household data.
+      // Lunch is the only meal on by default, preserving the
+      // pre-meals behavior (snack stays opt-in, as it was).
+      // Days to show defaults to 1 (just the next day to pick).
+      return { version: 1, selectedUserIds: [], options: [], picks: {}, enabledMeals: ['lunch'], showWeekends: false, daysToShow: 1, updatedAt: nowIso() };
+    }
+    function normalize(doc) {
+      if (!doc || typeof doc !== 'object') return defaultState();
+      var sel = Array.isArray(doc.selectedUserIds) ? doc.selectedUserIds.filter(function (id) { return typeof id === 'number'; }) : [];
+      // Picks: prefer the generalized map when present; otherwise
+      // carry legacy picks over (choices -> lunch, snackChoices ->
+      // snack), so no pick is ever lost. Every person-slot wraps to
+      // an array (a legacy single id becomes a one-element list).
+      // The next save persists the picks shape and drops the legacy
+      // fields.
+      var picks = {};
+      MEALS.forEach(function (m) {
+        var src = null;
+        if (doc.picks && typeof doc.picks === 'object' && doc.picks[m.id] && typeof doc.picks[m.id] === 'object') src = doc.picks[m.id];
+        else if (m.id === 'lunch' && doc.choices && typeof doc.choices === 'object') src = doc.choices;
+        else if (m.id === 'snack' && doc.snackChoices && typeof doc.snackChoices === 'object') src = doc.snackChoices;
+        picks[m.id] = src || {};
+      });
+      MEALS.forEach(function (m) {
+        Object.keys(picks[m.id]).forEach(function (dk) {
+          var day = picks[m.id][dk];
+          if (!day || typeof day !== 'object' || Array.isArray(day)) return;
+          Object.keys(day).forEach(function (pid) {
+            var v = day[pid];
+            if (Array.isArray(v)) day[pid] = v.filter(function (id) { return typeof id === 'string'; });
+            else day[pid] = (typeof v === 'string' && v) ? [v] : [];
+          });
+        });
+      });
+      // Enabled meals: prefer the list when present; otherwise the
+      // legacy snack toggle maps over (on -> lunch + snack, off or
+      // absent -> lunch only). Normalized to MEALS order.
+      var enabled = null;
+      if (Array.isArray(doc.enabledMeals)) {
+        var kept = doc.enabledMeals.filter(function (id) { return !!mealDef(id); });
+        if (kept.length) enabled = kept;
+      }
+      if (!enabled) enabled = doc.snackChoicesEnabled === true ? ['lunch', 'snack'] : ['lunch'];
+      enabled = MEALS.filter(function (m) { return enabled.indexOf(m.id) !== -1; }).map(function (m) { return m.id; });
+      return {
+        version: 1,
+        selectedUserIds: sel,
+        // Dormant legacy data: preserved untouched on save, never rendered.
+        people: Array.isArray(doc.people) ? doc.people.filter(function (p) { return p && p.id && p.name; }) : [],
+        // Options migrate to meals arrays on load (serves mapping in
+        // mealsOf); the next save persists that shape.
+        options: Array.isArray(doc.options) ? doc.options.filter(function (o) { return o && o.id && o.name; }).map(function (o) {
+          var out = { id: o.id, name: o.name, emoji: o.emoji, color: o.color, meals: mealsOf(o) };
+          if (o.imageUrl) out.imageUrl = o.imageUrl; // preserved on save; null/empty drops, returning the option to its emoji
+          return out;
+        }) : [],
+        picks: picks,
+        enabledMeals: enabled,
+        showWeekends: doc.showWeekends === true,
+        // Days to show: 1-5. Absent or non-numeric values default to 1;
+        // present numbers are clamped into range (so an explicit 5 stays 5).
+        daysToShow: (typeof doc.daysToShow === 'number' && isFinite(doc.daysToShow)) ? Math.max(1, Math.min(5, Math.floor(doc.daysToShow))) : 1,
+        updatedAt: doc.updatedAt || nowIso()
+      };
+    }
+    function save() {
+      if (JSON.stringify(state).length > MAX_DOC_BYTES) {
+        setSync('⚠️ Too much saved data — remove an option or shorten a name, then try again.', true);
+        return Promise.resolve();
+      }
+      return saveRemote(state);
+    }
+    function setSync(msg, warn) {
+      var el = $('syncLine');
+      el.textContent = msg || '';
+      el.className = 'sync' + (warn ? ' warn' : '');
+    }
+
+    // ---- rendering ----
+    function avatarHtml(p, cls) {
+      if (p.avatar) {
+        return '<img class="' + (cls || 'avatar') + '" src="' + esc(p.avatar) + '" alt="" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'inline\';">' +
+          '<span class="avatar-fallback" style="display:none">👤</span>';
+      }
+      return '<span class="avatar-fallback">👤</span>';
+    }
+    function personLabel(p) {
+      return avatarHtml(p, 'avatar') + '<span>' + esc(p.name) + '</span>';
+    }
+    function validImageUrl(u) {
+      return typeof u === 'string' && /^https?:\/\//i.test(u.trim());
+    }
+    function optionVisual(o, cls) {
+      // A set, valid imageUrl renders its picture instead of the emoji;
+      // the emoji stays hidden behind it and appears if the picture
+      // fails to load. Unset or invalid URLs render the emoji alone.
+      if (o.imageUrl && validImageUrl(o.imageUrl)) {
+        return '<img class="' + (cls || 'otimg') + '" src="' + esc(o.imageUrl) + '" alt="" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'inline\';">' +
+          '<span class="em" style="display:none">' + esc(o.emoji || '🍽️') + '</span>';
+      }
+      return '<span class="em">' + esc(o.emoji || '🍽️') + '</span>';
+    }
+    // ---- responsive week window (Part 2): the visible days start at
+    // the next meal to pick and grow with the widget's actual width.
+    // Fit count: one day card needs ~170px to stay usable, so the count
+    // is floor(width / 170), at least 1, capped at the week's days.
+    // The Manage "Days to show" setting (1-5, default 1) caps it
+    // further, so a household can ask for just the next day even on
+    // a wide display; narrow displays still show fewer when the
+    // cards don't fit.
+    function fitCount(total) {
+      if (!containerWidth) return total;
+      return Math.max(1, Math.min(total, Math.floor(containerWidth / 170)));
+    }
+    function daysToShow() {
+      var n = state.daysToShow;
+      return (typeof n === 'number' && n >= 1 && n <= 5) ? Math.floor(n) : 1;
+    }
+    // ---- day-stepped window: the ‹/› arrows move the window one
+    // shown day at a time (a school day when weekends are hidden, any
+    // calendar day when they are shown), so Fri steps to Mon with
+    // weekends hidden and to Sat with weekends shown. The window is N
+    // consecutive shown days from its start. windowStart is null until
+    // the user pages; then it pins the window start. Today clears it
+    // back to auto (the next meal to pick).
+    function isShownDay(d) {
+      var dow = d.getDay();
+      return state.showWeekends || (dow !== 0 && dow !== 6);
+    }
+    function shownDaysFrom(start, count) {
+      var out = [];
+      var d = startOfDay(start);
+      while (out.length < count) {
+        if (isShownDay(d)) out.push(new Date(d.getTime()));
+        d = addDays(d, 1);
+      }
+      return out;
+    }
+    function nextShownDay(d) { return shownDaysFrom(addDays(d, 1), 1)[0]; }
+    function prevShownDay(d) {
+      var x = addDays(d, -1);
+      while (!isShownDay(x)) x = addDays(x, -1);
+      return x;
+    }
+    function autoWindowedDays() {
+      var days = visibleDays();
+      var tk = todayKey();
+      var ai = -1;
+      for (var i = 0; i < days.length; i++) { if (dateKey(days[i]) > tk) { ai = i; break; } }
+      if (ai === -1) {
+        var containsToday = false;
+        for (var j = 0; j < days.length; j++) { if (dateKey(days[j]) === tk) containsToday = true; }
+        if (containsToday) {
+          // This week's meals are done (e.g. Friday, weekends hidden):
+          // advance to next week so the window shows the next meal to pick.
+          weekMonday = addDays(weekMonday, 7);
+          days = visibleDays();
+          ai = 0;
+        } else {
+          ai = 0; // a paged-to past/future week: start at its first day
+        }
+      }
+      return days.slice(ai, ai + Math.max(1, Math.min(daysToShow(), days.length - ai, fitCount(days.length - ai))));
+    }
+    function windowedDays() {
+      if (windowStart) {
+        var total = daysToShow();
+        return shownDaysFrom(windowStart, total).slice(0, Math.max(1, Math.min(total, fitCount(total))));
+      }
+      return autoWindowedDays();
+    }
+    function renderWeekLabel(days) {
+      days = days || visibleDays();
+      var first = days[0];
+      var last = days[days.length - 1];
+      if (days.length === 1 || dateKey(first) === dateKey(last)) {
+        // A one-day window shows the single date, never a range that
+        // repeats it ("Nov 2 – Nov 2, 2026" was the old shape).
+        $('weekLabel').textContent = first.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        return;
+      }
+      $('weekLabel').textContent = first.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) +
+        ' – ' + last.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    }
+    function renderTodayBox() {
+      var box = $('todayBox');
+      var tk = todayKey();
+      if (!visiblePeople().length || !todayIsChoosable()) { box.classList.add('hidden'); return; }
+      box.classList.remove('hidden');
+      var html = '<h2>Today — ' + esc(fmtDay(new Date())) + '</h2>';
+      // Rows are grouped by person: one header (avatar + name) per
+      // person, with that person's meal subgroups nested under it.
+      // Each subgroup keeps its meal label, so snack picks can never
+      // be mistaken for lunch picks; dividers separate people and meals.
+      visiblePeople().forEach(function (p) {
+        var block = '<div class="todayperson"><div class="personhead">' + personLabel(p) + '</div>';
+        enabledMealDefs().forEach(function (m) {
+          var picked = choicesForMeal(tk, p.id, m.id).map(function (id) { return optionById(id); }).filter(function (o) { return !!o; });
+          block += '<div class="todaymeal">';
+          block += '<span class="choice">' + m.emoji + ' ' + esc(m.label) + '</span>';
+          block += '<span class="choice">' +
+            (picked.length ? '<span class="pickstack">' + picked.map(function (o) { return '<span class="pick">' + optionVisual(o, 'em') + ' ' + esc(o.name) + '</span>'; }).join('') + '</span>' :
+              '<span class="none">' + (m.id === 'lunch' ? 'Not chosen yet' : 'No ' + m.label.toLowerCase() + ' yet') + '</span>') + '</span>';
+          block += '</div>';
+        });
+        html += block + '</div>';
+      });
+      box.innerHTML = html;
+    }
+    function renderWeek() {
+      var days = windowedDays();
+      renderWeekLabel(days);
+      var banner = $('emptyBanner');
+      if (!selectedPeople().length) {
+        banner.classList.remove('hidden');
+        banner.innerHTML = 'No meal choosers yet. Select the household users who choose meals in Manage.' +
+          ' <button type="button" class="navbtn" id="bannerManage">Manage</button>';
+        $('bannerManage').addEventListener('click', function () { setView('manage'); });
+      } else if (!state.options.length) {
+        banner.classList.remove('hidden');
+        banner.innerHTML = 'No meal options yet. Add options in Manage so there is something to choose from.' +
+          ' <button type="button" class="navbtn" id="bannerManage">Manage</button>';
+        $('bannerManage').addEventListener('click', function () { setView('manage'); });
+      } else {
+        banner.classList.add('hidden');
+        banner.innerHTML = '';
+      }
+      renderTodayBox();
+      var tk = todayKey();
+      var grid0 = $('dayGrid');
+      grid0.className = 'daygrid cols' + days.length;
+      grid0.style.gridTemplateColumns = 'repeat(' + days.length + ', minmax(0, 1fr))';
+      var html = '';
+      for (var i = 0; i < days.length; i++) {
+        var d = days[i];
+        var key = dateKey(d);
+        var isToday = key === tk;
+        var isPast = isPastKey(key);
+        html += '<button type="button" class="daycard' + (isToday ? ' today' : '') + (isPast ? ' past' : '') + '"' +
+          (isPast ? ' disabled aria-disabled="true"' : '') +
+          ' data-date="' + key + '" aria-label="Choose meals for ' + esc(fmtDay(d)) + '">' +
+          '<div class="dow">' + esc(d.toLocaleDateString('en-US', { weekday: 'short' })) +
+          (isToday ? ' <span class="todaypill">• Today</span>' : '') + '</div>' +
+          '<div class="dnum">' + d.getDate() + '</div>';
+        // Grouped by person: one header (avatar + name) per person,
+        // with that person's meal subgroups nested under it. Each
+        // subgroup keeps its meal label; dividers separate people and meals.
+        visiblePeople().forEach(function (p) {
+          html += '<div class="persongroup"><div class="personhead">' + personLabel(p) + '</div>';
+          enabledMealDefs().forEach(function (m) {
+            var picked = choicesForMeal(key, p.id, m.id).map(function (id) { return optionById(id); }).filter(function (o) { return !!o; });
+            html += '<div class="mealsub">';
+            html += '<span class="meallabel">' + m.emoji + ' ' + esc(m.label) + '</span>';
+            html += (picked.length ? '<span class="pickstack">' + picked.map(function (o) { return '<span class="pick">' + optionVisual(o, 'em') + ' ' + esc(o.name) + '</span>'; }).join('') + '</span>' :
+              '<span class="none">—</span>') + '</div>';
+          });
+          html += '</div>';
+        });
+        html += '</button>';
+      }
+      var grid = $('dayGrid');
+      grid.innerHTML = html;
+      var cards = grid.querySelectorAll('.daycard[data-date]');
+      for (var j = 0; j < cards.length; j++) {
+        (function (card) {
+          card.addEventListener('click', function () { openChoiceDialog(card.getAttribute('data-date')); });
+        })(cards[j]);
+      }
+    }
+    function renderManage() {
+      var pl = $('peopleList');
+      var sel = selectedPeople();
+      var selIds = {};
+      sel.forEach(function (p) { selIds[p.userId] = true; });
+      if (usersError && !coreUsers.length) {
+        pl.innerHTML = '<p class="hint">⚠️ Couldn’t load the household users — reopen Manage to retry. Nothing here can be selected until they load.</p>';
+      } else if (!coreUsers.length) {
+        pl.innerHTML = '<p class="hint">Loading household users…</p>';
+      } else {
+        pl.innerHTML = '<p class="hint">Select the household users who choose meals. There is no create-person form — the household list is the source.</p>' +
+          coreUsers.map(function (u) {
+            var p = userPerson(u);
+            var chosen = !!selIds[u.id];
+            return '<div class="mrow"><input type="checkbox" data-select-user="' + u.id + '"' + (chosen ? ' checked' : '') + '>' +
+              avatarHtml(p, 'avatar') + '<span class="nm">' + esc(u.username) + '</span></div>';
+          }).join('');
+        pl.querySelectorAll('[data-select-user]').forEach(function (cb) {
+          cb.addEventListener('change', function () {
+            var uid = parseInt(cb.getAttribute('data-select-user'), 10);
+            var ids = (state.selectedUserIds || []).slice();
+            if (cb.checked) { if (ids.indexOf(uid) === -1) ids.push(uid); }
+            else ids = ids.filter(function (x) { return x !== uid; });
+            state.selectedUserIds = ids;
+            save().then(function () { renderManage(); renderWeek(); });
+          });
+        });
+      }
+      var ol = $('optionsList');
+      if (!state.options.length) {
+        ol.innerHTML = '<p class="hint">No options yet. Add the meals parents pack.</p>';
+      } else {
+        ol.innerHTML = state.options.map(function (o) {
+          var mealNames = mealsOf(o).map(function (id) { return mealLabel(id); }).join(' + ');
+          var thumb = (o.imageUrl && validImageUrl(o.imageUrl)) ?
+            '<img class="thumb" src="' + esc(o.imageUrl) + '" alt="" onerror="this.style.display=\'none\'">' : '';
+          return '<div class="mrow">' + thumb + '<span class="em">' + esc(o.emoji || '🍽️') + '</span>' +
+            '<span class="dot" style="background:' + esc(o.color || '#999') + '"></span>' +
+            '<span class="nm">' + esc(o.name) + '</span>' +
+            '<span class="mealbadge">' + esc(mealNames) + '</span>' +
+            '<button type="button" class="smallbtn" data-edit-option="' + esc(o.id) + '">Edit</button>' +
+            '<button type="button" class="smallbtn danger" data-del-option="' + esc(o.id) + '">Delete</button></div>';
+        }).join('');
+      }
+      var ds = $('displaySettings');
+      var dhtml = '<div class="mrow"><input type="checkbox" id="weekendToggle"' + (state.showWeekends ? ' checked' : '') + '><span class="flabel">Show Saturday and Sunday</span></div>' +
+        '<p class="hint">School days are Monday–Friday by default. This weekend setting is shared with every display.</p>' +
+        '<div class="mrow tight"><span class="flabel">Days to show</span><select id="daysToShowSelect">' +
+        [1, 2, 3, 4, 5].map(function (n) { return '<option value="' + n + '"' + (daysToShow() === n ? ' selected' : '') + '>' + n + '</option>'; }).join('') +
+        '</select></div>' +
+        '<p class="hint">How many days ahead the week view shows, starting at the next meal to pick. 5 is the full school week; narrow displays still show fewer when the day cards do not fit. This setting is shared with every display.</p>' +
+        '<h2>Meals</h2>' +
+        '<p class="hint">Each meal gets its own pick per day. Turning a meal off hides it everywhere but keeps its saved picks — turning it back on restores them. This setting is shared with every display. At least one meal stays on.</p>' +
+        MEALS.map(function (m) {
+          return '<div class="mrow"><input type="checkbox" data-meal-toggle="' + m.id + '"' + (isMealEnabled(m.id) ? ' checked' : '') + '><span class="flabel">' + m.emoji + ' ' + m.label + '</span></div>';
+        }).join('');
+      ds.innerHTML = dhtml;
+      $('weekendToggle').addEventListener('change', function () {
+        state.showWeekends = $('weekendToggle').checked;
+        save().then(function () { renderAll(); });
+      });
+      $('daysToShowSelect').addEventListener('change', function () {
+        var n = parseInt($('daysToShowSelect').value, 10);
+        if (!(n >= 1 && n <= 5)) return;
+        state.daysToShow = n;
+        save().then(function () { renderAll(); });
+      });
+      ds.querySelectorAll('[data-meal-toggle]').forEach(function (cb) {
+        cb.addEventListener('change', function () {
+          var meal = cb.getAttribute('data-meal-toggle');
+          var ids = (state.enabledMeals || []).slice();
+          if (cb.checked) { if (ids.indexOf(meal) === -1) ids.push(meal); }
+          else ids = ids.filter(function (x) { return x !== meal; });
+          if (!ids.length) { cb.checked = true; renderManage(); return; } // keep at least one meal
+          state.enabledMeals = MEALS.filter(function (m) { return ids.indexOf(m.id) !== -1; }).map(function (m) { return m.id; });
+          save().then(function () { renderAll(); });
+        });
+      });
+      // The food list lives in its own window now; the Manage button
+      // shows the count so the list size is visible without opening it.
+      $('foodOptionsBtn').textContent = 'Food options (' + state.options.length + ')';
+      bindManageButtons();
+    }
+    function bindManageButtons() {
+      document.querySelectorAll('[data-edit-option]').forEach(function (b) {
+        b.addEventListener('click', function () { openOptionDialog(b.getAttribute('data-edit-option')); });
+      });
+      document.querySelectorAll('[data-del-option]').forEach(function (b) {
+        b.addEventListener('click', function () { armDelete(b, 'option', b.getAttribute('data-del-option')); });
+      });
+    }
+    function armDelete(btn, kind, id) {
+      var key = kind + ':' + id;
+      if (armedDelete[key]) {
+        clearTimeout(armedDelete[key]);
+        delete armedDelete[key];
+        state.options = state.options.filter(function (o) { return o.id !== id; });
+        Object.keys(state.picks || {}).forEach(function (meal) {
+          Object.keys(state.picks[meal] || {}).forEach(function (dk) {
+            Object.keys(state.picks[meal][dk]).forEach(function (pid) {
+              var v = state.picks[meal][dk][pid];
+              if (Array.isArray(v)) {
+                var kept = v.filter(function (x) { return x !== id; });
+                if (kept.length) state.picks[meal][dk][pid] = kept; else delete state.picks[meal][dk][pid];
+              } else if (v === id) delete state.picks[meal][dk][pid];
+            });
+          });
+        });
+        save().then(function () { renderManage(); renderWeek(); });
+        return;
+      }
+      btn.textContent = 'Sure?';
+      btn.classList.add('armed');
+      armedDelete[key] = setTimeout(function () {
+        delete armedDelete[key];
+        btn.textContent = 'Delete';
+        btn.classList.remove('armed');
+      }, 3000);
+    }
+    function setView(v) {
+      view = v;
+      $('weekView').classList.toggle('hidden', v !== 'week');
+      $('manageView').classList.toggle('hidden', v !== 'manage');
+      // In Manage the header top-right collapses to a single Back
+      // button (the Manage button itself); Today and the day-step
+      // arrows return with the week view. There is no second
+      // back button inside Manage.
+      $('todayBtn').classList.toggle('hidden', v === 'manage');
+      $('prevBtn').classList.toggle('hidden', v === 'manage');
+      $('nextBtn').classList.toggle('hidden', v === 'manage');
+      $('manageBtn').textContent = v === 'manage' ? 'Back' : 'Manage';
+      if (v === 'manage') { loadUsers().then(function () { renderManage(); }); renderManage(); } else renderWeek();
+    }
+    function renderAll() { if (view === 'manage') renderManage(); else renderWeek(); }
+
+    // ---- dialogs ----
+    function openDialog(dlg) {
+      try { dlg.showModal(); } catch (e) { try { dlg.show(); } catch (e2) {} }
+    }
+    function closeDialog(dlg) {
+      try { dlg.close(); } catch (e) {}
+      renderAll();
+    }
+    function pickRow(el, values, current, onPick) {
+      el.innerHTML = '';
+      values.forEach(function (v) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'pickbtn';
+        b.textContent = v;
+        b.setAttribute('aria-pressed', v === current ? 'true' : 'false');
+        b.addEventListener('click', function () {
+          Array.prototype.forEach.call(el.children, function (x) { x.setAttribute('aria-pressed', 'false'); });
+          b.setAttribute('aria-pressed', 'true');
+          onPick(v);
+        });
+        el.appendChild(b);
+      });
+    }
+    function colorRow(el, current, onPick) {
+      el.innerHTML = '';
+      COLORS.forEach(function (c) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'swatch';
+        b.style.background = c;
+        b.setAttribute('aria-label', 'Color ' + c);
+        b.setAttribute('aria-pressed', c === current ? 'true' : 'false');
+        b.addEventListener('click', function () {
+          Array.prototype.forEach.call(el.children, function (x) { x.setAttribute('aria-pressed', 'false'); });
+          b.setAttribute('aria-pressed', 'true');
+          onPick(c);
+        });
+        el.appendChild(b);
+      });
+    }
+    function openChoiceDialog(key) {
+      if (!visiblePeople().length || !state.options.length) { setView('manage'); return; }
+      dialogDateKey = key;
+      dialogMeal = (enabledMealDefs()[0] || { id: 'lunch' }).id;
+      var vis = visiblePeople();
+      var withChoice = vis.filter(function (p) { return choicesForMeal(key, p.id, dialogMeal).length > 0; });
+      var without = vis.filter(function (p) { return choicesForMeal(key, p.id, dialogMeal).length === 0; });
+      dialogPersonId = (without[0] || vis[0]).id;
+      renderChoiceDialog();
+      openDialog($('choiceDialog'));
+    }
+    function renderChoiceDialog() {
+      var key = dialogDateKey;
+      var mealEl = $('choiceMeal');
+      var tabs = enabledMealDefs();
+      if (tabs.length > 1) {
+        mealEl.innerHTML = '';
+        tabs.forEach(function (m) {
+          var b = document.createElement('button');
+          b.type = 'button';
+          b.className = 'mealbtn';
+          b.textContent = m.label;
+          b.setAttribute('aria-pressed', dialogMeal === m.id ? 'true' : 'false');
+          b.addEventListener('click', function () { dialogMeal = m.id; renderChoiceDialog(); });
+          mealEl.appendChild(b);
+        });
+      } else {
+        mealEl.innerHTML = '';
+        dialogMeal = tabs.length ? tabs[0].id : 'lunch';
+      }
+      var d = new Date();
+      var parts = key.split('-');
+      d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+      $('choiceTitle').textContent = 'Choose ' + mealLabel(dialogMeal) + ' — ' + fmtDay(d);
+      var peopleEl = $('choicePeople');
+      peopleEl.innerHTML = '';
+      visiblePeople().forEach(function (p) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'personchip';
+        b.setAttribute('aria-pressed', p.id === dialogPersonId ? 'true' : 'false');
+        var has = choicesForMeal(key, p.id, dialogMeal).length > 0;
+        b.innerHTML = avatarHtml(p, 'avatar') +
+          '<span>' + esc(p.name) + (has ? ' ✓' : '') + '</span>';
+        b.addEventListener('click', function () { dialogPersonId = p.id; renderChoiceDialog(); });
+        peopleEl.appendChild(b);
+      });
+      var optsEl = $('choiceOptions');
+      optsEl.innerHTML = '';
+      var mealOptions = state.options.filter(function (o) { return optionHasMeal(o, dialogMeal); });
+      if (!mealOptions.length) {
+        optsEl.innerHTML = '<p class="hint">No ' + mealLabel(dialogMeal).toLowerCase() + ' options yet — add some in Manage.</p>';
+        return;
+      }
+      mealOptions.forEach(function (o) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'optbtn' + (choicesForMeal(key, dialogPersonId, dialogMeal).indexOf(o.id) !== -1 ? ' chosen' : '');
+        b.style.borderColor = o.color || '';
+        b.innerHTML = optionVisual(o, 'otimg') + '<span class="nm">' + esc(o.name) + '</span>';
+        // Multi-toggle: tap adds or removes this option from the
+        // person's set for this meal/day. No auto-advance — the
+        // person stays selected so several taps accumulate, and Done
+        // closes the dialog.
+        b.addEventListener('click', function () {
+          var map = mealPicks(dialogMeal);
+          if (!map[key]) map[key] = {};
+          var cur = map[key][dialogPersonId];
+          var arr = Array.isArray(cur) ? cur.slice() : ((typeof cur === 'string' && cur) ? [cur] : []);
+          var i = arr.indexOf(o.id);
+          if (i !== -1) arr.splice(i, 1); else arr.push(o.id);
+          if (arr.length) map[key][dialogPersonId] = arr; else delete map[key][dialogPersonId];
+          save().then(function () {
+            renderChoiceDialog();
+            renderWeek();
+          });
+        });
+        optsEl.appendChild(b);
+      });
+    }
+    function openOptionDialog(id) {
+      editingOptionId = id || null;
+      var o = id ? optionById(id) : null;
+      $('optionTitle').textContent = o ? 'Edit option' : 'Add option';
+      $('optionName').value = o ? o.name : '';
+      $('optionEmojiCustom').value = o ? (o.emoji || '') : '';
+      $('optionImageUrl').value = o ? (o.imageUrl || '') : '';
+      var cur = o ? (o.emoji || '🍽️') : '🍽️';
+      var col = o ? (o.color || COLORS[0]) : COLORS[0];
+      dialogEmojiManual = !!o; // edits keep their emoji; only new options auto-default
+      pickRow($('optionEmojiPick'), FOOD_EMOJI, cur, function (v) { dialogEmojiManual = true; $('optionEmojiCustom').value = v; });
+      colorRow($('optionColorPick'), col, function (c) { $('optionColorPick').dataset.picked = c; });
+      $('optionColorPick').dataset.picked = col;
+      dialogMeals = o ? mealsOf(o).slice() : ['lunch'];
+      var mealsEl = $('optionMealsPick');
+      mealsEl.innerHTML = '';
+      MEALS.forEach(function (m) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'mealbtn';
+        b.textContent = m.emoji + ' ' + m.label;
+        b.dataset.meal = m.id;
+        b.setAttribute('aria-pressed', dialogMeals.indexOf(m.id) !== -1 ? 'true' : 'false');
+        b.addEventListener('click', function () {
+          var i = dialogMeals.indexOf(m.id);
+          if (i !== -1) {
+            if (dialogMeals.length === 1) return; // keep at least one meal tagged
+            dialogMeals.splice(i, 1);
+          } else dialogMeals.push(m.id);
+          Array.prototype.forEach.call(mealsEl.children, function (x) {
+            x.setAttribute('aria-pressed', dialogMeals.indexOf(x.dataset.meal) !== -1 ? 'true' : 'false');
+          });
+        });
+        mealsEl.appendChild(b);
+      });
+      openDialog($('optionDialog'));
+      setTimeout(function () { $('optionName').focus(); }, 50);
+    }
+
+    // ---- wiring ----
+    function bindStatic() {
+      $('prevBtn').addEventListener('click', function () {
+        var start = windowStart || windowedDays()[0];
+        windowStart = prevShownDay(start);
+        renderWeek();
+      });
+      $('nextBtn').addEventListener('click', function () {
+        var start = windowStart || windowedDays()[0];
+        windowStart = nextShownDay(start);
+        renderWeek();
+      });
+      $('todayBtn').addEventListener('click', function () { windowStart = null; weekMonday = defaultWeekMonday(); renderWeek(); });
+      $('manageBtn').addEventListener('click', function () { setView(view === 'manage' ? 'week' : 'manage'); });
+      $('addOptionBtn').addEventListener('click', function () { openOptionDialog(null); });
+      $('foodOptionsBtn').addEventListener('click', function () { renderManage(); openDialog($('foodDialog')); });
+      $('foodDoneBtn').addEventListener('click', function () { closeDialog($('foodDialog')); });
+      $('foodDialog').addEventListener('click', function (e) {
+        if (e.target === $('foodDialog')) closeDialog($('foodDialog'));
+      });
+      $('foodDialog').addEventListener('close', function () { renderAll(); });
+      $('choiceDoneBtn').addEventListener('click', function () { closeDialog($('choiceDialog')); });
+      $('choiceDialog').addEventListener('click', function (e) {
+        if (e.target === $('choiceDialog')) closeDialog($('choiceDialog'));
+      });
+      $('choiceDialog').addEventListener('close', function () { renderAll(); });
+      $('clearChoiceBtn').addEventListener('click', function () {
+        if (dialogDateKey && dialogPersonId) {
+          var map = mealPicks(dialogMeal);
+          if (map[dialogDateKey]) delete map[dialogDateKey][dialogPersonId];
+          save().then(function () { renderChoiceDialog(); renderWeek(); });
+        }
+      });
+      $('optionSaveBtn').addEventListener('click', function () {
+        var name = $('optionName').value.trim();
+        if (!name) { $('optionName').focus(); return; }
+        var emoji = ($('optionEmojiCustom').value.trim() || '🍽️').slice(0, 4);
+        var color = $('optionColorPick').dataset.picked || COLORS[0];
+        var img = $('optionImageUrl').value.trim();
+        if (img && !validImageUrl(img)) {
+          setSync('⚠️ Picture URL must start with http:// or https://.', true);
+          $('optionImageUrl').focus();
+          return;
+        }
+        var data = { name: name, emoji: emoji, color: color, meals: dialogMeals.slice(), imageUrl: img || null };
+        if (editingOptionId) {
+          var o = optionById(editingOptionId);
+          if (o) { o.name = data.name; o.emoji = data.emoji; o.color = data.color; o.meals = data.meals; o.imageUrl = data.imageUrl; delete o.serves; }
+        } else {
+          state.options.push(Object.assign({ id: uid() }, data));
+        }
+        setSync('');
+        save().then(function () { closeDialog($('optionDialog')); });
+      });
+      $('optionCancelBtn').addEventListener('click', function () { closeDialog($('optionDialog')); });
+      // Auto-default emoji: while adding a new option and no emoji has
+      // been picked by hand, a close name match pre-fills the emoji
+      // (and the picker row when the emoji is in it); no match clears
+      // back to unset. A manual pick — picker tap or typing in the
+      // custom field — stops auto-updating for this option.
+      $('optionName').addEventListener('input', function () {
+        if (editingOptionId || dialogEmojiManual) return;
+        var em = matchFoodEmoji($('optionName').value);
+        $('optionEmojiCustom').value = em;
+        syncEmojiPick(em);
+      });
+      $('optionEmojiCustom').addEventListener('input', function () { dialogEmojiManual = true; });
+      $('optionDialog').addEventListener('close', function () { renderAll(); });
+    }
+    function poll() {
+      // Skip refreshes while any dialog is open (native .open covers
+      // stacked dialogs too — the option dialog can sit on the food
+      // window — so a poll never re-renders a window in use.
+      if ($('choiceDialog').open || $('optionDialog').open || $('foodDialog').open) return;
+      loadRemote().then(function (doc) {
+        if (doc && JSON.stringify(normalize(doc)) !== JSON.stringify(state)) {
+          state = normalize(doc);
+          renderAll();
+        }
+      }).catch(function () {});
+    }
+    function boot() {
+      try {
+        var params = new URLSearchParams(window.location.search);
+        var theme = params.get('theme');
+        if (theme === 'dark' || theme === 'light') document.documentElement.setAttribute('data-theme', theme);
+      } catch (e) {}
+      // A display that once filtered people keeps the stale key; it
+      // no longer affects rendering, but clear it so nothing stale
+      // lingers for a future reader.
+      try { localStorage.removeItem('homeglowMealChoice.displayPeople'); } catch (e) {}
+      bindStatic();
+      // Responsive week: re-render when the widget's width changes the
+      // day count. Only the count matters, so re-render only when it moves.
+      try {
+        if (typeof ResizeObserver === 'function') {
+          var lastCount = -1;
+          new ResizeObserver(function () {
+            if (!state) return;
+            var w = $('weekView') ? $('weekView').clientWidth : 0;
+            if (w && w !== containerWidth) {
+              containerWidth = w;
+              var total = visibleDays().length;
+              var c = fitCount(total);
+              if (c !== lastCount) { lastCount = c; if (state) renderWeek(); }
+            }
+          }).observe($('weekView'));
+        }
+      } catch (e) {}
+      loadSettings().then(function () {
+        return loadRemote();
+      }).then(function (doc) {
+        if (doc) {
+          state = normalize(doc);
+          recoveryPending = false;
+        } else {
+          // No remote document yet: start empty locally. recoveryPending
+          // only applies when a read FAILED; a missing doc is a first run.
+          state = defaultState();
+        }
+        weekMonday = defaultWeekMonday();
+        return loadUsers();
+      }).then(function () {
+        renderAll();
+        pollTimer = setInterval(poll, Math.max(5, settings.pollSeconds) * 1000);
+      }).catch(function () {
+        recoveryPending = true;
+        state = defaultState();
+        weekMonday = defaultWeekMonday();
+        renderAll();
+        setSync('⚠️ Couldn’t read the household choices — showing this display only until storage comes back.', true);
+        pollTimer = setInterval(function () {
+          loadRemote().then(function (doc) {
+            if (doc) { recoveryPending = false; state = normalize(doc); setSync(''); renderAll(); }
+          }).catch(function () {});
+        }, Math.max(5, settings.pollSeconds) * 1000);
+      });
+    }
+    document.addEventListener('DOMContentLoaded', boot);
+  })();
+  </script>
+</body>
+</html>
