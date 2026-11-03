@@ -36,19 +36,25 @@
     document must fit the 64 KB per-key storage cap, which rules out
     full photos as data URLs. See MealChoice.md.
 
-    The week view fits its container: it shows a window of days
-    starting at the next meal to pick (tomorrow, or the next school
-    day when tomorrow is not one), and the number of days shown grows
-    with the widget's actual width — a small widget shows only that
-    next day, a large one shows the full week. Manage's "Days to show"
-    setting (1-5, default 1) caps how many days ahead appear, so a
-    household can ask for just the next day even on a wide display;
-    narrow displays still show fewer when the cards don't fit. Day
-    cards stretch to fill the row. ‹/› step the window one shown day
-    at a time; Today returns to the next meal to pick. Every pick row in the week view and the
-    Today box carries its chooser (picture or generic glyph) and its
-    meal label, with a divider between rows, so it is always clear
-    who chose what for which meal.
+    The week view fits its container: it shows a window of
+    daysToShow consecutive shown days starting at the first shown
+    day after today — tomorrow, or Monday when tomorrow falls on a
+    hidden weekend day — since today's lunch was packed the night
+    before, so today is not what needs planning, and there is no
+    separate today card. If the forward run from that anchor would
+    cross a Monday-week boundary, the spilling days are replaced
+    with previous shown days from the start week (going backward
+    from the anchor: today, then earlier), so the window stays
+    within one Monday-week: 1 day shows just that next day; 5 days
+    shows the current week Monday–Thursday, and next week on Friday. Manage's "Days to show" setting (1-5,
+    default 1) is the total count, so a household can ask for just
+    tomorrow even on a wide display; narrow displays still show
+    fewer when the cards don't fit. Day cards stretch to fill the
+    row. ‹/› step the window one shown day at a time; Tomorrow
+    resets to the default window. Every pick row in the week view
+    carries its chooser (picture or generic glyph) and its meal
+    label, with a divider between rows, so it is always clear who
+    chose what for which meal.
 
     Storage (the contract other writers must follow):
       HomeGlow.storage key "data", value:
@@ -133,12 +139,12 @@
     button { font: inherit; cursor: pointer; }
     .head { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.25rem; }
     .head .spacer { flex: 1; }
-    .navbtn, .managebtn, .todaybtn {
+    .navbtn, .managebtn, .tomorrowbtn {
       border: 1px solid var(--border, #ccc); border-radius: 10px;
       background: var(--card, rgba(255,255,255,0.6)); color: inherit;
       padding: 0.5rem 0.8rem; min-height: 44px;
     }
-    [data-theme="dark"] .navbtn, [data-theme="dark"] .managebtn, [data-theme="dark"] .todaybtn {
+    [data-theme="dark"] .navbtn, [data-theme="dark"] .managebtn, [data-theme="dark"] .tomorrowbtn {
       background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.2);
     }
     .weeklabel { font-weight: 600; margin: 0.25rem 0 0.75rem; }
@@ -147,21 +153,6 @@
       padding: 0.75rem; margin-bottom: 0.75rem;
     }
     .banner button { margin-top: 0.5rem; }
-    .todaybox {
-      border-radius: 12px; padding: 0.75rem; margin-bottom: 0.75rem;
-      background: var(--card, rgba(255,255,255,0.6));
-      border: 1px solid var(--border, #ddd);
-    }
-    [data-theme="dark"] .todaybox { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.15); }
-    .todaybox h2 { font-size: 1rem; margin: 0 0 0.5rem; }
-    .todayperson + .todayperson { border-top: 1px solid rgba(0,0,0,0.12); margin-top: 0.25rem; padding-top: 0.25rem; }
-    [data-theme="dark"] .todayperson + .todayperson { border-top-color: rgba(255,255,255,0.15); }
-    .todayperson .personhead { display: flex; align-items: center; gap: 0.5rem; font-weight: 700; padding: 0.3rem 0 0.1rem; }
-    .todayperson .avatar { width: 26px; height: 26px; object-fit: cover; border-radius: 50%; flex: none; }
-    .todayperson .avatar-fallback { font-size: 1.3rem; }
-    .todaymeal { display: flex; align-items: center; gap: 0.5rem; padding: 0.3rem 0; }
-    .todaymeal .choice { font-weight: 600; }
-    .todaymeal .choice .em { font-size: 1.4rem; }
     .personchip {
       display: inline-flex; align-items: center; gap: 0.4rem;
       border: 1px solid var(--border, #ccc); border-radius: 999px;
@@ -190,18 +181,16 @@
        must never visually run into the lunch picks below it. */
     .mealsub + .mealsub { border-top: 1px solid rgba(0,0,0,0.12); margin-top: 0.25rem; padding-top: 0.25rem; }
     [data-theme="dark"] .mealsub + .mealsub { border-top-color: rgba(255,255,255,0.15); }
-    .todaymeal + .todaymeal { border-top: 1px solid rgba(0,0,0,0.12); margin-top: 0.25rem; padding-top: 0.25rem; }
-    [data-theme="dark"] .todaymeal + .todaymeal { border-top-color: rgba(255,255,255,0.15); }
     .persongroup .personhead { display: flex; align-items: center; gap: 0.4rem; font-weight: 700; padding: 0.2rem 0 0.1rem; }
     .mealsub { display: flex; align-items: center; gap: 0.4rem; padding: 0.2rem 0; font-size: 0.9rem; }
     .mealsub .em { font-size: 1.3rem; }
     .mealsub .none { opacity: 0.6; }
-    .mealsub .pickstack, .todaymeal .pickstack { display: flex; flex-direction: column; gap: 0.1rem; }
-    .mealsub .pickstack .pick, .todaymeal .pickstack .pick { display: flex; align-items: center; gap: 0.4rem; }
+    .mealsub .pickstack { display: flex; flex-direction: column; gap: 0.1rem; }
+    .mealsub .pickstack .pick { display: flex; align-items: center; gap: 0.4rem; }
     /* Option pictures in pick rows replace the emoji, so they render
        at roughly emoji size (1.4rem square, cropped, never stretched)
        — an unconstrained photo at natural size used to blow rows up. */
-    .mealsub .pick img.em, .todaymeal .pick img.em { width: 1.4rem; height: 1.4rem; object-fit: cover; border-radius: 6px; flex: none; }
+    .mealsub .pick img.em { width: 1.4rem; height: 1.4rem; object-fit: cover; border-radius: 6px; flex: none; }
     .manage h2 { font-size: 1.05rem; margin: 1rem 0 0.5rem; }
     .mrow {
       display: flex; align-items: center; gap: 0.5rem; padding: 0.45rem 0;
@@ -283,7 +272,7 @@
     }
     .mealbtn[aria-pressed="true"] { outline: 3px solid var(--accent, #4a90d9); outline-offset: 1px; }
     .mealsub .meallabel { font-size: 0.8rem; opacity: 0.75; }
-    /* Divider between person groups in a day card / Today box, so one
+    /* Divider between person groups in a day card, so one
        person's picks never visually run into the next person's, and
        between meal subgroups within a person, so snack picks never
        visually run into lunch picks — the person's name appears once. */
@@ -300,7 +289,7 @@
     <div class="head">
       <h1>🍽️ Meal Choice</h1>
       <span class="spacer"></span>
-      <button type="button" class="todaybtn" id="todayBtn">Today</button>
+      <button type="button" class="tomorrowbtn" id="tomorrowBtn">Tomorrow</button>
       <button type="button" class="navbtn" id="prevBtn" aria-label="Previous day">‹</button>
       <button type="button" class="navbtn" id="nextBtn" aria-label="Next day">›</button>
       <button type="button" class="managebtn" id="manageBtn">Manage</button>
@@ -309,7 +298,6 @@
 
     <div id="weekView">
       <div id="emptyBanner" class="banner hidden"></div>
-      <div id="todayBox" class="todaybox hidden"></div>
       <div class="daygrid" id="dayGrid"></div>
     </div>
 
@@ -438,7 +426,7 @@
     var containerWidth = 0; // .wrap width in px, via ResizeObserver (0 = unmeasured: show the full week)
     var settings = { pollSeconds: 10 };
     var weekMonday = null; // Monday of the shown calendar week (set after state loads)
-    var windowStart = null; // first shown day of a paged window; null = auto (next meal to pick)
+    var windowStart = null; // first shown day of a paged window; null = auto (tomorrow-anchored default window)
     var view = 'week'; // 'week' | 'manage'
     var dialogDateKey = null;
     var dialogPersonId = null;
@@ -486,10 +474,6 @@
       var count = state.showWeekends ? 7 : 5;
       for (var i = 0; i < count; i++) days.push(addDays(weekMonday, i));
       return days;
-    }
-    function todayIsChoosable() {
-      var dow = new Date().getDay();
-      return state.showWeekends || (dow !== 0 && dow !== 6);
     }
     function visiblePeople() {
       // One household selection, used on every display: the
@@ -741,8 +725,8 @@
     // calendar day when they are shown), so Fri steps to Mon with
     // weekends hidden and to Sat with weekends shown. The window is N
     // consecutive shown days from its start. windowStart is null until
-    // the user pages; then it pins the window start. Today clears it
-    // back to auto (the next meal to pick).
+    // the user pages; then it pins the window start. Tomorrow clears
+    // it back to auto (the tomorrow-anchored default window below).
     function isShownDay(d) {
       var dow = d.getDay();
       return state.showWeekends || (dow !== 0 && dow !== 6);
@@ -762,25 +746,39 @@
       while (!isShownDay(x)) x = addDays(x, -1);
       return x;
     }
+    // ---- tomorrow-anchored default window: the window holds
+    // daysToShow consecutive shown days starting at the first shown
+    // day strictly after today — tomorrow, or Monday when tomorrow
+    // falls on a hidden weekend day (today's lunch was packed the
+    // night before, so today is not what needs planning). If the
+    // forward run from that anchor would cross a Monday-week
+    // boundary, the spilling days are replaced with previous shown
+    // days from the start week (going backward from the anchor:
+    // today, then earlier), so the window stays within one
+    // Monday-week at daysToShow days. Worked cases (weekends hidden):
+    // Mon+5 is Mon-Fri of the current week; Wed+3 is Wed/Thu/Fri;
+    // Thu+3 is Wed/Thu/Fri; Fri+3 is Mon-Wed of NEXT week — the
+    // anchor itself is next Monday, the run crosses no boundary, so
+    // there is no backfill; Fri+5 is Mon-Fri of next week.
     function autoWindowedDays() {
-      var days = visibleDays();
-      var tk = todayKey();
-      var ai = -1;
-      for (var i = 0; i < days.length; i++) { if (dateKey(days[i]) > tk) { ai = i; break; } }
-      if (ai === -1) {
-        var containsToday = false;
-        for (var j = 0; j < days.length; j++) { if (dateKey(days[j]) === tk) containsToday = true; }
-        if (containsToday) {
-          // This week's meals are done (e.g. Friday, weekends hidden):
-          // advance to next week so the window shows the next meal to pick.
-          weekMonday = addDays(weekMonday, 7);
-          days = visibleDays();
-          ai = 0;
-        } else {
-          ai = 0; // a paged-to past/future week: start at its first day
-        }
+      var total = daysToShow();
+      var tomorrow = shownDaysFrom(addDays(startOfDay(new Date()), 1), 1)[0];
+      var startMon = mondayOf(tomorrow);
+      var forward = shownDaysFrom(tomorrow, total);
+      var kept = [];
+      for (var i = 0; i < forward.length; i++) {
+        if (dateKey(mondayOf(forward[i])) === dateKey(startMon)) kept.push(forward[i]);
+        else break;
       }
-      return days.slice(ai, ai + Math.max(1, Math.min(daysToShow(), days.length - ai, fitCount(days.length - ai))));
+      var need = total - kept.length;
+      var back = [];
+      var d = addDays(tomorrow, -1);
+      while (back.length < need && dateKey(mondayOf(d)) === dateKey(startMon)) {
+        if (isShownDay(d)) back.push(new Date(d.getTime()));
+        d = addDays(d, -1);
+      }
+      var days = back.reverse().concat(kept);
+      return days.slice(0, Math.max(1, Math.min(total, fitCount(total))));
     }
     function windowedDays() {
       if (windowStart) {
@@ -802,31 +800,6 @@
       $('weekLabel').textContent = first.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) +
         ' – ' + last.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     }
-    function renderTodayBox() {
-      var box = $('todayBox');
-      var tk = todayKey();
-      if (!visiblePeople().length || !todayIsChoosable()) { box.classList.add('hidden'); return; }
-      box.classList.remove('hidden');
-      var html = '<h2>Today — ' + esc(fmtDay(new Date())) + '</h2>';
-      // Rows are grouped by person: one header (avatar + name) per
-      // person, with that person's meal subgroups nested under it.
-      // Each subgroup keeps its meal label, so snack picks can never
-      // be mistaken for lunch picks; dividers separate people and meals.
-      visiblePeople().forEach(function (p) {
-        var block = '<div class="todayperson"><div class="personhead">' + personLabel(p) + '</div>';
-        enabledMealDefs().forEach(function (m) {
-          var picked = choicesForMeal(tk, p.id, m.id).map(function (id) { return optionById(id); }).filter(function (o) { return !!o; });
-          block += '<div class="todaymeal">';
-          block += '<span class="choice">' + m.emoji + ' ' + esc(m.label) + '</span>';
-          block += '<span class="choice">' +
-            (picked.length ? '<span class="pickstack">' + picked.map(function (o) { return '<span class="pick">' + optionVisual(o, 'em') + ' ' + esc(o.name) + '</span>'; }).join('') + '</span>' :
-              '<span class="none">' + (m.id === 'lunch' ? 'Not chosen yet' : 'No ' + m.label.toLowerCase() + ' yet') + '</span>') + '</span>';
-          block += '</div>';
-        });
-        html += block + '</div>';
-      });
-      box.innerHTML = html;
-    }
     function renderWeek() {
       var days = windowedDays();
       renderWeekLabel(days);
@@ -845,7 +818,6 @@
         banner.classList.add('hidden');
         banner.innerHTML = '';
       }
-      renderTodayBox();
       var tk = todayKey();
       var grid0 = $('dayGrid');
       grid0.className = 'daygrid cols' + days.length;
@@ -1011,10 +983,10 @@
       $('weekView').classList.toggle('hidden', v !== 'week');
       $('manageView').classList.toggle('hidden', v !== 'manage');
       // In Manage the header top-right collapses to a single Back
-      // button (the Manage button itself); Today and the day-step
+      // button (the Manage button itself); Tomorrow and the day-step
       // arrows return with the week view. There is no second
       // back button inside Manage.
-      $('todayBtn').classList.toggle('hidden', v === 'manage');
+      $('tomorrowBtn').classList.toggle('hidden', v === 'manage');
       $('prevBtn').classList.toggle('hidden', v === 'manage');
       $('nextBtn').classList.toggle('hidden', v === 'manage');
       $('manageBtn').textContent = v === 'manage' ? 'Back' : 'Manage';
@@ -1194,7 +1166,7 @@
         windowStart = nextShownDay(start);
         renderWeek();
       });
-      $('todayBtn').addEventListener('click', function () { windowStart = null; weekMonday = defaultWeekMonday(); renderWeek(); });
+      $('tomorrowBtn').addEventListener('click', function () { windowStart = null; weekMonday = defaultWeekMonday(); renderWeek(); });
       $('manageBtn').addEventListener('click', function () { setView(view === 'manage' ? 'week' : 'manage'); });
       $('addOptionBtn').addEventListener('click', function () { openOptionDialog(null); });
       $('foodOptionsBtn').addEventListener('click', function () { renderManage(); openDialog($('foodDialog')); });

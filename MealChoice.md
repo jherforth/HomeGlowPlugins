@@ -22,40 +22,45 @@ so turning it back on restores them.
   without repeating anyone's name. A dash marks a meal nobody has
   chosen yet. Tap a day to choose. Past days are shown greyed out
   and can't be changed. Today is highlighted when it is visible. The week view fits its
-  container: it starts at the next meal to pick (tomorrow, or the
-  next school day when tomorrow is not one) and shows as many days as
-  fit — a small widget shows only that next day, a large one shows
-  the full week — up to the "Days to show" setting below. When
-  this week's meals are done (for example Friday with weekends
-  hidden), the view moves to next week, since that holds the next
-  meal to pick.
+  container: it shows "Days to show" consecutive shown days
+  starting at the first shown day after today — tomorrow, or
+  Monday when tomorrow falls on a hidden weekend day — since
+  today's lunch was packed the night before, so today is not what
+  needs planning, and there is no separate today card. If the
+  forward run from that anchor would cross a Monday-week
+  boundary, the spilling days are replaced with previous shown
+  days from the start week (going backward from the anchor: today,
+  then earlier), so the window stays within one week: 1 day shows
+  just that next day, 5 days shows the current week Monday–Thursday
+  and next week on Friday. A narrow display still
+  shows fewer when the day cards do not fit.
 - **Week navigation:** ‹ and › step the window one shown day at a
   time — from Monday, › shows Tuesday, not next Monday. When
   weekends are hidden the steps skip Saturday and Sunday, so Friday
   steps to Monday; when weekends are shown they step calendar days.
-  **Today** jumps back to the next meal to pick. When the window
+  **Tomorrow** resets the week view to the default window
+  (tomorrow-anchored, see above). When the window
   holds a single day, the header shows that date alone ("Nov 2,
   2026"), not a range repeating it; multi-day windows show the
   range from the first shown day to the last.
-- **Today box:** the top of the week view shows today's choices at a
-  glance, so packing in the morning is one look. On Saturday or Sunday
-  with weekends hidden there is no school meal to pack, so the Today
-  box is hidden too.
 - **Weekends (optional):** Manage has a "Show Saturday and Sunday"
   checkbox, off by default. Turning it on shows all seven days. It is
   a household-wide setting — every display sees the same week shape.
 - **Days to show:** Manage has a "Days to show" setting, 1–5,
-  default 1. It caps how many days ahead the week view shows,
-  starting at the next meal to pick: 1 shows just that next day, 5
-  shows up to the rest of the week. A narrow display still shows
+  default 1. It is the TOTAL number of days the week view shows,
+  starting at the first shown day after today: 1 shows just that
+  next day, 5 shows that day plus the next 4 shown days,
+  backfilled to stay within one week when
+  the forward run would cross into next week (see Week view).
+  A narrow display still shows
   fewer when the day cards do not fit. Like weekends, it is a
   household-wide setting — every display sees the same window. A
   document saved before this setting existed has no field and
   behaves as 1, the current default.
 - **Weekend edge case:** when today is Saturday or Sunday and weekends
-  are hidden, there is nothing pickable this week, so the week view
-  (and the Today button) default to *next* week's Monday–Friday
-  instead of showing an empty week.
+  are hidden, tomorrow is Monday of next week, so the window shows
+  next week's days (for example Saturday with 1 day shown gives
+  next Monday) instead of an empty week.
 - **Choose:** in the dialog, pick whose meal you're setting (the
   person chips), then tap options to add or remove them from that
   person's set for the day and meal — a person can pick more than
@@ -103,8 +108,8 @@ so turning it back on restores them.
 
 There is exactly one selection of people: the household users
 checked in Manage, stored in the shared document as
-`selectedUserIds`. Every display shows those people — the week view,
-the Today box, and the choice dialog all use the same selection, so
+`selectedUserIds`. Every display shows those people — the week view
+and the choice dialog all use the same selection, so
 the wall and a phone always agree on who is choosing.
 
 The per-display "On this display" filter is gone: Manage no longer
