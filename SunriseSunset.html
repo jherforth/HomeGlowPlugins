@@ -332,15 +332,21 @@
     // content fills a wide wall widget instead of sitting small in it, and
     // shrinks (never overflows) in a small one. The scale is the smaller of
     // the width and height ratios against the design size, clamped so tiny
-    // widgets stay readable and huge ones stay sane. Observed on the
-    // viewport (iframe size), which content can never resize — no feedback
-    // loop. Without JS, --s stays 1 and the widget renders at base size.
+    // widgets stay readable and huge ones stay sane. Observed on the widget
+    // container itself (100% of the iframe, so exogenous — content can never
+    // resize it), which also accounts for the body padding and borders the
+    // raw viewport size misses; that padding is why a viewport-based scale
+    // overshot by 5-8px. The scale change only moves the container by the
+    // padding delta (gain ~0.05), so the observer converges at once, and
+    // updates smaller than 0.01 are skipped. Without JS, --s stays 1 and
+    // the widget renders at base size.
     function initScaling() {
       const root = document.documentElement;
-      const BASE_W = 360, BASE_H = 340, MIN_S = 0.7, MAX_S = 3;
+      const box = document.querySelector('.widget-container');
+      const BASE_W = 352, BASE_H = 332, MIN_S = 0.7, MAX_S = 3;
       let current = -1;
       function update() {
-        const w = root.clientWidth, h = root.clientHeight;
+        const w = box.clientWidth, h = box.clientHeight;
         if (!w || !h) return;
         let s = Math.min(w / BASE_W, h / BASE_H);
         s = Math.max(MIN_S, Math.min(MAX_S, s));
@@ -349,7 +355,7 @@
         root.style.setProperty('--s', s.toFixed(3));
       }
       if (typeof ResizeObserver !== 'undefined') {
-        new ResizeObserver(update).observe(root);
+        new ResizeObserver(update).observe(box);
       } else {
         window.addEventListener('resize', update);
       }
