@@ -162,6 +162,81 @@
       border-radius: calc(4px * var(--s));
       transition: width 1s ease;
     }
+    /* Wide-short layout (wall lesson, 2026-11-03): at 610x210 the stacked
+       2x2 grid can only fit by shrinking to ~0.57, leaving ~10px times —
+       fitted but unreadable. Shrinking alone cannot satisfy both fit and
+       readability on a 3:1 widget, so wide widgets rearrange instead:
+       one row of four cards under a single header row, with the date
+       moved into the header (JS) and the daylight bar compressed to a
+       single line. Nothing is deleted: sunrise/sunset times, dawn/dusk,
+       golden hours, daylight bar, date, badge all stay. Triggered purely
+       on aspect ratio (>= 2.2), so it also helps landscape phones, and
+       every narrower/taller widget keeps the stacked layout untouched. */
+    .widget-container.layout-wide {
+      display: flex;
+      flex-direction: column;
+      padding: calc(0.5rem * var(--s)) calc(0.75rem * var(--s));
+    }
+    .widget-container.layout-wide .widget-header {
+      margin-bottom: calc(0.4rem * var(--s));
+      flex: none;
+    }
+    .widget-container.layout-wide .widget-title {
+      font-size: calc(1.0rem * var(--s));
+    }
+    .widget-container.layout-wide .date-display {
+      margin-bottom: 0;
+      font-size: calc(0.75rem * var(--s));
+      flex: 1;
+      text-align: center;
+    }
+    .widget-container.layout-wide .sun-grid {
+      grid-template-columns: repeat(4, 1fr);
+      gap: calc(0.5rem * var(--s));
+      margin-bottom: calc(0.5rem * var(--s));
+      flex: 1;
+    }
+    .widget-container.layout-wide .sun-card {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: calc(0.35rem * var(--s)) calc(0.3rem * var(--s));
+    }
+    .widget-container.layout-wide .sun-head {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: calc(0.3rem * var(--s));
+    }
+    .widget-container.layout-wide .sun-icon {
+      font-size: calc(0.85rem * var(--s));
+      margin-bottom: 0;
+    }
+    .widget-container.layout-wide .sun-label {
+      font-size: calc(0.6rem * var(--s));
+    }
+    .widget-container.layout-wide .sun-time {
+      font-size: calc(1.6rem * var(--s));
+      margin: calc(0.1rem * var(--s)) 0;
+    }
+    .widget-container.layout-wide .sun-sub {
+      font-size: calc(0.62rem * var(--s));
+    }
+    .widget-container.layout-wide .daylight-bar-section {
+      display: flex;
+      align-items: center;
+      gap: calc(0.6rem * var(--s));
+      padding: calc(0.35rem * var(--s)) calc(0.6rem * var(--s));
+      flex: none;
+    }
+    .widget-container.layout-wide .daylight-label {
+      margin-bottom: 0;
+      flex: none;
+      gap: calc(0.5rem * var(--s));
+    }
+    .widget-container.layout-wide .daylight-bar-track {
+      flex: 1;
+    }
     .setup-panel {
       display: none;
       flex-direction: column;
@@ -220,25 +295,21 @@
 
     <div class="sun-grid">
       <div class="sun-card sunrise">
-        <span class="sun-icon">🌅</span>
-        <div class="sun-label">Sunrise</div>
+        <div class="sun-head"><span class="sun-icon">🌅</span><span class="sun-label">Sunrise</span></div>
         <div class="sun-time" id="sunriseTime">--:--</div>
         <div class="sun-sub" id="dawnTime">Dawn: --:--</div>
       </div>
       <div class="sun-card sunset">
-        <span class="sun-icon">🌇</span>
-        <div class="sun-label">Sunset</div>
+        <div class="sun-head"><span class="sun-icon">🌇</span><span class="sun-label">Sunset</span></div>
         <div class="sun-time" id="sunsetTime">--:--</div>
         <div class="sun-sub" id="duskTime">Dusk: --:--</div>
       </div>
       <div class="sun-card golden-morning">
-        <span class="sun-icon">☀️</span>
-        <div class="sun-label">Golden Hour AM</div>
+        <div class="sun-head"><span class="sun-icon">☀️</span><span class="sun-label">Golden Hour AM</span></div>
         <div class="sun-time" id="goldenMorning">--:--</div>
       </div>
       <div class="sun-card golden-evening">
-        <span class="sun-icon">🌆</span>
-        <div class="sun-label">Golden Hour PM</div>
+        <div class="sun-head"><span class="sun-icon">🌆</span><span class="sun-label">Golden Hour PM</span></div>
         <div class="sun-time" id="goldenEvening">--:--</div>
       </div>
     </div>
@@ -362,16 +433,42 @@
     // (the wall fits at ~0.50), or the loop could never reach a fit.
     // The loop is a no-op wherever the estimate already fits, so sizes
     // that passed before are unchanged.
+    //
+    // Wide-short layout (readability lesson, 2026-11-03): fitting at
+    // 610x210 costs ~10px times — fitted but unreadable, and no amount of
+    // shrinking fixes that. So when the container is wide-short (aspect
+    // >= 2.2), the container gets .layout-wide (single row of four cards,
+    // compact header + daylight line) and the scale is computed against
+    // the wide design size (600x196, the wall container at s=1) instead
+    // of the stacked one. The date line moves into the header in wide
+    // mode and back out in stacked mode; the move is idempotent and the
+    // container size is exogenous (100% of the iframe), so the mode
+    // decision cannot flap: wall 3.01 is wide, the next-widest tested
+    // size (1200x650, 1.89) stays stacked.
     let sunriseRefit = null;
     function initScaling() {
       const root = document.documentElement;
       const box = document.querySelector('.widget-container');
-      const BASE_W = 352, BASE_H = 332, MIN_S = 0.4, MAX_S = 3;
+      const BASE_W = 352, BASE_H = 332, WIDE_W = 600, WIDE_H = 196;
+      const MIN_S = 0.4, MAX_S = 3, WIDE_ASPECT = 2.2;
       function apply(s) { root.style.setProperty('--s', s.toFixed(3)); }
       function update() {
         const w = box.clientWidth, h = box.clientHeight;
         if (!w || !h) return;
-        let s = Math.max(MIN_S, Math.min(MAX_S, Math.min(w / BASE_W, h / BASE_H)));
+        const wide = (w / h) >= WIDE_ASPECT;
+        box.classList.toggle('layout-wide', wide);
+        const dateEl = document.getElementById('dateDisplay');
+        const header = document.querySelector('.widget-header');
+        const badge = document.getElementById('statusBadge');
+        if (wide) {
+          if (dateEl.parentNode !== header) header.insertBefore(dateEl, badge);
+        } else {
+          if (dateEl.parentNode === header) {
+            box.insertBefore(dateEl, document.getElementById('setupPanel'));
+          }
+        }
+        const BW = wide ? WIDE_W : BASE_W, BH = wide ? WIDE_H : BASE_H;
+        let s = Math.max(MIN_S, Math.min(MAX_S, Math.min(w / BW, h / BH)));
         apply(s);
         let guard = 0;
         while (box.scrollHeight > box.clientHeight + 1 && s > MIN_S && guard++ < 60) {
