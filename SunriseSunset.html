@@ -280,6 +280,7 @@
         // First run: no coordinates yet — show the one-tap auto-detect.
         // Ongoing configuration lives in the Admin Panel.
         container.classList.add('needs-setup');
+        if (typeof sunriseRefit === 'function') sunriseRefit();
         return;
       }
       container.classList.remove('needs-setup');
@@ -330,40 +331,76 @@
       } catch (err) {
         console.error('Sun calculation error', err);
       }
+      // Content changed (times, badge, bar): re-run the fit-check in case
+      // the new text metrics differ from the pre-data render.
+      if (typeof sunriseRefit === 'function') sunriseRefit();
     }
 
 
     // Dynamic sizing: scale all sizes by the widget's own dimensions, so the
     // content fills a wide wall widget instead of sitting small in it, and
-    // shrinks (never overflows) in a small one. The scale is the smaller of
-    // the width and height ratios against the design size, clamped so tiny
-    // widgets stay readable and huge ones stay sane. Observed on the widget
-    // container itself (100% of the iframe, so exogenous — content can never
-    // resize it), which also accounts for the body padding and borders the
-    // raw viewport size misses; that padding is why a viewport-based scale
-    // overshot by 5-8px. The scale change only moves the container by the
-    // padding delta (gain ~0.05), so the observer converges at once, and
-    // updates smaller than 0.01 are skipped. Without JS, --s stays 1 and
-    // the widget renders at base size.
+    // shrinks (never overflows) in a small one. The scale starts from the
+    // smaller of the width and height ratios against the design size,
+    // clamped so tiny widgets stay readable and huge ones stay sane.
+    // Observed on the widget container itself (100% of the iframe, so
+    // exogenous — content can never resize it), which also accounts for
+    // the body padding and borders the raw viewport size misses; that
+    // padding is why a viewport-based scale overshot by 5-8px. The scale
+    // change only moves the container by the padding delta (gain ~0.05),
+    // so the observer converges at once. Without JS, --s stays 1 and the
+    // widget renders at base size.
+    //
+    // Fit-check (wall lesson, 2026-11-03): the ratio estimate alone is NOT
+    // enough. Real content can run taller than BASE_H assumes — on the
+    // wall the widget is 610x210 (not the 700x420 the harness assumed),
+    // its height ratio is 0.59, and the old 0.7 floor held the scale up
+    // while true content ran ~391px per unit scale vs 332 assumed, leaving
+    // 76px of overflow and a scrollbar with the daylight section cut off.
+    // So after the ratio estimate, shrink proportionally until the content
+    // actually fits (scrollHeight <= clientHeight, same for width). The
+    // floor is 0.4: it must sit below the fit point of short-wide widgets
+    // (the wall fits at ~0.50), or the loop could never reach a fit.
+    // The loop is a no-op wherever the estimate already fits, so sizes
+    // that passed before are unchanged.
+    let sunriseRefit = null;
     function initScaling() {
       const root = document.documentElement;
       const box = document.querySelector('.widget-container');
-      const BASE_W = 352, BASE_H = 332, MIN_S = 0.7, MAX_S = 3;
-      let current = -1;
+      const BASE_W = 352, BASE_H = 332, MIN_S = 0.4, MAX_S = 3;
+      function apply(s) { root.style.setProperty('--s', s.toFixed(3)); }
       function update() {
         const w = box.clientWidth, h = box.clientHeight;
         if (!w || !h) return;
-        let s = Math.min(w / BASE_W, h / BASE_H);
-        s = Math.max(MIN_S, Math.min(MAX_S, s));
-        if (Math.abs(s - current) < 0.01) return;
-        current = s;
-        root.style.setProperty('--s', s.toFixed(3));
+        let s = Math.max(MIN_S, Math.min(MAX_S, Math.min(w / BASE_W, h / BASE_H)));
+        apply(s);
+        let guard = 0;
+        while (box.scrollHeight > box.clientHeight + 1 && s > MIN_S && guard++ < 60) {
+          const ratio = box.clientHeight / box.scrollHeight;
+          let ns = s * ratio * 0.98;
+          if (s - ns < 0.005) ns = s - 0.01;
+          s = Math.max(MIN_S, ns);
+          apply(s);
+        }
+        guard = 0;
+        while (box.scrollWidth > box.clientWidth + 1 && s > MIN_S && guard++ < 60) {
+          const ratio = box.clientWidth / box.scrollWidth;
+          let ns = s * ratio * 0.98;
+          if (s - ns < 0.005) ns = s - 0.01;
+          s = Math.max(MIN_S, ns);
+          apply(s);
+        }
       }
+      sunriseRefit = update;
       if (typeof ResizeObserver !== 'undefined') {
         new ResizeObserver(update).observe(box);
       } else {
         window.addEventListener('resize', update);
       }
+      // Re-fit when fonts or stylesheets land late: content can grow after
+      // first paint without resizing the container, so the observer alone
+      // would never re-run.
+      window.addEventListener('load', update);
+      if (document.fonts && document.fonts.ready) document.fonts.ready.then(update);
       update();
     }
 
