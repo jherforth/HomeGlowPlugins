@@ -169,10 +169,15 @@
       justify-content: center;
       gap: calc(0.6rem * var(--s));
       padding: calc(1.2rem * var(--s)) calc(0.5rem * var(--s));
-      height: 100%;
       box-sizing: border-box;
     }
-    .widget-container.needs-setup .setup-panel { display: flex; }
+    /* Setup mode only: the container becomes a column flex so the panel
+       fills the space under the header (instead of height:100%, which
+       stacked a full-height panel under the header and overflowed once
+       the container stopped wrapping its content) and keeps its content
+       vertically centered. Data view is untouched (still block layout). */
+    .widget-container.needs-setup { display: flex; flex-direction: column; }
+    .widget-container.needs-setup .setup-panel { display: flex; flex: 1; }
     .widget-container.needs-setup .sun-grid,
     .widget-container.needs-setup .daylight-bar-section,
     .widget-container.needs-setup .date-display { display: none; }
