@@ -28,21 +28,23 @@
 }</script>
   <link rel="stylesheet" href="/index.css">
   <style>
+    :root { --s: 1; }
+    html, body { height: 100%; }
     body {
       background: transparent !important;
       font-family: 'Inter', sans-serif;
       margin: 0;
-      padding: 0.5rem;
+      padding: calc(0.5rem * var(--s));
       box-sizing: border-box;
-      font-size: 0.85rem;
+      font-size: calc(0.85rem * var(--s));
       color: var(--text, #333);
       user-select: none;
     }
     .widget-container {
       background: var(--card-bg, #ffffff) !important;
       border: 1px solid var(--card-border, #e5e5e5) !important;
-      border-radius: 12px;
-      padding: 0.75rem;
+      border-radius: calc(12px * var(--s));
+      padding: calc(0.75rem * var(--s));
       text-align: center;
       width: 100%;
       height: 100%;
@@ -53,32 +55,32 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: 0.4rem;
+      margin-bottom: calc(0.4rem * var(--s));
     }
     .widget-title {
-      font-size: 1.05rem;
+      font-size: calc(1.05rem * var(--s));
       font-weight: 700;
       margin: 0;
       display: flex;
       align-items: center;
-      gap: 0.4rem;
+      gap: calc(0.4rem * var(--s));
     }
     .date-display {
-      font-size: 0.75rem;
+      font-size: calc(0.75rem * var(--s));
       opacity: 0.7;
-      margin-bottom: 0.5rem;
+      margin-bottom: calc(0.5rem * var(--s));
       text-align: center;
     }
     .status-row {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      gap: 0.4rem;
-      font-size: 0.72rem;
+      gap: calc(0.4rem * var(--s));
+      font-size: calc(0.72rem * var(--s));
       font-weight: 700;
-      padding: 0.2rem 0.6rem;
-      border-radius: 20px;
-      margin-bottom: 0.5rem;
+      padding: calc(0.2rem * var(--s)) calc(0.6rem * var(--s));
+      border-radius: calc(20px * var(--s));
+      margin-bottom: calc(0.5rem * var(--s));
     }
     .status-row.is-day {
       background: rgba(245, 166, 35, 0.15) !important;
@@ -93,52 +95,52 @@
     .sun-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 0.5rem;
-      margin-bottom: 0.6rem;
+      gap: calc(0.5rem * var(--s));
+      margin-bottom: calc(0.6rem * var(--s));
     }
     .sun-card {
       background: rgba(var(--accent-rgb, 128,128,128), 0.05) !important;
       border: 1px solid var(--card-border, #eee);
-      border-radius: 8px;
-      padding: 0.5rem 0.4rem;
+      border-radius: calc(8px * var(--s));
+      padding: calc(0.5rem * var(--s)) calc(0.4rem * var(--s));
       text-align: center;
     }
-    .sun-card.sunrise { border-left: 3px solid #f5a623; }
-    .sun-card.sunset { border-left: 3px solid #e87040; }
-    .sun-card.golden-morning { border-left: 3px solid #ffd700; }
-    .sun-card.golden-evening { border-left: 3px solid #ff8c00; }
+    .sun-card.sunrise { border-left: calc(3px * var(--s)) solid #f5a623; }
+    .sun-card.sunset { border-left: calc(3px * var(--s)) solid #e87040; }
+    .sun-card.golden-morning { border-left: calc(3px * var(--s)) solid #ffd700; }
+    .sun-card.golden-evening { border-left: calc(3px * var(--s)) solid #ff8c00; }
     .sun-icon {
-      font-size: 1.4rem;
-      margin-bottom: 0.15rem;
+      font-size: calc(1.4rem * var(--s));
+      margin-bottom: calc(0.15rem * var(--s));
       display: block;
     }
     .sun-label {
-      font-size: 0.65rem;
+      font-size: calc(0.65rem * var(--s));
       font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 0.05em;
       opacity: 0.7;
     }
     .sun-time {
-      font-size: 1.15rem;
+      font-size: calc(1.15rem * var(--s));
       font-weight: 800;
       color: #00ddeb;
-      margin: 0.1rem 0;
+      margin: calc(0.1rem * var(--s)) 0;
     }
     .sun-sub {
-      font-size: 0.65rem;
+      font-size: calc(0.65rem * var(--s));
       opacity: 0.7;
     }
     .daylight-bar-section {
       background: rgba(var(--accent-rgb, 128,128,128), 0.05) !important;
       border: 1px solid var(--card-border, #eee);
-      border-radius: 8px;
-      padding: 0.5rem 0.6rem;
+      border-radius: calc(8px * var(--s));
+      padding: calc(0.5rem * var(--s)) calc(0.6rem * var(--s));
     }
     .daylight-label {
-      font-size: 0.72rem;
+      font-size: calc(0.72rem * var(--s));
       font-weight: 600;
-      margin-bottom: 0.3rem;
+      margin-bottom: calc(0.3rem * var(--s));
       display: flex;
       justify-content: space-between;
       align-items: center;
@@ -148,16 +150,16 @@
       font-weight: 700;
     }
     .daylight-bar-track {
-      height: 8px;
+      height: calc(8px * var(--s));
       background: rgba(128, 128, 128, 0.2) !important;
-      border-radius: 4px;
+      border-radius: calc(4px * var(--s));
       overflow: hidden;
       position: relative;
     }
     .daylight-bar-fill {
       height: 100%;
       background: linear-gradient(90deg, #f5a623, #ffd700, #e87040) !important;
-      border-radius: 4px;
+      border-radius: calc(4px * var(--s));
       transition: width 1s ease;
     }
     .setup-panel {
@@ -165,8 +167,8 @@
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      gap: 0.6rem;
-      padding: 1.2rem 0.5rem;
+      gap: calc(0.6rem * var(--s));
+      padding: calc(1.2rem * var(--s)) calc(0.5rem * var(--s));
       height: 100%;
       box-sizing: border-box;
     }
@@ -175,13 +177,13 @@
     .widget-container.needs-setup .daylight-bar-section,
     .widget-container.needs-setup .date-display { display: none; }
     .setup-text {
-      font-size: 0.9rem;
+      font-size: calc(0.9rem * var(--s));
       color: var(--text-secondary, #666);
     }
     .detect-btn {
-      font-size: 1rem;
-      padding: 0.55rem 1.2rem;
-      border-radius: 10px;
+      font-size: calc(1rem * var(--s));
+      padding: calc(0.55rem * var(--s)) calc(1.2rem * var(--s));
+      border-radius: calc(10px * var(--s));
       border: 1px solid var(--card-border, #e5e5e5);
       background: var(--accent, #f5a623);
       color: #fff;
@@ -189,7 +191,7 @@
     }
     .detect-btn:disabled { opacity: 0.6; cursor: wait; }
     .setup-error {
-      font-size: 0.8rem;
+      font-size: calc(0.8rem * var(--s));
       color: #c0392b;
       min-height: 1.2em;
     }
@@ -207,7 +209,7 @@
     <div class="setup-panel" id="setupPanel">
       <div class="setup-text">No location configured yet.</div>
       <button class="detect-btn" id="detectBtn">📍 Auto-Detect Location</button>
-      <div class="setup-text" style="font-size: 0.78rem;">…or set coordinates in the Admin Panel.</div>
+      <div class="setup-text" style="font-size: calc(0.78rem * var(--s));">…or set coordinates in the Admin Panel.</div>
       <div class="setup-error" id="setupError"></div>
     </div>
 
@@ -325,8 +327,38 @@
       }
     }
 
+
+    // Dynamic sizing: scale all sizes by the widget's own dimensions, so the
+    // content fills a wide wall widget instead of sitting small in it, and
+    // shrinks (never overflows) in a small one. The scale is the smaller of
+    // the width and height ratios against the design size, clamped so tiny
+    // widgets stay readable and huge ones stay sane. Observed on the
+    // viewport (iframe size), which content can never resize — no feedback
+    // loop. Without JS, --s stays 1 and the widget renders at base size.
+    function initScaling() {
+      const root = document.documentElement;
+      const BASE_W = 360, BASE_H = 340, MIN_S = 0.7, MAX_S = 3;
+      let current = -1;
+      function update() {
+        const w = root.clientWidth, h = root.clientHeight;
+        if (!w || !h) return;
+        let s = Math.min(w / BASE_W, h / BASE_H);
+        s = Math.max(MIN_S, Math.min(MAX_S, s));
+        if (Math.abs(s - current) < 0.01) return;
+        current = s;
+        root.style.setProperty('--s', s.toFixed(3));
+      }
+      if (typeof ResizeObserver !== 'undefined') {
+        new ResizeObserver(update).observe(root);
+      } else {
+        window.addEventListener('resize', update);
+      }
+      update();
+    }
+
     document.addEventListener('DOMContentLoaded', () => {
       applyTheme();
+      initScaling();
       wireDetectButton();
       updateSunData();
     });
