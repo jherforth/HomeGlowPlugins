@@ -144,17 +144,22 @@ The widget also reflows with its dashboard size: narrow widgets get
 compact rows, wide widgets get roomier rows and larger touch
 targets, so the same widget reads well at any dashboard size.
 
-## Settings (household)
-
-- **How often to check for changes (seconds)** — default 10, minimum 5.
-
 ## How updates work
 
-The widget polls its stored document every few seconds, so a change
-made on another display appears without reloading. Polling never
-clobbers an edit you are typing. If two displays edit at the same
-time, the last write wins — there is no merge, so avoid editing the
-same list on two screens at once.
+The widget subscribes to the `plugin.storage.changed` push event, so
+a change made on another display appears without reloading — it does
+not poll. The event carries only the plugin id and the write's
+revision, never a key, so the widget re-fetches its stored document
+and re-renders. Push refresh never clobbers an edit you are typing:
+a refresh is skipped while the add form or an inline edit is dirty,
+and applied when the edit closes.
+The widget never writes storage in response to the event, and never
+skips events carrying its own revisions (one event can stand for
+several writes). Requires a server with the push implementation: an
+older server rejects the install, so there is no older-server
+fallback. If two displays edit at the same time, the last write wins
+— there is no merge, so avoid editing the same list on two screens
+at once.
 
 ## Storage contract (for tinkerers)
 

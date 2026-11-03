@@ -88,10 +88,19 @@
     its picks everywhere but keeps them saved.
     Older docs without showWeekends default to false.
     Choices are local dates (YYYY-MM-DD from local parts, never UTC).
-    The widget polls storage (default every 10s, setting `pollSeconds`)
-    so choices from another display appear without a reload. Polling
-    never clobbers an in-progress edit: a refresh is skipped while any
-    dialog is open. Concurrent edits: last write wins.
+    The widget subscribes to the `plugin.storage.changed` push event
+    (manifest `"events": ["plugin.storage.changed"]`) so choices from
+    another display appear without a reload — no polling. The event
+    carries only the plugin id and the write's revision, never a key,
+    so the handler re-fetches the stored document and re-renders.
+    Push refresh never clobbers an in-progress edit: a refresh is
+    skipped while any dialog is open, and applied when the dialog
+    closes. The handler never writes storage
+    in response to the event, and never skips events carrying its own
+    revisions (one event can stand for several writes). Requires a
+    server with the push implementation: an older server rejects the
+    install, so there is no older-server fallback. Concurrent edits:
+    last write wins.
 
     What it deliberately does NOT do: prices, reminders or due dates
     (those belong to chores), or any integration with other apps. Picks
@@ -105,15 +114,7 @@
     "description": "Pick the day's meals: a week view where each person taps a day and chooses breakfast, snack, lunch, or dinner from parent-managed options, shown with big emoji so pre-readers can choose too.",
     "apiVersion": "v1",
     "storage": true,
-    "settings": [
-      {
-        "key": "pollSeconds",
-        "label": "How often to check for choices from other displays (seconds)",
-        "type": "number",
-        "default": 10,
-        "scope": "household"
-      }
-    ]
+    "events": ["plugin.storage.changed"]
   }
   </script>
   <link rel="stylesheet" href="/index.css">
@@ -436,7 +437,6 @@
     var coreUsers = []; // household users from GET /api/users, excluding the id-0 bonus pseudo-user
     var usersError = false;
     var containerWidth = 0; // .wrap width in px, via ResizeObserver (0 = unmeasured: show the full week)
-    var settings = { pollSeconds: 10 };
     var weekMonday = null; // Monday of the shown calendar week (set after state loads)
     var windowStart = null; // first shown day of a paged window; null = auto (next meal to pick)
     var view = 'week'; // 'week' | 'manage'
@@ -448,7 +448,7 @@
     var editingOptionId = null;
     var recoveryPending = false;
     var syncWarned = false;
-    var pollTimer = null;
+    var refreshPending = false; // a push skipped while a dialog is open, applied when it closes
     var armedDelete = {}; // id -> timeout handle for two-tap deletes
 
     function uid() { return 'x' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
@@ -604,16 +604,6 @@
         });
       }
       try { localStorage.setItem(LS_KEY, JSON.stringify(doc)); } catch (e) {}
-      return Promise.resolve();
-    }
-    function loadSettings() {
-      if (window.HomeGlow && window.HomeGlow.settings && typeof window.HomeGlow.settings.get === 'function') {
-        return window.HomeGlow.settings.get().then(function (s) {
-          if (s && typeof s === 'object' && typeof s.pollSeconds === 'number' && s.pollSeconds >= 5) {
-            settings.pollSeconds = s.pollSeconds;
-          }
-        }).catch(function () {});
-      }
       return Promise.resolve();
     }
     function defaultState() {
@@ -1202,12 +1192,12 @@
       $('foodDialog').addEventListener('click', function (e) {
         if (e.target === $('foodDialog')) closeDialog($('foodDialog'));
       });
-      $('foodDialog').addEventListener('close', function () { renderAll(); });
+      $('foodDialog').addEventListener('close', function () { renderAll(); applyPendingRefresh(); });
       $('choiceDoneBtn').addEventListener('click', function () { closeDialog($('choiceDialog')); });
       $('choiceDialog').addEventListener('click', function (e) {
         if (e.target === $('choiceDialog')) closeDialog($('choiceDialog'));
       });
-      $('choiceDialog').addEventListener('close', function () { renderAll(); });
+      $('choiceDialog').addEventListener('close', function () { renderAll(); applyPendingRefresh(); });
       $('clearChoiceBtn').addEventListener('click', function () {
         if (dialogDateKey && dialogPersonId) {
           var map = mealPicks(dialogMeal);
@@ -1249,19 +1239,55 @@
         syncEmojiPick(em);
       });
       $('optionEmojiCustom').addEventListener('input', function () { dialogEmojiManual = true; });
-      $('optionDialog').addEventListener('close', function () { renderAll(); });
+      $('optionDialog').addEventListener('close', function () { renderAll(); applyPendingRefresh(); });
     }
-    function poll() {
+    // ---- push: pick up other-display writes ----
+    // The `plugin.storage.changed` event carries only the plugin id and
+    // the write's revision, never a key, so the handler re-fetches the
+    // stored document and re-renders. It never writes storage itself,
+    // and it never skips events carrying this display's own revisions:
+    // one event can stand for several writes, so skipping could lose
+    // another display's write (reloading after an own write costs one
+    // extra fetch and is the safe behavior). A refresh skipped while
+    // a dialog is open is remembered and applied when the dialog
+    // closes, so the push-only widget self-heals exactly where
+    // polling's next tick used to (a still-open stacked dialog re-arms
+    // it via the guard below).
+    function refreshFromRemote() {
       // Skip refreshes while any dialog is open (native .open covers
       // stacked dialogs too — the option dialog can sit on the food
-      // window — so a poll never re-renders a window in use.
-      if ($('choiceDialog').open || $('optionDialog').open || $('foodDialog').open) return;
+      // window — so a push refresh never re-renders a window in use.
+      if ($('choiceDialog').open || $('optionDialog').open || $('foodDialog').open) { refreshPending = true; return; }
+      refreshPending = false;
       loadRemote().then(function (doc) {
-        if (doc && JSON.stringify(normalize(doc)) !== JSON.stringify(state)) {
+        if (!doc) return;
+        if (recoveryPending) {
+          // Boot read failed and storage is back: adopt the real document
+          // (the in-memory default is dropped — that beats overwriting the
+          // household's choices) and clear the warning.
+          recoveryPending = false;
+          state = normalize(doc);
+          setSync('');
+          renderAll();
+          return;
+        }
+        if (JSON.stringify(normalize(doc)) !== JSON.stringify(state)) {
           state = normalize(doc);
           renderAll();
         }
       }).catch(function () {});
+    }
+    // Deferred a tick so a save triggered by the close sends its write
+    // before this re-fetch runs.
+    function applyPendingRefresh() {
+      if (!refreshPending) return;
+      refreshPending = false;
+      setTimeout(function () { refreshFromRemote(); }, 0);
+    }
+    function subscribePush() {
+      if (window.HomeGlow && typeof window.HomeGlow.on === 'function') {
+        window.HomeGlow.on('plugin.storage.changed', function () { refreshFromRemote(); });
+      }
     }
     function boot() {
       try {
@@ -1291,9 +1317,7 @@
           }).observe($('weekView'));
         }
       } catch (e) {}
-      loadSettings().then(function () {
-        return loadRemote();
-      }).then(function (doc) {
+      loadRemote().then(function (doc) {
         if (doc) {
           state = normalize(doc);
           recoveryPending = false;
@@ -1306,18 +1330,16 @@
         return loadUsers();
       }).then(function () {
         renderAll();
-        pollTimer = setInterval(poll, Math.max(5, settings.pollSeconds) * 1000);
+        subscribePush();
       }).catch(function () {
         recoveryPending = true;
         state = defaultState();
         weekMonday = defaultWeekMonday();
         renderAll();
         setSync('⚠️ Couldn’t read the household choices — showing this display only until storage comes back.', true);
-        pollTimer = setInterval(function () {
-          loadRemote().then(function (doc) {
-            if (doc) { recoveryPending = false; state = normalize(doc); setSync(''); renderAll(); }
-          }).catch(function () {});
-        }, Math.max(5, settings.pollSeconds) * 1000);
+        // No retry timer: recovery arrives via the next push event, which
+        // refreshFromRemote adopts (clearing recoveryPending above).
+        subscribePush();
       });
     }
     document.addEventListener('DOMContentLoaded', boot);
