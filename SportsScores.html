@@ -9,12 +9,13 @@
     "id": "sports-scores",
     "name": "Sports Scores",
     "author": "HomeGlow",
-    "description": "Scores and schedules for the leagues you pick: NFL, college football, NBA, MLB, NHL, MLS and the Premier League, from TheSportsDB. Pick favorite teams to see just theirs. A free key is built in; you can add your own. Checks every few minutes while a game is on, and about once an hour otherwise.",
+    "description": "Scores and schedules for the leagues you pick: NFL, college football, NBA, MLB, NHL, MLS and the Premier League. Pick a data source: ESPN (no key needed) or TheSportsDB (uses the key below). Pick favorite teams to see just theirs. Checks every few minutes while a game is on, and about once an hour otherwise.",
     "category": "news-weather",
     "version": "1.1.0",
     "apiVersion": "v1",
     "settings": [
-      { "key": "apiKey", "label": "TheSportsDB API key (123 is the free public key)", "type": "string", "default": "123", "scope": "household" },
+      { "key": "dataSource", "label": "Data source (ESPN needs no key; TheSportsDB uses the key below)", "type": "select", "options": ["TheSportsDB", "ESPN"], "default": "TheSportsDB", "scope": "household" },
+      { "key": "apiKey", "label": "TheSportsDB API key (123 is the free public key; only used when the data source is TheSportsDB)", "type": "string", "default": "123", "scope": "household" },
       { "key": "teams", "label": "Favorite teams, comma-separated (full names find them best, e.g. Green Bay Packers, Milwaukee Brewers)", "type": "string", "default": "", "scope": "household" },
       { "key": "teamsOnly", "label": "Show only my teams' games (when favorite teams are set)", "type": "boolean", "default": true, "scope": "household" },
       { "key": "showNfl", "label": "NFL", "type": "boolean", "default": true, "scope": "household" },
@@ -214,12 +215,22 @@
     (function () {
       'use strict';
 
-      // TheSportsDB: free, no sign-up needed for the public key "123", and it
-      // allows cross-origin reads. (The old free key "3" is disabled for good:
-      // every request with it is refused, so a saved "3" is read as "123".) Each check makes one livescore request,
-      // which covers every sport at once. The full schedule and results are
-      // fetched per league at most once an hour, or when a live game ends.
+      // Two data sources, selected by the dataSource setting (default
+      // TheSportsDB, so existing users see no change unless they opt in):
+      // - TheSportsDB: free, no sign-up needed for the public key "123", and it
+      //   allows cross-origin reads. (The old free key "3" is disabled for good:
+      //   every request with it is refused, so a saved "3" is read as "123".) Each check makes one livescore request,
+      //   which covers every sport at once. The full schedule and results are
+      //   fetched per league at most once an hour, or when a live game ends.
+      // - ESPN: keyless, no account, one scoreboard request per league at
+      //   https://site.api.espn.com/apis/site/v2/sports/<sport>/<league>/scoreboard.
+      //   The default scoreboard covers today (the current week for football);
+      //   the ESPN path additionally fetches the next 7 days, one day at a
+      //   time, until a league has enough upcoming games, plus the previous
+      //   2 days for recent finals when a league is still short — so upcoming
+      //   fixtures and recent finals both show, as with TheSportsDB.
       var API = 'https://www.thesportsdb.com/api/v1/json/';
+      var ESPN_API = 'https://site.api.espn.com/apis/site/v2/sports/';
       var FULL_MS = 60 * 60 * 1000;
       var IDLE_MS = 30 * 60 * 1000;
       var SOON_MS = 30 * 60 * 1000;
@@ -228,18 +239,19 @@
       var MAX_TEAMS = 8;
 
       var LEAGUES = [
-        { id: '4391', name: 'NFL', setting: 'showNfl' },
-        { id: '4479', name: 'College football', setting: 'showCollegeFootball' },
-        { id: '4387', name: 'NBA', setting: 'showNba' },
-        { id: '4424', name: 'MLB', setting: 'showMlb' },
-        { id: '4380', name: 'NHL', setting: 'showNhl' },
-        { id: '4346', name: 'MLS', setting: 'showMls' },
-        { id: '4328', name: 'Premier League', setting: 'showPremierLeague' }
+        { id: '4391', espn: 'football/nfl', name: 'NFL', setting: 'showNfl' },
+        { id: '4479', espn: 'football/college-football', name: 'College football', setting: 'showCollegeFootball' },
+        { id: '4387', espn: 'basketball/nba', name: 'NBA', setting: 'showNba' },
+        { id: '4424', espn: 'baseball/mlb', name: 'MLB', setting: 'showMlb' },
+        { id: '4380', espn: 'hockey/nhl', name: 'NHL', setting: 'showNhl' },
+        { id: '4346', espn: 'soccer/usa.1', name: 'MLS', setting: 'showMls' },
+        { id: '4328', espn: 'soccer/eng.1', name: 'Premier League', setting: 'showPremierLeague' }
       ];
       var LEAGUE_BY_ID = {};
       LEAGUES.forEach(function (league) { LEAGUE_BY_ID[league.id] = league; });
 
       var DEFAULTS = {
+        dataSource: 'TheSportsDB',
         apiKey: '123',
         showNfl: true, showCollegeFootball: false, showNba: true, showMlb: true,
         showNhl: true, showMls: false, showPremierLeague: false,
@@ -302,6 +314,8 @@
           if (!/^[A-Za-z0-9]{1,32}$/.test(String(merged.apiKey))) merged.apiKey = DEFAULTS.apiKey;
           // The old free key, saved before TheSportsDB retired it.
           if (String(merged.apiKey) === '3') merged.apiKey = DEFAULTS.apiKey;
+          // Unknown data sources fall back to the default (TheSportsDB).
+          if (merged.dataSource !== 'ESPN' && merged.dataSource !== 'TheSportsDB') merged.dataSource = DEFAULTS.dataSource;
           merged.gamesPerLeague = clamp(merged.gamesPerLeague, 1, 10, DEFAULTS.gamesPerLeague);
           merged.liveMinutes = clamp(merged.liveMinutes, 2, 30, DEFAULTS.liveMinutes);
           return merged;
@@ -360,6 +374,146 @@
             games.push(toGame(event));
           });
           return games;
+        });
+      }
+
+      // ---- ESPN path (no key, no account) ----
+      function espnGet(path) {
+        return fetch(ESPN_API + path).then(function (response) {
+          if (!response.ok) throw new Error('HTTP ' + response.status);
+          return response.json();
+        });
+      }
+
+      // ESPN's dates parameter takes a viewer-local calendar day.
+      function espnDate(d) {
+        var m = d.getMonth() + 1, day = d.getDate();
+        return d.getFullYear() + (m < 10 ? '0' : '') + m + (day < 10 ? '0' : '') + day;
+      }
+
+      // Map one ESPN event onto the plugin's game shape, so the existing
+      // render, ordering, favorite filter, and status text all work unchanged.
+      function toEspnGame(event, league) {
+        var competitors = (event.competitions[0] || {}).competitors || [];
+        var home = null, away = null;
+        competitors.forEach(function (c) {
+          if (c.homeAway === 'home') home = c;
+          if (c.homeAway === 'away') away = c;
+        });
+        home = home || competitors[0] || {};
+        away = away || competitors[1] || {};
+        var type = (event.status || {}).type || {};
+        var state = type.state || 'pre';
+        var status, progress = '';
+        if (state === 'in') {
+          // ESPN's own live clock text (e.g. a quarter and clock) renders
+          // verbatim: statusText passes unknown codes through.
+          status = type.detail || 'Live';
+          progress = type.displayClock || '';
+        } else if (state === 'post') {
+          var desc = type.description || '';
+          if (/OT/i.test(desc)) status = 'AOT';
+          else if (/SO|Shootout|Pens/i.test(desc)) status = 'AP';
+          else status = 'FT';
+        } else {
+          state = 'pre';
+          status = 'NS';
+        }
+        function espnSide(c) {
+          var team = c.team || {};
+          return {
+            id: team.id || '',
+            name: team.displayName || team.shortDisplayName || 'TBD',
+            badge: team.logo || '',
+            score: c.score === null || c.score === undefined ? '' : String(c.score),
+            winner: !!c.winner
+          };
+        }
+        return {
+          id: String(event.id),
+          leagueId: league.id,
+          leagueName: league.name,
+          date: Date.parse(event.date),
+          status: status,
+          progress: progress,
+          home: espnSide(home),
+          away: espnSide(away),
+          state: state
+        };
+      }
+
+      // One league's ESPN games: the default scoreboard (today, or the
+      // current week for football), then one day at a time up to 7 days out
+      // until the league has enough upcoming or live games, then up to 2 days
+      // back for recent finals when it is still short. A failed day fetch is
+      // skipped; only a failed default scoreboard fails the league, so the
+      // per-league error UX still covers an ESPN outage.
+      function espnLeagueGames(league, want) {
+        var seen = {};
+        var games = [];
+        function add(events) {
+          (events || []).forEach(function (event) {
+            if (!event || seen[event.id]) return;
+            seen[event.id] = true;
+            games.push(toEspnGame(event, league));
+          });
+        }
+        function upcomingCount() {
+          return games.filter(function (g) { return g.state !== 'post'; }).length;
+        }
+        function dayFetch(offset) {
+          var d = new Date();
+          d.setDate(d.getDate() + offset);
+          return espnGet(league.espn + '/scoreboard?dates=' + espnDate(d)).then(function (json) {
+            add(json.events || []);
+          }, function () { /* skip a failed day */ });
+        }
+        var chain = espnGet(league.espn + '/scoreboard').then(function (json) {
+          add(json.events || []);
+        });
+        var f;
+        for (f = 1; f <= 7; f++) {
+          (function (off) {
+            chain = chain.then(function () {
+              if (upcomingCount() >= want) return;
+              return dayFetch(off);
+            });
+          })(f);
+        }
+        var b;
+        for (b = 1; b <= 2; b++) {
+          (function (off) {
+            chain = chain.then(function () {
+              if (games.length >= want) return;
+              return dayFetch(-off);
+            });
+          })(b);
+        }
+        return chain.then(function () { return games; });
+      }
+
+      // ESPN refresh: per-league scoreboards straight into the shared `full`
+      // map, so render and the per-league error notes work exactly as with
+      // TheSportsDB. Favorites match by team name (ESPN has no TheSportsDB
+      // ids), and no team lookup is needed. No live-row merge: ESPN's
+      // scoreboard already carries scores and status.
+      function espnRefresh(enabled) {
+        favorites = {
+          words: favoriteWords().map(function (w) { return w.toLowerCase(); }),
+          ids: {}, teams: [], missing: [], elsewhere: []
+        };
+        liveRows = {};
+        return Promise.all(enabled.map(function (league) {
+          return espnLeagueGames(league, settings.gamesPerLeague).then(function (games) {
+            full[league.id] = { games: games, error: false };
+          }, function () {
+            var before = full[league.id] || { games: [] };
+            full[league.id] = { games: before.games, error: true };
+          });
+        })).then(function () {
+          liveError = enabled.length > 0 && enabled.every(function (league) {
+            return full[league.id] && full[league.id].error;
+          });
         });
       }
 
@@ -664,6 +818,12 @@
         loadSettings().then(function (values) {
           settings = values;
           var enabled = LEAGUES.filter(function (league) { return settings[league.setting]; });
+          // ESPN path: scoreboards straight into `full`, then the shared
+          // tail below (checkedAt, failures, merge, render). TheSportsDB
+          // flow underneath is untouched.
+          if (settings.dataSource === 'ESPN') {
+            return espnRefresh(enabled).then(function () { return enabled; });
+          }
           if ((settings.teams || '') !== teamsAsked) needFull = true;
           var previouslyLive = Object.keys(liveRows);
           return fetchLive().then(function (rows) {
