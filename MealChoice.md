@@ -69,6 +69,16 @@ so turning it back on restores them.
   selected person's set for that day and meal. **Done** closes the
   dialog. When more than one meal is enabled, the dialog has a tab
   per enabled meal; with a single meal enabled there are no tabs.
+  Tapping a person's name on a day card opens the dialog for that
+  person; tapping one of their meal rows opens it for that person
+  and that meal; tapping elsewhere on the card keeps the old
+  default (the first person still to choose). A picked food stands
+  out in the dialog: its own border color thickened, a wash of that
+  color behind it, its name bolded, and a checkmark badge in the
+  corner; an unpicked food keeps its thin own-color border. The
+  Food options window fills the widget (its list scrolls inside
+  it) and lists options alphabetically; the stored order is
+  unchanged.
 - **Meals (optional):** Manage has a Meals list — Breakfast, Snack,
   Lunch, Dinner — each with its own checkbox. Lunch is on by default;
   the others are off. Turning a meal on adds a meal subgroup for it
