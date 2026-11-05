@@ -28,21 +28,23 @@
 }</script>
   <link rel="stylesheet" href="/index.css">
   <style>
+    :root { --s: 1; }
+    html, body { height: 100%; }
     body {
       background: transparent !important;
       font-family: 'Inter', sans-serif;
       margin: 0;
-      padding: 0.5rem;
+      padding: calc(0.5rem * var(--s));
       box-sizing: border-box;
-      font-size: 0.85rem;
+      font-size: calc(0.85rem * var(--s));
       color: var(--text, #333);
       user-select: none;
     }
     .widget-container {
       background: var(--card-bg, #ffffff) !important;
       border: 1px solid var(--card-border, #e5e5e5) !important;
-      border-radius: 12px;
-      padding: 0.75rem;
+      border-radius: calc(12px * var(--s));
+      padding: calc(0.75rem * var(--s));
       text-align: center;
       width: 100%;
       height: 100%;
@@ -53,32 +55,32 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: 0.4rem;
+      margin-bottom: calc(0.4rem * var(--s));
     }
     .widget-title {
-      font-size: 1.05rem;
+      font-size: calc(1.05rem * var(--s));
       font-weight: 700;
       margin: 0;
       display: flex;
       align-items: center;
-      gap: 0.4rem;
+      gap: calc(0.4rem * var(--s));
     }
     .date-display {
-      font-size: 0.75rem;
+      font-size: calc(0.75rem * var(--s));
       opacity: 0.7;
-      margin-bottom: 0.5rem;
+      margin-bottom: calc(0.5rem * var(--s));
       text-align: center;
     }
     .status-row {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      gap: 0.4rem;
-      font-size: 0.72rem;
+      gap: calc(0.4rem * var(--s));
+      font-size: calc(0.72rem * var(--s));
       font-weight: 700;
-      padding: 0.2rem 0.6rem;
-      border-radius: 20px;
-      margin-bottom: 0.5rem;
+      padding: calc(0.2rem * var(--s)) calc(0.6rem * var(--s));
+      border-radius: calc(20px * var(--s));
+      margin-bottom: calc(0.5rem * var(--s));
     }
     .status-row.is-day {
       background: rgba(245, 166, 35, 0.15) !important;
@@ -93,52 +95,52 @@
     .sun-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 0.5rem;
-      margin-bottom: 0.6rem;
+      gap: calc(0.5rem * var(--s));
+      margin-bottom: calc(0.6rem * var(--s));
     }
     .sun-card {
       background: rgba(var(--accent-rgb, 128,128,128), 0.05) !important;
       border: 1px solid var(--card-border, #eee);
-      border-radius: 8px;
-      padding: 0.5rem 0.4rem;
+      border-radius: calc(8px * var(--s));
+      padding: calc(0.5rem * var(--s)) calc(0.4rem * var(--s));
       text-align: center;
     }
-    .sun-card.sunrise { border-left: 3px solid #f5a623; }
-    .sun-card.sunset { border-left: 3px solid #e87040; }
-    .sun-card.golden-morning { border-left: 3px solid #ffd700; }
-    .sun-card.golden-evening { border-left: 3px solid #ff8c00; }
+    .sun-card.sunrise { border-left: calc(3px * var(--s)) solid #f5a623; }
+    .sun-card.sunset { border-left: calc(3px * var(--s)) solid #e87040; }
+    .sun-card.golden-morning { border-left: calc(3px * var(--s)) solid #ffd700; }
+    .sun-card.golden-evening { border-left: calc(3px * var(--s)) solid #ff8c00; }
     .sun-icon {
-      font-size: 1.4rem;
-      margin-bottom: 0.15rem;
+      font-size: calc(1.4rem * var(--s));
+      margin-bottom: calc(0.15rem * var(--s));
       display: block;
     }
     .sun-label {
-      font-size: 0.65rem;
+      font-size: calc(0.65rem * var(--s));
       font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 0.05em;
       opacity: 0.7;
     }
     .sun-time {
-      font-size: 1.15rem;
+      font-size: calc(1.15rem * var(--s));
       font-weight: 800;
       color: #00ddeb;
-      margin: 0.1rem 0;
+      margin: calc(0.1rem * var(--s)) 0;
     }
     .sun-sub {
-      font-size: 0.65rem;
+      font-size: calc(0.65rem * var(--s));
       opacity: 0.7;
     }
     .daylight-bar-section {
       background: rgba(var(--accent-rgb, 128,128,128), 0.05) !important;
       border: 1px solid var(--card-border, #eee);
-      border-radius: 8px;
-      padding: 0.5rem 0.6rem;
+      border-radius: calc(8px * var(--s));
+      padding: calc(0.5rem * var(--s)) calc(0.6rem * var(--s));
     }
     .daylight-label {
-      font-size: 0.72rem;
+      font-size: calc(0.72rem * var(--s));
       font-weight: 600;
-      margin-bottom: 0.3rem;
+      margin-bottom: calc(0.3rem * var(--s));
       display: flex;
       justify-content: space-between;
       align-items: center;
@@ -148,40 +150,120 @@
       font-weight: 700;
     }
     .daylight-bar-track {
-      height: 8px;
+      height: calc(8px * var(--s));
       background: rgba(128, 128, 128, 0.2) !important;
-      border-radius: 4px;
+      border-radius: calc(4px * var(--s));
       overflow: hidden;
       position: relative;
     }
     .daylight-bar-fill {
       height: 100%;
       background: linear-gradient(90deg, #f5a623, #ffd700, #e87040) !important;
-      border-radius: 4px;
+      border-radius: calc(4px * var(--s));
       transition: width 1s ease;
+    }
+    /* Wide-short layout (wall lesson, 2026-11-03): at 610x210 the stacked
+       2x2 grid can only fit by shrinking to ~0.57, leaving ~10px times —
+       fitted but unreadable. Shrinking alone cannot satisfy both fit and
+       readability on a 3:1 widget, so wide widgets rearrange instead:
+       one row of four cards under a single header row, with the date
+       moved into the header (JS) and the daylight bar compressed to a
+       single line. Nothing is deleted: sunrise/sunset times, dawn/dusk,
+       golden hours, daylight bar, date, badge all stay. Triggered purely
+       on aspect ratio (>= 2.2), so it also helps landscape phones, and
+       every narrower/taller widget keeps the stacked layout untouched. */
+    .widget-container.layout-wide {
+      display: flex;
+      flex-direction: column;
+      padding: calc(0.5rem * var(--s)) calc(0.75rem * var(--s));
+    }
+    .widget-container.layout-wide .widget-header {
+      margin-bottom: calc(0.4rem * var(--s));
+      flex: none;
+    }
+    .widget-container.layout-wide .widget-title {
+      font-size: calc(1.0rem * var(--s));
+    }
+    .widget-container.layout-wide .date-display {
+      margin-bottom: 0;
+      font-size: calc(0.75rem * var(--s));
+      flex: 1;
+      text-align: center;
+    }
+    .widget-container.layout-wide .sun-grid {
+      grid-template-columns: repeat(4, 1fr);
+      gap: calc(0.5rem * var(--s));
+      margin-bottom: calc(0.5rem * var(--s));
+      flex: 1;
+    }
+    .widget-container.layout-wide .sun-card {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: calc(0.35rem * var(--s)) calc(0.3rem * var(--s));
+    }
+    .widget-container.layout-wide .sun-head {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: calc(0.3rem * var(--s));
+    }
+    .widget-container.layout-wide .sun-icon {
+      font-size: calc(0.85rem * var(--s));
+      margin-bottom: 0;
+    }
+    .widget-container.layout-wide .sun-label {
+      font-size: calc(0.6rem * var(--s));
+    }
+    .widget-container.layout-wide .sun-time {
+      font-size: calc(1.6rem * var(--s));
+      margin: calc(0.1rem * var(--s)) 0;
+    }
+    .widget-container.layout-wide .sun-sub {
+      font-size: calc(0.62rem * var(--s));
+    }
+    .widget-container.layout-wide .daylight-bar-section {
+      display: flex;
+      align-items: center;
+      gap: calc(0.6rem * var(--s));
+      padding: calc(0.35rem * var(--s)) calc(0.6rem * var(--s));
+      flex: none;
+    }
+    .widget-container.layout-wide .daylight-label {
+      margin-bottom: 0;
+      flex: none;
+      gap: calc(0.5rem * var(--s));
+    }
+    .widget-container.layout-wide .daylight-bar-track {
+      flex: 1;
     }
     .setup-panel {
       display: none;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      gap: 0.6rem;
-      padding: 1.2rem 0.5rem;
-      height: 100%;
+      gap: calc(0.6rem * var(--s));
+      padding: calc(1.2rem * var(--s)) calc(0.5rem * var(--s));
       box-sizing: border-box;
     }
-    .widget-container.needs-setup .setup-panel { display: flex; }
+    /* Setup mode only: the container becomes a column flex so the panel
+       fills the space under the header (instead of height:100%, which
+       stacked a full-height panel under the header and overflowed once
+       the container stopped wrapping its content) and keeps its content
+       vertically centered. Data view is untouched (still block layout). */
+    .widget-container.needs-setup { display: flex; flex-direction: column; }
+    .widget-container.needs-setup .setup-panel { display: flex; flex: 1; }
     .widget-container.needs-setup .sun-grid,
     .widget-container.needs-setup .daylight-bar-section,
     .widget-container.needs-setup .date-display { display: none; }
     .setup-text {
-      font-size: 0.9rem;
+      font-size: calc(0.9rem * var(--s));
       color: var(--text-secondary, #666);
     }
     .detect-btn {
-      font-size: 1rem;
-      padding: 0.55rem 1.2rem;
-      border-radius: 10px;
+      font-size: calc(1rem * var(--s));
+      padding: calc(0.55rem * var(--s)) calc(1.2rem * var(--s));
+      border-radius: calc(10px * var(--s));
       border: 1px solid var(--card-border, #e5e5e5);
       background: var(--accent, #f5a623);
       color: #fff;
@@ -189,7 +271,7 @@
     }
     .detect-btn:disabled { opacity: 0.6; cursor: wait; }
     .setup-error {
-      font-size: 0.8rem;
+      font-size: calc(0.8rem * var(--s));
       color: #c0392b;
       min-height: 1.2em;
     }
@@ -207,31 +289,27 @@
     <div class="setup-panel" id="setupPanel">
       <div class="setup-text">No location configured yet.</div>
       <button class="detect-btn" id="detectBtn">📍 Auto-Detect Location</button>
-      <div class="setup-text" style="font-size: 0.78rem;">…or set coordinates in the Admin Panel.</div>
+      <div class="setup-text" style="font-size: calc(0.78rem * var(--s));">…or set coordinates in the Admin Panel.</div>
       <div class="setup-error" id="setupError"></div>
     </div>
 
     <div class="sun-grid">
       <div class="sun-card sunrise">
-        <span class="sun-icon">🌅</span>
-        <div class="sun-label">Sunrise</div>
+        <div class="sun-head"><span class="sun-icon">🌅</span><span class="sun-label">Sunrise</span></div>
         <div class="sun-time" id="sunriseTime">--:--</div>
         <div class="sun-sub" id="dawnTime">Dawn: --:--</div>
       </div>
       <div class="sun-card sunset">
-        <span class="sun-icon">🌇</span>
-        <div class="sun-label">Sunset</div>
+        <div class="sun-head"><span class="sun-icon">🌇</span><span class="sun-label">Sunset</span></div>
         <div class="sun-time" id="sunsetTime">--:--</div>
         <div class="sun-sub" id="duskTime">Dusk: --:--</div>
       </div>
       <div class="sun-card golden-morning">
-        <span class="sun-icon">☀️</span>
-        <div class="sun-label">Golden Hour AM</div>
+        <div class="sun-head"><span class="sun-icon">☀️</span><span class="sun-label">Golden Hour AM</span></div>
         <div class="sun-time" id="goldenMorning">--:--</div>
       </div>
       <div class="sun-card golden-evening">
-        <span class="sun-icon">🌆</span>
-        <div class="sun-label">Golden Hour PM</div>
+        <div class="sun-head"><span class="sun-icon">🌆</span><span class="sun-label">Golden Hour PM</span></div>
         <div class="sun-time" id="goldenEvening">--:--</div>
       </div>
     </div>
@@ -273,6 +351,7 @@
         // First run: no coordinates yet — show the one-tap auto-detect.
         // Ongoing configuration lives in the Admin Panel.
         container.classList.add('needs-setup');
+        if (typeof sunriseRefit === 'function') sunriseRefit();
         return;
       }
       container.classList.remove('needs-setup');
@@ -323,10 +402,108 @@
       } catch (err) {
         console.error('Sun calculation error', err);
       }
+      // Content changed (times, badge, bar): re-run the fit-check in case
+      // the new text metrics differ from the pre-data render.
+      if (typeof sunriseRefit === 'function') sunriseRefit();
+    }
+
+
+    // Dynamic sizing: scale all sizes by the widget's own dimensions, so the
+    // content fills a wide wall widget instead of sitting small in it, and
+    // shrinks (never overflows) in a small one. The scale starts from the
+    // smaller of the width and height ratios against the design size,
+    // clamped so tiny widgets stay readable and huge ones stay sane.
+    // Observed on the widget container itself (100% of the iframe, so
+    // exogenous — content can never resize it), which also accounts for
+    // the body padding and borders the raw viewport size misses; that
+    // padding is why a viewport-based scale overshot by 5-8px. The scale
+    // change only moves the container by the padding delta (gain ~0.05),
+    // so the observer converges at once. Without JS, --s stays 1 and the
+    // widget renders at base size.
+    //
+    // Fit-check (wall lesson, 2026-11-03): the ratio estimate alone is NOT
+    // enough. Real content can run taller than BASE_H assumes — on the
+    // wall the widget is 610x210 (not the 700x420 the harness assumed),
+    // its height ratio is 0.59, and the old 0.7 floor held the scale up
+    // while true content ran ~391px per unit scale vs 332 assumed, leaving
+    // 76px of overflow and a scrollbar with the daylight section cut off.
+    // So after the ratio estimate, shrink proportionally until the content
+    // actually fits (scrollHeight <= clientHeight, same for width). The
+    // floor is 0.4: it must sit below the fit point of short-wide widgets
+    // (the wall fits at ~0.50), or the loop could never reach a fit.
+    // The loop is a no-op wherever the estimate already fits, so sizes
+    // that passed before are unchanged.
+    //
+    // Wide-short layout (readability lesson, 2026-11-03): fitting at
+    // 610x210 costs ~10px times — fitted but unreadable, and no amount of
+    // shrinking fixes that. So when the container is wide-short (aspect
+    // >= 2.2), the container gets .layout-wide (single row of four cards,
+    // compact header + daylight line) and the scale is computed against
+    // the wide design size (600x196, the wall container at s=1) instead
+    // of the stacked one. The date line moves into the header in wide
+    // mode and back out in stacked mode; the move is idempotent and the
+    // container size is exogenous (100% of the iframe), so the mode
+    // decision cannot flap: wall 3.01 is wide, the next-widest tested
+    // size (1200x650, 1.89) stays stacked.
+    let sunriseRefit = null;
+    function initScaling() {
+      const root = document.documentElement;
+      const box = document.querySelector('.widget-container');
+      const BASE_W = 352, BASE_H = 332, WIDE_W = 600, WIDE_H = 196;
+      const MIN_S = 0.4, MAX_S = 3, WIDE_ASPECT = 2.2;
+      function apply(s) { root.style.setProperty('--s', s.toFixed(3)); }
+      function update() {
+        const w = box.clientWidth, h = box.clientHeight;
+        if (!w || !h) return;
+        const wide = (w / h) >= WIDE_ASPECT;
+        box.classList.toggle('layout-wide', wide);
+        const dateEl = document.getElementById('dateDisplay');
+        const header = document.querySelector('.widget-header');
+        const badge = document.getElementById('statusBadge');
+        if (wide) {
+          if (dateEl.parentNode !== header) header.insertBefore(dateEl, badge);
+        } else {
+          if (dateEl.parentNode === header) {
+            box.insertBefore(dateEl, document.getElementById('setupPanel'));
+          }
+        }
+        const BW = wide ? WIDE_W : BASE_W, BH = wide ? WIDE_H : BASE_H;
+        let s = Math.max(MIN_S, Math.min(MAX_S, Math.min(w / BW, h / BH)));
+        apply(s);
+        let guard = 0;
+        while (box.scrollHeight > box.clientHeight + 1 && s > MIN_S && guard++ < 60) {
+          const ratio = box.clientHeight / box.scrollHeight;
+          let ns = s * ratio * 0.98;
+          if (s - ns < 0.005) ns = s - 0.01;
+          s = Math.max(MIN_S, ns);
+          apply(s);
+        }
+        guard = 0;
+        while (box.scrollWidth > box.clientWidth + 1 && s > MIN_S && guard++ < 60) {
+          const ratio = box.clientWidth / box.scrollWidth;
+          let ns = s * ratio * 0.98;
+          if (s - ns < 0.005) ns = s - 0.01;
+          s = Math.max(MIN_S, ns);
+          apply(s);
+        }
+      }
+      sunriseRefit = update;
+      if (typeof ResizeObserver !== 'undefined') {
+        new ResizeObserver(update).observe(box);
+      } else {
+        window.addEventListener('resize', update);
+      }
+      // Re-fit when fonts or stylesheets land late: content can grow after
+      // first paint without resizing the container, so the observer alone
+      // would never re-run.
+      window.addEventListener('load', update);
+      if (document.fonts && document.fonts.ready) document.fonts.ready.then(update);
+      update();
     }
 
     document.addEventListener('DOMContentLoaded', () => {
       applyTheme();
+      initScaling();
       wireDetectButton();
       updateSunData();
     });
