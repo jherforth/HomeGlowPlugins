@@ -36,19 +36,25 @@
     document must fit the 64 KB per-key storage cap, which rules out
     full photos as data URLs. See MealChoice.md.
 
-    The week view fits its container: it shows a window of days
-    starting at the next meal to pick (tomorrow, or the next school
-    day when tomorrow is not one), and the number of days shown grows
-    with the widget's actual width — a small widget shows only that
-    next day, a large one shows the full week. Manage's "Days to show"
-    setting (1-5, default 1) caps how many days ahead appear, so a
-    household can ask for just the next day even on a wide display;
-    narrow displays still show fewer when the cards don't fit. Day
-    cards stretch to fill the row. ‹/› step the window one shown day
-    at a time; Today returns to the next meal to pick. Every pick row in the week view and the
-    Today box carries its chooser (picture or generic glyph) and its
-    meal label, with a divider between rows, so it is always clear
-    who chose what for which meal.
+    The week view fits its container: it shows a window of
+    daysToShow consecutive shown days starting at the first shown
+    day after today — tomorrow, or Monday when tomorrow falls on a
+    hidden weekend day — since today's lunch was packed the night
+    before, so today is not what needs planning, and there is no
+    separate today card. If the forward run from that anchor would
+    cross a Monday-week boundary, the spilling days are replaced
+    with previous shown days from the start week (going backward
+    from the anchor: today, then earlier), so the window stays
+    within one Monday-week: 1 day shows just that next day; 5 days
+    shows the current week Monday–Thursday, and next week on Friday. Manage's "Days to show" setting (1-5,
+    default 1) is the total count, so a household can ask for just
+    tomorrow even on a wide display; narrow displays still show
+    fewer when the cards don't fit. Day cards stretch to fill the
+    row. ‹/› step the window one shown day at a time; Tomorrow
+    resets to the default window. Every pick row in the week view
+    carries its chooser (picture or generic glyph) and its meal
+    label, with a divider between rows, so it is always clear who
+    chose what for which meal.
 
     Storage (the contract other writers must follow):
       HomeGlow.storage key "data", value:
@@ -130,15 +136,29 @@
     [data-theme="dark"] body { color: var(--text, #d6d6e8); }
     .wrap { width: 100%; max-height: calc(100vh - 1.5rem); overflow-y: auto; container-type: inline-size; }
     h1 { font-size: 1.25rem; margin: 0; }
-    button { font: inherit; cursor: pointer; }
+    button {
+      font: inherit; cursor: pointer; touch-action: manipulation;
+      -webkit-tap-highlight-color: rgba(74,144,217,0.25);
+      transition: filter 0.08s ease, transform 0.08s ease;
+    }
+    /* Momentary pressed feedback: the wall is a touchscreen with no
+       hover, so a tap must show while held. Buttons carry explicit
+       backgrounds (or transparent ones), which override the browser's
+       default :active shading into invisibility — hence this explicit
+       rule. Brightness darkens light buttons; on dark theme it
+       brightens instead (a darkened dark button would be invisible).
+       Filter/transform compose with the selected outlines (outline is
+       unaffected), never replace them. */
+    button:active { filter: brightness(0.85); transform: scale(0.97); }
+    [data-theme="dark"] button:active { filter: brightness(1.3); transform: scale(0.97); }
     .head { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.25rem; }
     .head .spacer { flex: 1; }
-    .navbtn, .managebtn, .todaybtn {
+    .navbtn, .managebtn, .tomorrowbtn {
       border: 1px solid var(--border, #ccc); border-radius: 10px;
       background: var(--card, rgba(255,255,255,0.6)); color: inherit;
       padding: 0.5rem 0.8rem; min-height: 44px;
     }
-    [data-theme="dark"] .navbtn, [data-theme="dark"] .managebtn, [data-theme="dark"] .todaybtn {
+    [data-theme="dark"] .navbtn, [data-theme="dark"] .managebtn, [data-theme="dark"] .tomorrowbtn {
       background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.2);
     }
     .weeklabel { font-weight: 600; margin: 0.25rem 0 0.75rem; }
@@ -147,21 +167,6 @@
       padding: 0.75rem; margin-bottom: 0.75rem;
     }
     .banner button { margin-top: 0.5rem; }
-    .todaybox {
-      border-radius: 12px; padding: 0.75rem; margin-bottom: 0.75rem;
-      background: var(--card, rgba(255,255,255,0.6));
-      border: 1px solid var(--border, #ddd);
-    }
-    [data-theme="dark"] .todaybox { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.15); }
-    .todaybox h2 { font-size: 1rem; margin: 0 0 0.5rem; }
-    .todayperson + .todayperson { border-top: 1px solid rgba(0,0,0,0.12); margin-top: 0.25rem; padding-top: 0.25rem; }
-    [data-theme="dark"] .todayperson + .todayperson { border-top-color: rgba(255,255,255,0.15); }
-    .todayperson .personhead { display: flex; align-items: center; gap: 0.5rem; font-weight: 700; padding: 0.3rem 0 0.1rem; }
-    .todayperson .avatar { width: 26px; height: 26px; object-fit: cover; border-radius: 50%; flex: none; }
-    .todayperson .avatar-fallback { font-size: 1.3rem; }
-    .todaymeal { display: flex; align-items: center; gap: 0.5rem; padding: 0.3rem 0; }
-    .todaymeal .choice { font-weight: 600; }
-    .todaymeal .choice .em { font-size: 1.4rem; }
     .personchip {
       display: inline-flex; align-items: center; gap: 0.4rem;
       border: 1px solid var(--border, #ccc); border-radius: 999px;
@@ -190,18 +195,16 @@
        must never visually run into the lunch picks below it. */
     .mealsub + .mealsub { border-top: 1px solid rgba(0,0,0,0.12); margin-top: 0.25rem; padding-top: 0.25rem; }
     [data-theme="dark"] .mealsub + .mealsub { border-top-color: rgba(255,255,255,0.15); }
-    .todaymeal + .todaymeal { border-top: 1px solid rgba(0,0,0,0.12); margin-top: 0.25rem; padding-top: 0.25rem; }
-    [data-theme="dark"] .todaymeal + .todaymeal { border-top-color: rgba(255,255,255,0.15); }
     .persongroup .personhead { display: flex; align-items: center; gap: 0.4rem; font-weight: 700; padding: 0.2rem 0 0.1rem; }
     .mealsub { display: flex; align-items: center; gap: 0.4rem; padding: 0.2rem 0; font-size: 0.9rem; }
     .mealsub .em { font-size: 1.3rem; }
     .mealsub .none { opacity: 0.6; }
-    .mealsub .pickstack, .todaymeal .pickstack { display: flex; flex-direction: column; gap: 0.1rem; }
-    .mealsub .pickstack .pick, .todaymeal .pickstack .pick { display: flex; align-items: center; gap: 0.4rem; }
+    .mealsub .pickstack { display: flex; flex-direction: column; gap: 0.1rem; }
+    .mealsub .pickstack .pick { display: flex; align-items: center; gap: 0.4rem; }
     /* Option pictures in pick rows replace the emoji, so they render
        at roughly emoji size (1.4rem square, cropped, never stretched)
        — an unconstrained photo at natural size used to blow rows up. */
-    .mealsub .pick img.em, .todaymeal .pick img.em { width: 1.4rem; height: 1.4rem; object-fit: cover; border-radius: 6px; flex: none; }
+    .mealsub .pick img.em { width: 1.4rem; height: 1.4rem; object-fit: cover; border-radius: 6px; flex: none; }
     .manage h2 { font-size: 1.05rem; margin: 1rem 0 0.5rem; }
     .mrow {
       display: flex; align-items: center; gap: 0.5rem; padding: 0.45rem 0;
@@ -242,9 +245,27 @@
       background: var(--card, #fff);
     }
     [data-theme="dark"] dialog { background: #2a2a3d; color: #d6d6e8; }
+    /* The meal picker fills the widget's full content width before it
+       ever scrolls: the old 560px cap left a narrow column with wasted
+       dimmed space on wide displays. Scoped to the choose dialog only
+       — the Manage food dialog keeps its own wider cap, and the edit
+       dialog keeps the base cap. Body padding is 0.75rem a side, so
+       100% − 1.5rem is exactly the widget content width. */
+    #choiceDialog { width: calc(100% - 1.5rem); max-width: none; }
     /* The food-options window is roomier than the pick dialogs so the
        full option list stays usable on the wall display. */
-    #foodDialog { max-width: 720px; width: calc(100% - 1rem); max-height: 85vh; overflow-y: auto; }
+    /* The food-options dialog fills the widget like the choose dialog
+       does — full content width AND height, with the option list
+       scrolling inside it. The old 720px/85vh cap left a small centered
+       panel with dimmed space around it, and rows below the fold were
+       easy to miss entirely. Header, note, Add button and Done stay
+       pinned; only the list scrolls. box-sizing is explicit so the
+       padding never pushes the dialog past the widget edge. The flex
+       layout is scoped to [open] so a closed dialog stays hidden. */
+    #foodDialog { width: calc(100% - 1.5rem); max-width: none; height: calc(100% - 1.5rem); max-height: none; box-sizing: border-box; }
+    #foodDialog[open] { display: flex; flex-direction: column; overflow: hidden; }
+    #foodDialog[open] > :not(#optionsList) { flex: none; }
+    #foodDialog[open] #optionsList { flex: 1; overflow-y: auto; min-height: 0; }
     dialog::backdrop { background: rgba(0,0,0,0.4); }
     dialog h2 { margin: 0 0 0.75rem; font-size: 1.1rem; }
     dialog label { display: block; font-weight: 600; margin: 0.6rem 0 0.25rem; }
@@ -263,12 +284,43 @@
     }
     .swatch[aria-pressed="true"] { border-color: var(--accent, #4a90d9); outline: 2px solid var(--accent, #4a90d9); outline-offset: 1px; }
     .optgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; margin-top: 0.5rem; }
+    /* Adaptive columns in the choose picker: a wider dialog shows more
+       columns at the same ~150px card width, not just wider cards, so
+       rows (and vertical scrolling) drop as the dialog widens. */
+    #choiceDialog .optgrid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
     .optbtn {
       border: 1px solid var(--border, #ccc); border-radius: 14px; background: transparent;
-      color: inherit; padding: 0.6rem 0.25rem; min-height: 96px;
+      color: inherit; padding: 0.6rem 0.25rem; min-height: 96px; position: relative;
       display: flex; flex-direction: column; align-items: center; gap: 0.25rem;
     }
-    .optbtn.chosen { outline: 3px solid var(--accent, #4a90d9); outline-offset: 1px; }
+    /* Chosen food: its OWN border color, bolded — never a uniform accent
+       outline. The old 3px accent outline read on the wall as "red for
+       everything" (the theme accent renders reddish there), hiding which
+       border belonged to which food. Now selection is: own-color border
+       at 5px + an own-color translucent background tint + the corner
+       checkmark badge + the 800-weight name, while an unchosen button
+       keeps its own color at 1px, default background, no badge. */
+    .optbtn.chosen { border-width: 5px; outline: none; }
+    /* Chosen-food badge: the selection signal no option color can mimic.
+       Option buttons carry their own color as a border (1px unchosen,
+       5px chosen — see .optbtn.chosen), so the badge is a monochrome
+       check in the corner (dark on light, light on dark): its SHAPE and
+       glyph, not its hue, carry the meaning, so it stays unmistakable
+       against every option color, in both themes, and while pressed (it
+       is a child of the button, so the pressed brightness/scale applies
+       to badge and button together). */
+    .optbtn .chosenbadge {
+      position: absolute; top: 6px; right: 6px; width: 30px; height: 30px;
+      border-radius: 50%; background: #1a1a1a; color: #fff; border: 2px solid #fff;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.45); z-index: 2;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 19px; font-weight: 800; line-height: 1;
+    }
+    [data-theme="dark"] .optbtn .chosenbadge {
+      background: #fff; color: #1a1a1a; border-color: #1a1a1a;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.7);
+    }
+    .optbtn.chosen .nm { font-weight: 800; }
     .optbtn .em { font-size: 2.2rem; line-height: 1; }
     .optbtn .otimg { width: 56px; height: 56px; object-fit: cover; border-radius: 10px; }
     .optbtn .nm { font-size: 0.85rem; font-weight: 600; text-align: center; overflow-wrap: anywhere; }
@@ -283,7 +335,7 @@
     }
     .mealbtn[aria-pressed="true"] { outline: 3px solid var(--accent, #4a90d9); outline-offset: 1px; }
     .mealsub .meallabel { font-size: 0.8rem; opacity: 0.75; }
-    /* Divider between person groups in a day card / Today box, so one
+    /* Divider between person groups in a day card, so one
        person's picks never visually run into the next person's, and
        between meal subgroups within a person, so snack picks never
        visually run into lunch picks — the person's name appears once. */
@@ -300,7 +352,7 @@
     <div class="head">
       <h1>🍽️ Meal Choice</h1>
       <span class="spacer"></span>
-      <button type="button" class="todaybtn" id="todayBtn">Today</button>
+      <button type="button" class="tomorrowbtn" id="tomorrowBtn">Tomorrow</button>
       <button type="button" class="navbtn" id="prevBtn" aria-label="Previous day">‹</button>
       <button type="button" class="navbtn" id="nextBtn" aria-label="Next day">›</button>
       <button type="button" class="managebtn" id="manageBtn">Manage</button>
@@ -309,7 +361,6 @@
 
     <div id="weekView">
       <div id="emptyBanner" class="banner hidden"></div>
-      <div id="todayBox" class="todaybox hidden"></div>
       <div class="daygrid" id="dayGrid"></div>
     </div>
 
@@ -438,7 +489,7 @@
     var containerWidth = 0; // .wrap width in px, via ResizeObserver (0 = unmeasured: show the full week)
     var settings = { pollSeconds: 10 };
     var weekMonday = null; // Monday of the shown calendar week (set after state loads)
-    var windowStart = null; // first shown day of a paged window; null = auto (next meal to pick)
+    var windowStart = null; // first shown day of a paged window; null = auto (tomorrow-anchored default window)
     var view = 'week'; // 'week' | 'manage'
     var dialogDateKey = null;
     var dialogPersonId = null;
@@ -457,6 +508,21 @@
       return String(s == null ? '' : s).replace(/[&<>\"']/g, function (c) {
         return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
       });
+    }
+    /* Own-color tint for a CHOSEN food button: the option's hex color at
+       a translucent alpha, so the background wash tracks the food's own
+       color instead of imposing one uniform highlight. Unparseable
+       colors return '' (no tint) rather than guessing. Dark theme gets
+       a stronger alpha because the same wash reads fainter over a dark
+       background; light theme stays softer so the wash never competes
+       with the name, picture, or badge. */
+    function hexToRgba(hex, alpha) {
+      if (typeof hex !== 'string') return '';
+      var h = hex.replace(/^#/, '');
+      if (h.length === 3) h = h.split('').map(function (c) { return c + c; }).join('');
+      if (!/^[0-9a-fA-F]{6}$/.test(h)) return '';
+      var r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
+      return 'rgba(' + r + ', ' + g + ', ' + b + ', ' + alpha + ')';
     }
     function $(id) { return document.getElementById(id); }
     function startOfDay(d) { var x = new Date(d.getTime()); x.setHours(0, 0, 0, 0); return x; }
@@ -486,10 +552,6 @@
       var count = state.showWeekends ? 7 : 5;
       for (var i = 0; i < count; i++) days.push(addDays(weekMonday, i));
       return days;
-    }
-    function todayIsChoosable() {
-      var dow = new Date().getDay();
-      return state.showWeekends || (dow !== 0 && dow !== 6);
     }
     function visiblePeople() {
       // One household selection, used on every display: the
@@ -741,8 +803,8 @@
     // calendar day when they are shown), so Fri steps to Mon with
     // weekends hidden and to Sat with weekends shown. The window is N
     // consecutive shown days from its start. windowStart is null until
-    // the user pages; then it pins the window start. Today clears it
-    // back to auto (the next meal to pick).
+    // the user pages; then it pins the window start. Tomorrow clears
+    // it back to auto (the tomorrow-anchored default window below).
     function isShownDay(d) {
       var dow = d.getDay();
       return state.showWeekends || (dow !== 0 && dow !== 6);
@@ -762,25 +824,39 @@
       while (!isShownDay(x)) x = addDays(x, -1);
       return x;
     }
+    // ---- tomorrow-anchored default window: the window holds
+    // daysToShow consecutive shown days starting at the first shown
+    // day strictly after today — tomorrow, or Monday when tomorrow
+    // falls on a hidden weekend day (today's lunch was packed the
+    // night before, so today is not what needs planning). If the
+    // forward run from that anchor would cross a Monday-week
+    // boundary, the spilling days are replaced with previous shown
+    // days from the start week (going backward from the anchor:
+    // today, then earlier), so the window stays within one
+    // Monday-week at daysToShow days. Worked cases (weekends hidden):
+    // Mon+5 is Mon-Fri of the current week; Wed+3 is Wed/Thu/Fri;
+    // Thu+3 is Wed/Thu/Fri; Fri+3 is Mon-Wed of NEXT week — the
+    // anchor itself is next Monday, the run crosses no boundary, so
+    // there is no backfill; Fri+5 is Mon-Fri of next week.
     function autoWindowedDays() {
-      var days = visibleDays();
-      var tk = todayKey();
-      var ai = -1;
-      for (var i = 0; i < days.length; i++) { if (dateKey(days[i]) > tk) { ai = i; break; } }
-      if (ai === -1) {
-        var containsToday = false;
-        for (var j = 0; j < days.length; j++) { if (dateKey(days[j]) === tk) containsToday = true; }
-        if (containsToday) {
-          // This week's meals are done (e.g. Friday, weekends hidden):
-          // advance to next week so the window shows the next meal to pick.
-          weekMonday = addDays(weekMonday, 7);
-          days = visibleDays();
-          ai = 0;
-        } else {
-          ai = 0; // a paged-to past/future week: start at its first day
-        }
+      var total = daysToShow();
+      var tomorrow = shownDaysFrom(addDays(startOfDay(new Date()), 1), 1)[0];
+      var startMon = mondayOf(tomorrow);
+      var forward = shownDaysFrom(tomorrow, total);
+      var kept = [];
+      for (var i = 0; i < forward.length; i++) {
+        if (dateKey(mondayOf(forward[i])) === dateKey(startMon)) kept.push(forward[i]);
+        else break;
       }
-      return days.slice(ai, ai + Math.max(1, Math.min(daysToShow(), days.length - ai, fitCount(days.length - ai))));
+      var need = total - kept.length;
+      var back = [];
+      var d = addDays(tomorrow, -1);
+      while (back.length < need && dateKey(mondayOf(d)) === dateKey(startMon)) {
+        if (isShownDay(d)) back.push(new Date(d.getTime()));
+        d = addDays(d, -1);
+      }
+      var days = back.reverse().concat(kept);
+      return days.slice(0, Math.max(1, Math.min(total, fitCount(total))));
     }
     function windowedDays() {
       if (windowStart) {
@@ -802,31 +878,6 @@
       $('weekLabel').textContent = first.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) +
         ' – ' + last.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     }
-    function renderTodayBox() {
-      var box = $('todayBox');
-      var tk = todayKey();
-      if (!visiblePeople().length || !todayIsChoosable()) { box.classList.add('hidden'); return; }
-      box.classList.remove('hidden');
-      var html = '<h2>Today — ' + esc(fmtDay(new Date())) + '</h2>';
-      // Rows are grouped by person: one header (avatar + name) per
-      // person, with that person's meal subgroups nested under it.
-      // Each subgroup keeps its meal label, so snack picks can never
-      // be mistaken for lunch picks; dividers separate people and meals.
-      visiblePeople().forEach(function (p) {
-        var block = '<div class="todayperson"><div class="personhead">' + personLabel(p) + '</div>';
-        enabledMealDefs().forEach(function (m) {
-          var picked = choicesForMeal(tk, p.id, m.id).map(function (id) { return optionById(id); }).filter(function (o) { return !!o; });
-          block += '<div class="todaymeal">';
-          block += '<span class="choice">' + m.emoji + ' ' + esc(m.label) + '</span>';
-          block += '<span class="choice">' +
-            (picked.length ? '<span class="pickstack">' + picked.map(function (o) { return '<span class="pick">' + optionVisual(o, 'em') + ' ' + esc(o.name) + '</span>'; }).join('') + '</span>' :
-              '<span class="none">' + (m.id === 'lunch' ? 'Not chosen yet' : 'No ' + m.label.toLowerCase() + ' yet') + '</span>') + '</span>';
-          block += '</div>';
-        });
-        html += block + '</div>';
-      });
-      box.innerHTML = html;
-    }
     function renderWeek() {
       var days = windowedDays();
       renderWeekLabel(days);
@@ -845,7 +896,6 @@
         banner.classList.add('hidden');
         banner.innerHTML = '';
       }
-      renderTodayBox();
       var tk = todayKey();
       var grid0 = $('dayGrid');
       grid0.className = 'daygrid cols' + days.length;
@@ -866,10 +916,10 @@
         // with that person's meal subgroups nested under it. Each
         // subgroup keeps its meal label; dividers separate people and meals.
         visiblePeople().forEach(function (p) {
-          html += '<div class="persongroup"><div class="personhead">' + personLabel(p) + '</div>';
+          html += '<div class="persongroup" data-person="' + esc(p.id) + '"><div class="personhead">' + personLabel(p) + '</div>';
           enabledMealDefs().forEach(function (m) {
             var picked = choicesForMeal(key, p.id, m.id).map(function (id) { return optionById(id); }).filter(function (o) { return !!o; });
-            html += '<div class="mealsub">';
+            html += '<div class="mealsub" data-person="' + esc(p.id) + '" data-meal="' + m.id + '">';
             html += '<span class="meallabel">' + m.emoji + ' ' + esc(m.label) + '</span>';
             html += (picked.length ? '<span class="pickstack">' + picked.map(function (o) { return '<span class="pick">' + optionVisual(o, 'em') + ' ' + esc(o.name) + '</span>'; }).join('') + '</span>' :
               '<span class="none">—</span>') + '</div>';
@@ -883,7 +933,23 @@
       var cards = grid.querySelectorAll('.daycard[data-date]');
       for (var j = 0; j < cards.length; j++) {
         (function (card) {
-          card.addEventListener('click', function () { openChoiceDialog(card.getAttribute('data-date')); });
+          card.addEventListener('click', function (e) {
+            // Tap scoping: a tap on a person's name/header or on one of
+            // their meal rows opens the dialog for THAT person (and that
+            // meal for a meal-row tap); a tap anywhere else on the card
+            // keeps the old default (first person still to choose).
+            var t = e.target;
+            var personId = null;
+            var mealId = null;
+            while (t && t !== card) {
+              if (t.getAttribute) {
+                if (!mealId) mealId = t.getAttribute('data-meal');
+                if (!personId) personId = t.getAttribute('data-person');
+              }
+              t = t.parentNode;
+            }
+            openChoiceDialog(card.getAttribute('data-date'), personId, mealId);
+          });
         })(cards[j]);
       }
     }
@@ -919,7 +985,15 @@
       if (!state.options.length) {
         ol.innerHTML = '<p class="hint">No options yet. Add the meals parents pack.</p>';
       } else {
-        ol.innerHTML = state.options.map(function (o) {
+        // Food options render alphabetically (locale-aware,
+        // case-insensitive, by name text) — display order only. The
+        // stored options array keeps its own order, so rendering never
+        // reorders the doc. Edit/Delete stay id-based, so sorting
+        // cannot misroute them.
+        var sortedOptions = state.options.slice().sort(function (a, b) {
+          return (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' });
+        });
+        ol.innerHTML = sortedOptions.map(function (o) {
           var mealNames = mealsOf(o).map(function (id) { return mealLabel(id); }).join(' + ');
           var thumb = (o.imageUrl && validImageUrl(o.imageUrl)) ?
             '<img class="thumb" src="' + esc(o.imageUrl) + '" alt="" onerror="this.style.display=\'none\'">' : '';
@@ -1011,10 +1085,10 @@
       $('weekView').classList.toggle('hidden', v !== 'week');
       $('manageView').classList.toggle('hidden', v !== 'manage');
       // In Manage the header top-right collapses to a single Back
-      // button (the Manage button itself); Today and the day-step
+      // button (the Manage button itself); Tomorrow and the day-step
       // arrows return with the week view. There is no second
       // back button inside Manage.
-      $('todayBtn').classList.toggle('hidden', v === 'manage');
+      $('tomorrowBtn').classList.toggle('hidden', v === 'manage');
       $('prevBtn').classList.toggle('hidden', v === 'manage');
       $('nextBtn').classList.toggle('hidden', v === 'manage');
       $('manageBtn').textContent = v === 'manage' ? 'Back' : 'Manage';
@@ -1063,14 +1137,23 @@
         el.appendChild(b);
       });
     }
-    function openChoiceDialog(key) {
+    // key: day; personId/mealId: optional tap scope (person 'u<id>' string
+    // from the day card, meal id from a meal row). A scoped tap wins over
+    // the default (first enabled meal, first person still to choose);
+    // an unknown person or a disabled meal falls back to the default.
+    function openChoiceDialog(key, personId, mealId) {
       if (!visiblePeople().length || !state.options.length) { setView('manage'); return; }
       dialogDateKey = key;
-      dialogMeal = (enabledMealDefs()[0] || { id: 'lunch' }).id;
+      dialogMeal = (mealId && isMealEnabled(mealId)) ? mealId : (enabledMealDefs()[0] || { id: 'lunch' }).id;
       var vis = visiblePeople();
-      var withChoice = vis.filter(function (p) { return choicesForMeal(key, p.id, dialogMeal).length > 0; });
-      var without = vis.filter(function (p) { return choicesForMeal(key, p.id, dialogMeal).length === 0; });
-      dialogPersonId = (without[0] || vis[0]).id;
+      var scoped = personId ? personById(personId) : null;
+      if (scoped) {
+        dialogPersonId = scoped.id;
+      } else {
+        var withChoice = vis.filter(function (p) { return choicesForMeal(key, p.id, dialogMeal).length > 0; });
+        var without = vis.filter(function (p) { return choicesForMeal(key, p.id, dialogMeal).length === 0; });
+        dialogPersonId = (without[0] || vis[0]).id;
+      }
       renderChoiceDialog();
       openDialog($('choiceDialog'));
     }
@@ -1096,7 +1179,7 @@
       var d = new Date();
       var parts = key.split('-');
       d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
-      $('choiceTitle').textContent = 'Choose ' + mealLabel(dialogMeal) + ' — ' + fmtDay(d);
+      $('choiceTitle').textContent = 'Choose ' + mealLabel(dialogMeal) + (personById(dialogPersonId) ? ' for ' + personById(dialogPersonId).name : '') + ' — ' + fmtDay(d);
       var peopleEl = $('choicePeople');
       peopleEl.innerHTML = '';
       visiblePeople().forEach(function (p) {
@@ -1120,9 +1203,17 @@
       mealOptions.forEach(function (o) {
         var b = document.createElement('button');
         b.type = 'button';
-        b.className = 'optbtn' + (choicesForMeal(key, dialogPersonId, dialogMeal).indexOf(o.id) !== -1 ? ' chosen' : '');
+        var isChosen = choicesForMeal(key, dialogPersonId, dialogMeal).indexOf(o.id) !== -1;
+        b.className = 'optbtn' + (isChosen ? ' chosen' : '');
+        b.setAttribute('aria-pressed', isChosen ? 'true' : 'false');
         b.style.borderColor = o.color || '';
-        b.innerHTML = optionVisual(o, 'otimg') + '<span class="nm">' + esc(o.name) + '</span>';
+        /* Chosen tint: the option's own color as a translucent wash
+           (stronger on dark, softer on light — see hexToRgba). Unchosen
+           buttons keep the default transparent background. */
+        var tintAlpha = document.documentElement.getAttribute('data-theme') === 'dark' ? 0.30 : 0.22;
+        b.style.backgroundColor = isChosen ? hexToRgba(o.color, tintAlpha) : '';
+        b.innerHTML = optionVisual(o, 'otimg') + '<span class="nm">' + esc(o.name) + '</span>' +
+          (isChosen ? '<span class="chosenbadge" aria-hidden="true">✓</span>' : '');
         // Multi-toggle: tap adds or removes this option from the
         // person's set for this meal/day. No auto-advance — the
         // person stays selected so several taps accumulate, and Done
@@ -1194,7 +1285,7 @@
         windowStart = nextShownDay(start);
         renderWeek();
       });
-      $('todayBtn').addEventListener('click', function () { windowStart = null; weekMonday = defaultWeekMonday(); renderWeek(); });
+      $('tomorrowBtn').addEventListener('click', function () { windowStart = null; weekMonday = defaultWeekMonday(); renderWeek(); });
       $('manageBtn').addEventListener('click', function () { setView(view === 'manage' ? 'week' : 'manage'); });
       $('addOptionBtn').addEventListener('click', function () { openOptionDialog(null); });
       $('foodOptionsBtn').addEventListener('click', function () { renderManage(); openDialog($('foodDialog')); });
