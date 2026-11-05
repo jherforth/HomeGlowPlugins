@@ -476,7 +476,7 @@
       // First run starts with an empty Groceries list — no seeded items.
       // (An earlier version seeded one Milk item here; it looked like a
       // real household item, so it was removed.)
-      return { version: 1, updatedAt: nowIso(), showChecked: true, lists: [
+      return { version: 1, updatedAt: nowIso(), showChecked: true, sort: 'entry', lists: [
         { id: uid(), name: 'Groceries', type: 'grocery', items: [] }
       ] };
     }
@@ -636,15 +636,19 @@
       var list = activeList(); if (!list) return;
       // Simple ignores the other management controls (they are hidden, so a
       // leftover filter from Manage must never continue filtering here):
-      // no search, no store filter, default sort. The "Show checked"
-      // checkbox is the exception: its state lives in the shared document
-      // (state.showChecked, default true when absent), so both views honor
-      // it and it survives a dashboard reload.
+      // no search, no store filter. Sort and "Show checked" are the
+      // exceptions: their state lives in the shared document
+      // (state.sort, state.showChecked — entry/true when absent), so both
+      // views honor them and they survive a dashboard reload. While
+      // rearranging, the sort is forced to entry order (and the control
+      // locked) so the rows on screen are the order being edited; the
+      // saved sort is restored when rearranging ends.
       var isSimple = currentView === 'simple';
       var q = isSimple ? '' : ($('searchBox').value || '').trim().toLowerCase();
       var storeF = isSimple ? '' : $('storeFilter').value;
       var showChecked = state.showChecked !== false;
-      var sort = isSimple ? 'entry' : $('sortSel').value;
+      var sort = (state.sort === 'alpha' || state.sort === 'recent') ? state.sort : 'entry';
+      if (rearrangeMode) sort = 'entry';
       var grouped = list.type === 'grocery' && !!list.groupSections;
       var items = list.items.slice();
       if (q) items = items.filter(function (i) { return (i.name + ' ' + (i.category || '') + ' ' + (i.store || '')).toLowerCase().indexOf(q) !== -1; });
@@ -738,7 +742,7 @@
         try { if (window.HomeGlow && window.HomeGlow.celebrate) window.HomeGlow.celebrate(); } catch (e) {}
       }
     }
-    function render() { $('showChecked').checked = state.showChecked !== false; renderTitle(); renderTabs(); renderMeta(); renderItems(); }
+    function render() { $('showChecked').checked = state.showChecked !== false; $('sortSel').value = rearrangeMode ? 'entry' : ((state.sort === 'alpha' || state.sort === 'recent') ? state.sort : 'entry'); renderTitle(); renderTabs(); renderMeta(); renderItems(); }
 
     // ---- editing ----
     // Adds and edits both happen in the add dialog: the form is prefilled
@@ -866,7 +870,7 @@
       $(id).addEventListener('blur', function () { dirty = false; });
     });
     $('searchBox').addEventListener('input', renderItems);
-    $('sortSel').addEventListener('change', renderItems);
+    $('sortSel').addEventListener('change', function () { state.sort = $('sortSel').value; save().then(render); });
     $('storeFilter').addEventListener('change', renderItems);
     $('showChecked').addEventListener('change', function () { state.showChecked = $('showChecked').checked; save().then(render); });
     // New grocery lists default to the name "Grocery" (editable, not

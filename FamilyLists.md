@@ -34,7 +34,9 @@ section picker in the item's edit dialog.
 - **Entry order** is the default sort: items show in the order they
   were added, or the order Rearrange left them in.
   A–Z and Recently added are also available; when grouping is on,
-  they apply within each section.
+  they apply within each section. The sort choice is saved in the
+  shared document, so it is honored in both views and survives
+  going back from Manage and a dashboard reload.
 - **Rearrange** (list editor): tap Rearrange for ↑ / ↓ buttons on
   every row — the way to reorder, on touch and mouse alike.
   ↑ moves the item one step up, ↓ one step down —
@@ -42,7 +44,7 @@ section picker in the item's edit dialog.
   whole list when it is off. Moves save immediately; there is
   no undo. While rearranging, the sort is entry order so the
   rows on screen are the order being edited; tap Done to leave
-  rearrange mode. Moving an item to another section stays on the
+  rearrange mode, which restores the sort you had before. Moving an item to another section stays on the
   section picker in the edit dialog.
 
 Custom lists have no sections: they sort
@@ -119,7 +121,8 @@ view; the list editor is a separate screen reached from the widget's settings ge
   Checkboxes work here — tap one to check or uncheck. Checked items
   stay visible, struck through. There is no
   search, sort, store filter, or any delete/rename/new-list control
-  in the list view: it is for using the list, not editing it. + Add opens
+  in the list view: it is for using the list, not editing it. (The
+  sort order chosen in Manage still applies here.) + Add opens
   a minimal quick-add dialog: name box (quantity parsing still
   applies, so `2 lbs chicken` splits quantity + unit) plus a
   quantity field only. New grocery items get their section guessed
