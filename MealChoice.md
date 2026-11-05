@@ -33,7 +33,10 @@ so turning it back on restores them.
   then earlier), so the window stays within one week: 1 day shows
   just that next day, 5 days shows the current week Monday–Thursday
   and next week on Friday. A narrow display still
-  shows fewer when the day cards do not fit.
+  shows fewer when the day cards do not fit. A tall display (height
+  at least 1.2x width) stacks the shown days in one vertical list
+  instead of side-by-side columns, so a tall widget reads down the
+  week; a wide-short widget stays horizontal.
 - **Week navigation:** ‹ and › step the window one shown day at a
   time — from Monday, › shows Tuesday, not next Monday. When
   weekends are hidden the steps skip Saturday and Sunday, so Friday

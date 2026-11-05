@@ -178,6 +178,16 @@
     .daygrid { display: grid; gap: 0.6rem; grid-template-columns: 1fr; }
     @container (min-width: 560px) { .daygrid { grid-template-columns: 1fr 1fr; } }
     @container (min-width: 900px) { .daygrid.cols5 { grid-template-columns: repeat(5, 1fr); } .daygrid.cols7 { grid-template-columns: repeat(7, 1fr); } }
+    /* Tall widget: stack the days in one vertical list instead of
+       side-by-side columns. The container queries above can only see
+       width (.wrap is container-type: inline-size), so a tall-but-wide
+       widget still gets N narrow columns. .layout-tall is set by the
+       ResizeObserver in JS from the widget's aspect ratio; renderWeek
+       clears its inline gridTemplateColumns when tall, so this rule —
+       which beats the @container rules for every col count — is the
+       one that applies. Day cards, person/meal groups, dividers and
+       tap-to-choose are untouched: only the grid direction changes. */
+    .wrap.layout-tall .daygrid { grid-template-columns: 1fr; }
     .daycard {
       text-align: left; border-radius: 14px; padding: 0.6rem;
       border: 1px solid var(--border, #ddd); color: inherit;
@@ -488,6 +498,33 @@
     var coreUsers = []; // household users from GET /api/users, excluding the id-0 bonus pseudo-user
     var usersError = false;
     var containerWidth = 0; // .wrap width in px, via ResizeObserver (0 = unmeasured: show the full week)
+    var isTall = false; // the widget box is taller than wide: stack the days vertically (see updateTall)
+    // Tall widget: the week layout is width-driven (fitCount + the
+    // container queries), so a tall widget still gets N narrow
+    // side-by-side day columns. When the widget's box is tall the days
+    // go down one list instead: today, Thursday, Friday, top to
+    // bottom. The box is the iframe viewport — documentElement
+    // clientWidth/Height are set by the widget's grid size, not by
+    // this plugin's content — so the decision cannot flap when the
+    // layout itself changes the content height. (Measuring the week
+    // view's width instead would not be exogenous: once tall, the
+    // vertical scrollbar narrows it ~15px and the ratio would stick.)
+    // Threshold 1.2: a near-square widget (1.0) stays width-driven,
+    // a genuinely tall one (400x900 = 2.25) flips, and a wide-short
+    // wall widget (~0.2) stays horizontal.
+    var TALL_ASPECT = 1.2;
+    function updateTall() {
+      var w = document.documentElement ? document.documentElement.clientWidth : 0;
+      var h = document.documentElement ? document.documentElement.clientHeight : 0;
+      var tall = !!(w && h && h / w >= TALL_ASPECT);
+      if (tall !== isTall) {
+        isTall = tall;
+        var wrap = document.querySelector('.wrap');
+        if (wrap) wrap.classList.toggle('layout-tall', tall);
+        return true;
+      }
+      return false;
+    }
     var weekMonday = null; // Monday of the shown calendar week (set after state loads)
     var windowStart = null; // first shown day of a paged window; null = auto (tomorrow-anchored default window)
     var view = 'week'; // 'week' | 'manage'
@@ -781,6 +818,10 @@
     // a wide display; narrow displays still show fewer when the
     // cards don't fit.
     function fitCount(total) {
+      // Tall: the days stack vertically and the wrap scrolls, so width
+      // no longer limits how many days fit — show the whole requested
+      // window instead of the 170px-per-card count.
+      if (isTall) return total;
       if (!containerWidth) return total;
       return Math.max(1, Math.min(total, Math.floor(containerWidth / 170)));
     }
@@ -869,6 +910,7 @@
         ' – ' + last.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     }
     function renderWeek() {
+      updateTall();
       var days = windowedDays();
       renderWeekLabel(days);
       var banner = $('emptyBanner');
@@ -889,7 +931,9 @@
       var tk = todayKey();
       var grid0 = $('dayGrid');
       grid0.className = 'daygrid cols' + days.length;
-      grid0.style.gridTemplateColumns = 'repeat(' + days.length + ', minmax(0, 1fr))';
+      // Tall: clear the inline columns so the .layout-tall stylesheet
+      // rule (single column) applies; an inline style would beat it.
+      grid0.style.gridTemplateColumns = isTall ? '' : 'repeat(' + days.length + ', minmax(0, 1fr))';
       var html = '';
       for (var i = 0; i < days.length; i++) {
         var d = days[i];
@@ -1392,20 +1436,29 @@
       try { localStorage.removeItem('homeglowMealChoice.displayPeople'); } catch (e) {}
       bindStatic();
       // Responsive week: re-render when the widget's width changes the
-      // day count. Only the count matters, so re-render only when it moves.
+      // day count, or its aspect flips the tall stacking. Only the
+      // count or the tall state matters, so re-render only when one moves.
       try {
         if (typeof ResizeObserver === 'function') {
           var lastCount = -1;
-          new ResizeObserver(function () {
+          var weekObserver = new ResizeObserver(function () {
             if (!state) return;
             var w = $('weekView') ? $('weekView').clientWidth : 0;
-            if (w && w !== containerWidth) {
-              containerWidth = w;
-              var total = visibleDays().length;
-              var c = fitCount(total);
-              if (c !== lastCount) { lastCount = c; if (state) renderWeek(); }
-            }
-          }).observe($('weekView'));
+            if (w) containerWidth = w;
+            // Tall flips on aspect, not just on the day count, so a
+            // resize that only crosses the tall threshold still
+            // re-renders (the count check alone would miss it).
+            var tallFlipped = updateTall();
+            var total = visibleDays().length;
+            var c = fitCount(total);
+            if (c !== lastCount || tallFlipped) { lastCount = c; if (state) renderWeek(); }
+          });
+          weekObserver.observe($('weekView'));
+          // The tall decision reads the viewport (documentElement),
+          // which can change height without weekView's content box
+          // changing at all — a height-only resize must still flip
+          // the layout, so observe the viewport too.
+          weekObserver.observe(document.documentElement);
         }
       } catch (e) {}
       loadRemote().then(function (doc) {
