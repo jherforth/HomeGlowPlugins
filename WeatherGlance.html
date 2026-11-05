@@ -462,18 +462,32 @@
       });
     };
 
-    // --- sizing -----------------------------------------------------------------
+    // --- sizing: measure the box this plugin renders in -----------------------
+    // The plugin runs in an iframe sized to its widget box, so the box — not
+    // the top-level window — is the right ruler. In mirror mode the window
+    // is the phone's while the box is the wall's, and a window-sized layout
+    // comes out compact on the wall's own dashboard. Same breakpoints and
+    // same three layouts as before; only the measurement source changes.
+    // A box of 0x0 (hidden tab, not yet laid out) keeps the last good size;
+    // the window is only a fallback when the box never reported one.
+    var lastBox = { w: 0, h: 0 };
+    var boxSize = function () {
+      var w = app ? app.clientWidth : 0;
+      var h = app ? app.clientHeight : 0;
+      if (w > 0 && h > 0) { lastBox = { w: w, h: h }; return lastBox; }
+      if (lastBox.w > 0 && lastBox.h > 0) return lastBox;
+      return { w: window.innerWidth, h: window.innerHeight };
+    };
     var layout = function () {
       var choice = settings.layout;
       if (choice === 'Compact' || choice === 'Medium' || choice === 'Full') return choice.toLowerCase();
-      var w = window.innerWidth;
-      var h = window.innerHeight;
-      if (w < 300 || h < 200) return 'compact';
-      if (w >= 620 && h >= 300) return 'full';
+      var size = boxSize();
+      if (size.w < 300 || size.h < 200) return 'compact';
+      if (size.w >= 620 && size.h >= 300) return 'full';
       return 'medium';
     };
     // Too small for a tab bar to leave room for anything: just the reading.
-    var tiny = function () { return window.innerWidth < 200 || window.innerHeight < 140; };
+    var tiny = function () { var size = boxSize(); return size.w < 200 || size.h < 140; };
 
     // --- shared pieces ----------------------------------------------------------
     var dayLabel = function (day) {
@@ -654,7 +668,7 @@
         panel.innerHTML = '<div class="story">' + hero() + noteList(5) + '</div>' + ribbon + stats();
       } else {
         // Medium: what fits, in order of what matters at a glance.
-        var h = window.innerHeight;
+        var h = boxSize().h;
         panel.innerHTML = hero()
           + noteList(h >= 300 ? 3 : h >= 240 ? 2 : 1)
           + (h >= 250 ? ribbon : '')
@@ -787,7 +801,7 @@
       var small = tiny();
       tabsBar.hidden = small;
       if (small) tab = 'now';
-      stamp.textContent = updatedAt && window.innerWidth >= 340 ? fill(S.updated, { t: hourFmt.format(updatedAt) }) : '';
+      stamp.textContent = updatedAt && boxSize().w >= 340 ? fill(S.updated, { t: hourFmt.format(updatedAt) }) : '';
       Object.keys(panels).forEach(function (k) {
         var on = k === tab;
         panels[k].hidden = !on;
@@ -842,10 +856,20 @@
     });
 
     var resizeTimer = null;
-    window.addEventListener('resize', function () {
+    var scheduleRender = function () {
       clearTimeout(resizeTimer);
       resizeTimer = setTimeout(render, 120);
-    });
+    };
+    window.addEventListener('resize', scheduleRender);
+    // The box can change without the window resizing (mirror entry settles
+    // the grid after the frame first renders; a tab switch shows a box that
+    // was hidden) — watch the box itself, not just the window. The app fills
+    // the frame (height: 100%), so its own size never moves with content and
+    // this cannot loop: render() only rewrites what is inside the box.
+    if (typeof ResizeObserver !== 'undefined' && app) {
+      var boxObserver = new ResizeObserver(function () { scheduleRender(); });
+      boxObserver.observe(app);
+    }
 
     // --- start --------------------------------------------------------------------
     var readSettings = function () {
