@@ -18,6 +18,7 @@
       { "key": "apiKey", "label": "TheSportsDB API key (123 is the free public key; only used when the data source is TheSportsDB)", "type": "string", "default": "123", "scope": "household" },
       { "key": "teams", "label": "Favorite teams, comma-separated (full names find them best, e.g. Green Bay Packers, Milwaukee Brewers)", "type": "string", "default": "", "scope": "household" },
       { "key": "teamsOnly", "label": "Show only my teams' games (when favorite teams are set)", "type": "boolean", "default": true, "scope": "household" },
+      { "key": "favoritesAndLiveOnly", "label": "Show only favorite teams' games and live games", "type": "boolean", "default": false, "scope": "household" },
       { "key": "showNfl", "label": "NFL", "type": "boolean", "default": true, "scope": "household" },
       { "key": "showCollegeFootball", "label": "College football", "type": "boolean", "default": false, "scope": "household" },
       { "key": "showNba", "label": "NBA", "type": "boolean", "default": true, "scope": "household" },
@@ -256,7 +257,7 @@
         showNfl: true, showCollegeFootball: false, showNba: true, showMlb: true,
         showNhl: true, showMls: false, showPremierLeague: false,
         gamesPerLeague: 4, liveMinutes: 5,
-        teams: '', teamsOnly: true
+        teams: '', teamsOnly: true, favoritesAndLiveOnly: false
       };
 
       var LIVE_LABEL = {
@@ -601,6 +602,17 @@
         return isFavorite(game.home) || isFavorite(game.away);
       }
 
+      // The favorites-and-live view: a favorite's game, or any game that is
+      // in progress. A live game still has to be in a league that is turned
+      // on; a favorite's game keeps the existing favoriteGame rule (a found
+      // favorite can surface from a league that is turned off, on the
+      // TheSportsDB path where team ids are known).
+      function favoritesLiveGame(game) {
+        if (favoriteGame(game)) return true;
+        var league = LEAGUE_BY_ID[game.leagueId];
+        return game.state === 'in' && !!league && !!settings[league.setting];
+      }
+
       function fetchLive() {
         return getJson('livescore.php').then(function (json) {
           var rows = {};
@@ -748,7 +760,8 @@
         title.appendChild(badge);
         root.appendChild(title);
 
-        var onlyMine = settings.teamsOnly && favorites.words.length > 0;
+        var favsLiveOnly = settings.favoritesAndLiveOnly === true;
+        var onlyMine = !favsLiveOnly && settings.teamsOnly && favorites.words.length > 0;
         if (favorites.missing.length) {
           root.appendChild(note('Not found: ' + favorites.missing.join(', ') + '. The full team name finds it, e.g. Green Bay Packers; meanwhile it picks out games already shown.'));
         }
@@ -757,14 +770,18 @@
           root.appendChild(note(e.word + ' found only ' + e.team.name + ', in ' + (league ? league.name : 'a league') + ', which is turned off. Type the full name of the team you mean.'));
         });
 
-        if (onlyMine) {
-          // Only the favorites' games, under their leagues.
-          var picked = games.filter(favoriteGame);
+        if (favsLiveOnly || onlyMine) {
+          // Favorites-and-live: the union of a favorite's games and every
+          // live game. Favorites-only: just the favorites' games. Either
+          // way the games are grouped under their leagues, and
+          // gamesPerLeague caps each league after the filter, so the cap
+          // counts only games actually shown.
+          var picked = games.filter(favsLiveOnly ? favoritesLiveGame : favoriteGame);
           var leagueIds = [];
           picked.forEach(function (g) { if (leagueIds.indexOf(g.leagueId) === -1) leagueIds.push(g.leagueId); });
           if (!picked.length) {
             var teamFailed = favorites.teams.some(function (t) { return teamGames[t.id] && teamGames[t.id].error; });
-            root.appendChild(note(teamFailed ? 'Could not load your teams\' games. Trying again soon.' : 'No games for your teams on the schedule.'));
+            root.appendChild(note(teamFailed ? 'Could not load your teams\' games. Trying again soon.' : (favsLiveOnly ? 'No favorite or live games right now.' : 'No games for your teams on the schedule.')));
           }
           leagueIds.forEach(function (id) {
             var section = el('section', 'league');
@@ -780,7 +797,7 @@
           return;
         }
 
-        if (!onlyMine) enabled.forEach(function (league) {
+        if (!onlyMine && !favsLiveOnly) enabled.forEach(function (league) {
           var result = full[league.id] || { games: [] };
           var mine = games.filter(function (g) { return g.leagueId === league.id; });
           var section = el('section', 'league');
@@ -851,7 +868,12 @@
 
           var byId = merge(enabled);
           var games = Object.keys(byId).map(function (id) { return byId[id]; });
-          var watched = settings.teamsOnly && favorites.words.length ? games.filter(favoriteGame) : games;
+          // The Live badge and the fast refresh follow the games actually
+          // shown: with favorites-and-live on, the filtered set (so a live
+          // game that is shown lights the badge, and a soon game that is
+          // hidden does not speed up the refresh).
+          var watched = settings.favoritesAndLiveOnly === true ? games.filter(favoritesLiveGame)
+            : settings.teamsOnly && favorites.words.length ? games.filter(favoriteGame) : games;
           live = watched.some(function (g) { return g.state === 'in'; });
           soon = watched.some(function (g) {
             return g.state === 'pre' && g.date > checkedAt && g.date - checkedAt < SOON_MS;
