@@ -69,10 +69,18 @@
       whose template was removed falls back to custom, and an item
       still works if it carries fields this version no longer
       writes (note, assignedTo, price, and friends are ignored).
-      The widget polls storage (default every 10s, setting `pollSeconds`)
-      so writes from another display
-      appear without a reload. Polling never clobbers an in-progress edit:
-      a poll is skipped while the add form or an inline edit is dirty.
+      The widget subscribes to the `plugin.storage.changed` push event
+      (manifest `"events": ["plugin.storage.changed"]`) so writes from
+      another display appear without a reload — no polling. The event
+      carries only the plugin id and the write's revision, never a key,
+      so the handler re-fetches the stored document and re-renders.
+      Push refresh never clobbers an in-progress edit: a refresh is
+      skipped while the add form or an inline edit is dirty, and
+      applied when the edit closes. The handler
+      never writes storage in response to the event, and never skips
+      events carrying its own revisions (one event can stand for several
+      writes). Requires a server with the push implementation: an older
+      server rejects the install, so there is no older-server fallback.
       Concurrent edits from two displays: last write wins (no merge —
       the newest saved document replaces the old one).
 
@@ -86,15 +94,7 @@
     "description": "Shared family lists in one widget: groceries with quantities and store sections, plus custom lists. Check items off on the wall, filter by store.",
     "apiVersion": "v1",
     "storage": true,
-    "settings": [
-      {
-        "key": "pollSeconds",
-        "label": "How often to check for changes from other displays (seconds)",
-        "type": "number",
-        "default": 10,
-        "scope": "household"
-      }
-    ]
+    "events": ["plugin.storage.changed"]
   }
   </script>
   <link rel="stylesheet" href="/index.css">
@@ -440,15 +440,14 @@
 
     var state = null;           // { version:1, lists:[...], updatedAt }
     var activeListId = null;
-    var settings = { pollSeconds: 10 };
     var editingId = null;       // item id being inline-edited
-    var dirty = false;          // add form / edit in progress -> skip poll
+    var dirty = false;          // add form / edit in progress -> skip push refresh
+    var refreshPending = false; // a push skipped while dirty, applied when the edit closes
     var confirmDeleteUntil = 0; // inline two-tap confirm for Delete list
     var confirmRemoveId = null; // item id awaiting two-tap remove confirm
     var confirmRemoveUntil = 0;
     var recoveryPending = false; // boot storage read failed: never write the in-memory default remotely
     var saveWarned = false;      // a save-failure warning is showing
-    var pollTimer = null;
     var rearrangeMode = false; // Manage reorder via ↑/↓ buttons
 
     function uid() { return 'i' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
@@ -506,7 +505,7 @@
         if (recoveryPending) {
           // Boot read failed: never write the in-memory default over the
           // household's real document. Park the edit on this display only;
-          // the poll loop adopts the recovered document when it appears.
+          // the push handler adopts the recovered document when it appears.
           try { localStorage.setItem(LS_KEY, JSON.stringify(doc)); } catch (e) {}
           return Promise.resolve();
         }
@@ -518,16 +517,6 @@
         });
       }
       try { localStorage.setItem(LS_KEY, JSON.stringify(doc)); } catch (e) {}
-      return Promise.resolve();
-    }
-    function loadSettings() {
-      if (window.HomeGlow && window.HomeGlow.settings && typeof window.HomeGlow.settings.get === 'function') {
-        return window.HomeGlow.settings.get().then(function (s) {
-          if (s && typeof s === 'object') {
-            if (typeof s.pollSeconds === 'number' && s.pollSeconds >= 5) settings.pollSeconds = s.pollSeconds;
-          }
-        }).catch(function () {});
-      }
       return Promise.resolve();
     }
     function save() { return saveRemote(state).then(renderMeta); }
@@ -769,6 +758,7 @@
       $('addForm').reset();
       $('bulkBtn').disabled = false; $('bulkBox').disabled = false;
       var d = $('addDialog'); if (d && d.open) d.close();
+      applyPendingRefresh();
     }
 
     // ---- list confirms + rename ----
@@ -895,7 +885,7 @@
       var d = $('addDialog'); if (!d.open) d.showModal(); $('fName').focus();
     };
     $('cancelAddBtn').onclick = function () { endEdit(); };
-    $('addDialog').addEventListener('close', function () { dirty = false; $('bulkState').textContent = ''; if (editingId) endEdit(); });
+    $('addDialog').addEventListener('close', function () { dirty = false; $('bulkState').textContent = ''; if (editingId) endEdit(); applyPendingRefresh(); });
     $('addDialog').addEventListener('click', function (e) { if (e.target === $('addDialog')) $('addDialog').close(); });
     $('cancelListBtn').onclick = function () { $('newListCard').classList.add('hidden'); $('newListName').value = ''; newListNameIsPrefill = false; };
     $('createListBtn').onclick = function () {
@@ -1012,11 +1002,22 @@
       save().then(render);
     };
 
-    // ---- polling: pick up other-display writes ----
-    function poll(force) {
+    // ---- push: pick up other-display writes ----
+    // The `plugin.storage.changed` event carries only the plugin id and
+    // the write's revision, never a key, so the handler re-fetches the
+    // stored document and re-renders. It never writes storage itself,
+    // and it never skips events carrying this display's own revisions:
+    // one event can stand for several writes, so skipping could lose
+    // another display's write (reloading after an own write costs one
+    // extra fetch and is the safe behavior). A refresh skipped while
+    // dirty is remembered and applied when the edit closes, so the
+    // push-only widget self-heals exactly where polling's next tick
+    // used to.
+    function refreshFromRemote(force) {
       return loadRemote().then(function (remote) {
         if (!remote || !Array.isArray(remote.lists) || remote.lists.length === 0) return;
-        if (!force && dirty) return; // never clobber an in-progress edit
+        if (!force && dirty) { refreshPending = true; return; } // never clobber an in-progress edit
+        refreshPending = false;
         if (recoveryPending) {
           // Boot read failed and storage is back: adopt the real document
           // regardless of timestamps (the in-memory default is newer by
@@ -1039,9 +1040,17 @@
         render();
       }).catch(function () {});
     }
-    function startPolling() {
-      if (pollTimer) clearInterval(pollTimer);
-      pollTimer = setInterval(function () { poll(false); }, Math.max(5, settings.pollSeconds) * 1000);
+    // Deferred a tick so a save triggered by the close (form submit)
+    // sends its write before this re-fetch runs.
+    function applyPendingRefresh() {
+      if (!refreshPending) return;
+      refreshPending = false;
+      setTimeout(function () { refreshFromRemote(false); }, 0);
+    }
+    function subscribePush() {
+      if (window.HomeGlow && typeof window.HomeGlow.on === 'function') {
+        window.HomeGlow.on('plugin.storage.changed', function () { refreshFromRemote(false); });
+      }
     }
 
     // ---- boot ----
@@ -1049,15 +1058,13 @@
     // clobber the household's real list: a failed read (as opposed to a
     // missing key, i.e. first run) retains the default list in memory only.
     // Nothing is written remotely until storage reads succeed again, and
-    // the poll loop adopts the recovered document when it appears.
+    // the push handler adopts the recovered document when it appears.
     // Worst case during an outage, an edit made to the in-memory default
     // is dropped when the real document recovers — that beats overwriting
     // the household's list with the empty default. A present-but-malformed
     // document (wrong shape, empty lists) is treated like a failed read,
     // not like first run, for the same reason.
-    loadSettings().then(function () {
-      return loadRemote().then(function (remote) { return { remote: remote, failed: false }; }, function () { return { remote: null, failed: true }; });
-    }).then(function (res) {
+    loadRemote().then(function (remote) { return { remote: remote, failed: false }; }, function () { return { remote: null, failed: true }; }).then(function (res) {
       var remote = res.remote;
       var haveRemote = !!(remote && Array.isArray(remote.lists) && remote.lists.length > 0);
       // A present-but-malformed remote (not a failed read, not first run)
@@ -1069,7 +1076,7 @@
       state = haveRemote ? remote : defaultState();
       activeListId = state.lists[0] ? state.lists[0].id : null;
       if (!haveRemote && !recoveryPending) saveRemote(state).catch(function () {});
-      render(); startPolling();
+      render(); subscribePush();
     });
   })();
   </script>

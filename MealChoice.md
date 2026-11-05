@@ -202,10 +202,17 @@ one-element array on load. An option's `meals` is the
 configurable set of meals it appears in (any non-empty subset of
 `breakfast`, `snack`, `lunch`, `dinner`). Only enabled meals render
 rows and tabs, and only enabled meals are written; a disabled meal's
-saved picks stay in the document untouched. The widget polls storage
-(default every 10 seconds, setting `pollSeconds`) so a choice made
-on one display appears on the others; a refresh is skipped while any
-dialog is open, and concurrent edits resolve last-write-wins.
+saved picks stay in the document untouched. The widget subscribes to
+the `plugin.storage.changed` push event so a choice made on one
+display appears on the others without polling; the event carries only
+the plugin id and the write's revision, never a key, so the widget
+re-fetches its stored document and re-renders. A refresh is skipped
+while any dialog is open, and applied when the dialog closes;
+concurrent edits resolve last-write-wins. The widget never writes storage in response to the
+event, and never skips events carrying its own revisions (one event
+can stand for several writes). Requires a server with the push
+implementation: an older server rejects the install, so there is no
+older-server fallback.
 
 **Migration:** documents saved before the week-shape change have no
 `showWeekends` field and default to `false` (Monday–Friday), so
