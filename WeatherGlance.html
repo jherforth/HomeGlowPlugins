@@ -197,6 +197,7 @@
     .card .dn { font-size: 0.75rem; opacity: 0.65; }
     .card .emoji { font-size: 1.5rem; line-height: 1.1; }
     .card .wet { font-size: 0.75rem; color: var(--wg-wet); font-weight: 600; }
+    .card .prob { font-size: 0.75rem; color: var(--wg-wet); font-weight: 600; }
     /* The day's range on a shared scale, so warmer and colder days read at a glance. */
     .range { width: 6px; height: 46px; border-radius: 3px; background: rgba(128,128,128,0.18); position: relative; }
     .range span { position: absolute; left: 0; right: 0; border-radius: 3px; background: linear-gradient(180deg, var(--wg-hot), var(--wg-cold)); }
@@ -242,6 +243,7 @@
         tabNow: 'Now',
         tabForecast: 'Forecast',
         feelsLike: 'Feels like',
+        rainChance: 'Rain chance',
         humidity: 'Humidity',
         wind: 'Wind',
         airQuality: 'Air quality',
@@ -282,6 +284,7 @@
         tabNow: 'Ahora',
         tabForecast: 'Pronóstico',
         feelsLike: 'Sensación',
+        rainChance: 'Prob. de lluvia',
         humidity: 'Humedad',
         wind: 'Viento',
         airQuality: 'Calidad del aire',
@@ -543,6 +546,13 @@
       return points;
     };
 
+    // The day's precipitation probability (0-100), when the provider
+    // supplies one. OpenWeatherMap does; Home Assistant and demo do not, and
+    // the field is hidden then rather than shown as a misleading 0%.
+    var prob = function (value) {
+      return Number.isFinite(value) ? Math.round(value) + '%' : '';
+    };
+
     // --- Now: the story of the next hours -------------------------------------
     var notes = function (points) {
       var c = weather.current;
@@ -630,6 +640,8 @@
         return '<div class="stat"><div class="k">' + esc(k) + '</div><div class="v">' + v + '</div>' + (extra || '') + '</div>';
       };
       if (Number.isFinite(c.feelsLike)) out.push(tile(S.feelsLike, esc(round(c.feelsLike) + '°')));
+      var todayProb = todayIndex() >= 0 ? weather.forecast[todayIndex()].precipitationProbability : null;
+      if (Number.isFinite(todayProb)) out.push(tile(S.rainChance, esc(prob(todayProb))));
       if (Number.isFinite(c.humidity)) {
         out.push(tile(S.humidity, esc(round(c.humidity) + '%'),
           '<div class="meter"><span style="width:' + Math.max(0, Math.min(100, c.humidity)) + '%"></span></div>'));
@@ -793,14 +805,16 @@
           + '<div class="emoji" aria-hidden="true">' + icon(day.condition) + '</div>'
           + '<div class="hot">' + round(day.high) + '°</div>' + bar
           + '<div class="cold">' + round(day.low) + '°</div>'
+          + (prob(day.precipitationProbability) ? '<div class="prob">🌧️ ' + prob(day.precipitationProbability) + '</div>' : '')
           + (wet(day.precipitation) ? '<div class="wet">' + wet(day.precipitation) + '</div>' : '')
           + '</div>';
       }).join('');
 
       var hours = (weather.hourly || []).map(function (p) {
+        var extra = [prob(p.precipitationProbability), wet(p.precipitation)].filter(function (s) { return s; }).join(' · ');
         return '<div class="hour"><span class="t">' + esc(hourFmt.format(new Date(p.timestamp * 1000))) + '</span>'
           + '<span class="temp">' + round(p.temp) + deg() + '</span>'
-          + '<span class="wet">' + wet(p.precipitation) + '</span></div>';
+          + '<span class="wet">' + extra + '</span></div>';
       }).join('');
 
       var scroll = panels.list.scrollTop;
