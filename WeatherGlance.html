@@ -264,6 +264,8 @@
         warmer: 'Tomorrow: {n}° warmer',
         cooler: 'Tomorrow: {n}° cooler',
         windy: 'Windy, {v}',
+        trace: 'Trace',
+        precipNone: 'None expected',
         updated: 'Updated {t}',
         unavailable: 'Weather is unavailable right now.',
         setLocation: 'Set a location for this plugin in Admin Panel → Widgets → Plugins.',
@@ -302,6 +304,8 @@
         warmer: 'Mañana: {n}° más cálido',
         cooler: 'Mañana: {n}° más fresco',
         windy: 'Viento fuerte, {v}',
+        trace: 'Trazas',
+        precipNone: 'No se espera',
         updated: 'Actualizado {t}',
         unavailable: 'El clima no está disponible ahora.',
         setLocation: 'Configura una ubicación para este complemento en Panel de administración → Widgets → Complementos.',
@@ -382,17 +386,32 @@
     var windUnit = function () { return metric() ? 'm/s' : 'mph'; };
     // Providers disagree on precipitation units: OpenWeatherMap reports mm
     // whatever units it was asked for, the demo data inches, and Home Assistant
-    // whatever it is configured with. Label only what is known.
-    var wetUnit = function () {
+    // whatever it is configured with. The amount is converted to the unit the
+    // Temperature setting implies (Fahrenheit → inches, Celsius → mm), the
+    // way WeatherScenes asks for its precipitation unit; a provider whose
+    // unit is unknown (Home Assistant) is left as-is, unlabelled.
+    var wetSourceUnit = function () {
       if (!weather) return '';
-      if (weather.provider === 'openweathermap') return ' mm';
-      if (weather.provider === 'demo') return ' in';
+      if (weather.provider === 'openweathermap') return 'mm';
+      if (weather.provider === 'demo') return 'in';
       return '';
     };
-    var wet = function (amount) {
+    var wetAmount = function (amount) {
       if (!(amount > 0)) return '';
-      var shown = amount < 1 ? amount.toFixed(2).replace(/0$/, '') : amount.toFixed(1);
-      return '💧 ' + shown + wetUnit();
+      var source = wetSourceUnit();
+      var value = amount;
+      var unit = source;
+      if (source === 'mm' && !metric()) { value = amount / 25.4; unit = 'in'; }
+      else if (source === 'in' && metric()) { value = amount * 25.4; unit = 'mm'; }
+      // WeatherScenes' formatting: mm to 1 decimal, inches to 2, with
+      // "Trace" for a measurable-but-tiny imperial amount.
+      if (unit === 'in') return value < 0.01 ? S.trace : value.toFixed(2) + ' in';
+      if (unit === 'mm') return value.toFixed(1) + ' mm';
+      return amount < 1 ? amount.toFixed(2).replace(/0$/, '') : amount.toFixed(1);
+    };
+    var wet = function (amount) {
+      var text = wetAmount(amount);
+      return text ? '💧 ' + text : '';
     };
 
     // --- where to ask about ---------------------------------------------------
