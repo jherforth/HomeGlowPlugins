@@ -20,7 +20,8 @@
       { "key": "units", "label": "Temperature unit", "type": "select",
         "options": ["Fahrenheit", "Celsius"], "default": "Fahrenheit" },
       { "key": "layout", "label": "Layout", "type": "select",
-        "options": ["Automatic", "Compact", "Medium", "Full"], "default": "Automatic", "scope": "device" }
+        "options": ["Automatic", "Compact", "Medium", "Full"], "default": "Automatic", "scope": "device" },
+      { "key": "severeAlerts", "label": "National Weather Service alerts", "type": "boolean", "default": true }
     ]
   }
   </script>
@@ -226,6 +227,30 @@
     .dhour .temp { font-weight: 700; }
     .dhour .prob, .dhour .wet { font-size: 0.75rem; color: var(--wg-wet); font-weight: 600; }
     .d-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 8px; }
+
+    /* --- NWS severe-weather alerts (US only) -------------------------------- */
+    .alerts { flex: 0 0 auto; padding: 6px 12px 0; position: relative; z-index: 1; }
+    .alerts[hidden] { display: none; }
+    .banner { display: flex; gap: 8px; align-items: center; width: 100%; padding: 8px 12px; border: 0; border-radius: 10px; font: inherit; font-weight: 600; color: #fff; cursor: pointer; text-align: left; }
+    .banner:focus-visible { outline: 2px solid var(--accent, #00ddeb); outline-offset: 2px; }
+    .banner .b-event { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .banner .b-time { margin-left: auto; font-weight: 400; font-size: 0.8rem; white-space: nowrap; }
+    .banner .b-more { font-size: 0.8rem; white-space: nowrap; }
+    .banner.sev-extreme { background: #991b1b; }
+    .banner.sev-severe { background: #dc2626; }
+    .banner.sev-moderate { background: #d97706; }
+    .banner.sev-minor { background: #a16207; }
+    .banner.sev-unknown { background: #6b7280; }
+    .alerts-list { display: flex; flex-direction: column; gap: 10px; }
+    .alert { border: 1px solid var(--card-border, rgba(0,0,0,0.1)); border-left: 4px solid #6b7280; border-radius: 10px; padding: 10px 12px; }
+    .alert.sev-extreme { border-left-color: #991b1b; }
+    .alert.sev-severe { border-left-color: #dc2626; }
+    .alert.sev-moderate { border-left-color: #d97706; }
+    .alert.sev-minor { border-left-color: #a16207; }
+    .alert h3 { margin: 0; font-size: 0.95rem; }
+    .alert .a-time { margin: 2px 0 6px; font-size: 0.8rem; opacity: 0.65; }
+    .alert .a-text { margin: 0; font-size: 0.88rem; white-space: pre-wrap; }
+    .alert .a-more { font: inherit; font-size: 0.8rem; font-weight: 600; margin-top: 6px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--card-border, rgba(0,0,0,0.1)); background: transparent; color: inherit; cursor: pointer; }
   </style>
 </head>
 <body>
@@ -238,6 +263,7 @@
       </div>
       <div class="stamp" id="stamp"></div>
     </div>
+    <div class="alerts" id="alerts" hidden></div>
     <section class="panel now-panel" id="panel-now" role="tabpanel" aria-labelledby="tab-now"></section>
     <section class="panel list-panel" id="panel-list" role="tabpanel" aria-labelledby="tab-list" hidden></section>
     <div class="detail" id="detail" hidden></div>
@@ -298,6 +324,10 @@
         back: 'Back',
         highLow: 'High / Low',
         precipAmount: 'Precipitation',
+        alertDetails: 'Details',
+        readFullAlert: 'Read the full alert',
+        showLess: 'Show less',
+        until: 'Until {t}',
         updated: 'Updated {t}',
         unavailable: 'Weather is unavailable right now.',
         setLocation: 'Set a location for this plugin in Admin Panel → Widgets → Plugins.',
@@ -349,6 +379,10 @@
         back: 'Atrás',
         highLow: 'Máxima / mínima',
         precipAmount: 'Precipitación',
+        alertDetails: 'Detalles',
+        readFullAlert: 'Leer la alerta completa',
+        showLess: 'Ver menos',
+        until: 'Hasta las {t}',
         updated: 'Actualizado {t}',
         unavailable: 'El clima no está disponible ahora.',
         setLocation: 'Configura una ubicación para este complemento en Panel de administración → Widgets → Complementos.',
@@ -411,14 +445,18 @@
     };
 
     // --- state ----------------------------------------------------------------
-    var settings = { location: '', units: 'Fahrenheit', layout: 'Automatic' };
+    var settings = { location: '', units: 'Fahrenheit', layout: 'Automatic', severeAlerts: true };
     var weather = null;
     var updatedAt = null;
     var tab = 'now';
     var detailDay = -1;
+    var alerts = [];
+    var currentAlertTexts = [];
+    var currentAlertShorts = [];
     var stateBox = document.getElementById('state');
     var app = document.getElementById('app');
     var tabsBar = document.getElementById('tabs');
+    var alertsEl = document.getElementById('alerts');
     var detailEl = document.getElementById('detail');
     var stamp = document.getElementById('stamp');
     var panels = { now: document.getElementById('panel-now'), list: document.getElementById('panel-list') };
@@ -517,6 +555,7 @@
         stateBox.hidden = true;
         app.hidden = false;
         render();
+        loadAlerts();
       }).catch(function (err) {
         // Keep showing the last good reading through a passing failure.
         if (weather) return;
@@ -974,6 +1013,11 @@
         tiles.push(dTile(S.precipAmount, esc(wetAmount(day.precipitation) || S.precipNone)));
       }
 
+      var dayAlerts = settings.severeAlerts ? alertsForDay(detailDay) : [];
+      var alertHTML = dayAlerts.length
+        ? '<div class="alerts-list" id="d-alerts">' + alertArticles(dayAlerts) + '</div>'
+        : '';
+
       detailEl.innerHTML = '<div class="d-head"><button type="button" class="back" data-action="back">← ' + esc(S.back) + '</button>'
         + '<div><h2>' + esc(title) + '</h2><div class="sub">' + esc(sub) + '</div></div>'
         + '<div class="cond">' + icon(day.condition) + ' ' + esc(describe(day)) + '<br>'
@@ -981,6 +1025,7 @@
         + (line ? '<p class="d-line">' + esc(line) + '</p>' : '')
         + '<div><div class="section-title">' + esc(S.nextHours) + '</div>'
         + (strip ? '<div class="dhours">' + strip + '</div>' : '<div class="muted">' + esc(S.noHours) + '</div>') + '</div>'
+        + alertHTML
         + '<div class="d-tiles">' + tiles.join('') + '</div>';
       detailEl.hidden = false;
       // A fresh open scrolls a future day's strip to 7 AM, as in
@@ -1012,11 +1057,121 @@
       if (back) closeDetail();
     });
     detailEl.addEventListener('click', function (event) {
-      if (event.target.closest('[data-action="back"]')) closeDetail();
+      if (event.target.closest('[data-action="back"]')) { closeDetail(); return; }
+      var more = event.target.closest('[data-action="more"]');
+      if (more) {
+        var idx = Number(more.getAttribute('data-idx'));
+        var article = more.closest('.alert');
+        var p = article && article.querySelector('.a-text');
+        var expanded = more.getAttribute('data-expanded') === 'true';
+        if (p && currentAlertTexts[idx] !== undefined) {
+          p.textContent = expanded ? currentAlertShorts[idx] : currentAlertTexts[idx];
+          more.textContent = expanded ? S.readFullAlert : S.showLess;
+          more.setAttribute('data-expanded', String(!expanded));
+        }
+      }
     });
     ['pointerdown', 'keydown', 'wheel', 'touchstart'].forEach(function (type) {
       document.addEventListener(type, armDetail, { passive: true });
     });
+
+    // --- NWS severe-weather alerts (US only) ----------------------------------
+    // Plugin-side, as in WeatherScenes: api.weather.gov/alerts/active for the
+    // payload's own coordinates, refreshed every 5 minutes. The National
+    // Weather Service is keyless and sends permissive CORS headers, so the
+    // frame fetches it directly; the server proxy is the fallback, and it
+    // only answers for hosts on the household's PROXY_WHITELIST. Outside the
+    // US the endpoint answers nothing, so no banner ever appears.
+    var SEV_RANK = { Extreme: 4, Severe: 3, Moderate: 2, Minor: 1, Unknown: 0 };
+    var renderAlerts = function () {
+      var show = settings.severeAlerts && alerts.length > 0 && !tiny();
+      alertsEl.hidden = !show;
+      if (!show) { alertsEl.innerHTML = ''; return; }
+      var top = alerts[0];
+      alertsEl.innerHTML = '<button type="button" class="banner sev-' + top.severity.toLowerCase() + '">'
+        + '<span aria-hidden="true">⚠️</span><span class="b-event">' + esc(top.event) + '</span>'
+        + '<span class="b-time">' + esc(alertTime(top)) + '</span>'
+        + '<span class="b-more">' + esc(alerts.length > 1 ? '+' + (alerts.length - 1) + ' more' : S.alertDetails) + '</span></button>';
+    };
+    var loadAlerts = function () {
+      if (!settings.severeAlerts || !weather || !weather.coordinates
+          || !Number.isFinite(weather.coordinates.lat) || !Number.isFinite(weather.coordinates.lon)) {
+        alerts = [];
+        renderAlerts();
+        return Promise.resolve();
+      }
+      var url = 'https://api.weather.gov/alerts/active?point='
+        + weather.coordinates.lat.toFixed(4) + ',' + weather.coordinates.lon.toFixed(4);
+      var parse = function (d) {
+        return ((d && d.features) || []).map(function (f) { return f.properties || {}; })
+          .filter(function (a) { return a.event && (!a.status || a.status === 'Actual'); })
+          .map(function (a) {
+            return {
+              event: a.event, severity: a.severity || 'Unknown',
+              onset: a.onset || a.effective || null, ends: a.ends || a.expires || null,
+              description: a.description || '', instruction: a.instruction || ''
+            };
+          })
+          .sort(function (a, b) { return (SEV_RANK[b.severity] || 0) - (SEV_RANK[a.severity] || 0); });
+      };
+      return fetch(url, { headers: { Accept: 'application/geo+json' } })
+        .then(function (res) { if (!res.ok) throw new Error('nws ' + res.status); return res.json(); })
+        .catch(function () {
+          return fetch('/api/proxy?targetUrl=' + encodeURIComponent(url)).then(function (res) {
+            if (!res.ok) throw new Error('proxy ' + res.status);
+            return res.json();
+          });
+        })
+        .then(function (d) {
+          alerts = parse(d);
+          renderAlerts();
+          if (detailDay >= 0) renderDetail(false, false);
+        })
+        .catch(function () {
+          // Keep the last good alerts through a passing failure.
+        });
+    };
+    var alertsForDay = function (i) {
+      if (i === 0) return alerts;
+      var day = weather.forecast[i];
+      if (!day) return [];
+      var start = dateOf(day.date).getTime();
+      var end = start + 86400000;
+      return alerts.filter(function (a) {
+        var on = a.onset ? Date.parse(a.onset) : 0;
+        var off = a.ends ? Date.parse(a.ends) : Infinity;
+        return on < end && off > start;
+      });
+    };
+    var alertTime = function (a) {
+      if (!a.ends) return '';
+      var d = new Date(a.ends);
+      var today = new Date();
+      var same = d.toDateString() === today.toDateString();
+      return fill(S.until, { t: (same ? '' : weekdayFmt.format(d) + ' ') + hourFmt.format(d) });
+    };
+    var alertArticles = function (dayAlerts) {
+      currentAlertTexts = dayAlerts.map(function (a) {
+        return a.description + (a.instruction ? '\n\n' + a.instruction : '');
+      });
+      currentAlertShorts = currentAlertTexts.map(function (text) {
+        return text.length > 320 ? text.slice(0, 300).replace(/\s+\S*$/, '') + '…' : text;
+      });
+      return dayAlerts.map(function (a, n) {
+        var short = currentAlertShorts[n];
+        var full = currentAlertTexts[n];
+        return '<article class="alert sev-' + a.severity.toLowerCase() + '">'
+          + '<h3>' + esc(a.event) + '</h3><p class="a-time">' + esc(alertTime(a)) + '</p>'
+          + '<p class="a-text">' + esc(short) + '</p>'
+          + (short !== full ? '<button type="button" class="a-more" data-action="more" data-idx="' + n + '" data-expanded="false">' + esc(S.readFullAlert) + '</button>' : '')
+          + '</article>';
+      }).join('');
+    };
+    alertsEl.addEventListener('click', function () {
+      var today = todayIndex();
+      openDetail(today >= 0 ? today : 0, true);
+    });
+    setInterval(loadAlerts, 5 * 60 * 1000);
 
     // --- tabs -------------------------------------------------------------------
     var render = function () {
@@ -1025,6 +1180,7 @@
       tabsBar.hidden = small;
       if (small) tab = 'now';
       stamp.textContent = updatedAt && boxSize().w >= 340 ? fill(S.updated, { t: hourFmt.format(updatedAt) }) : '';
+      renderAlerts();
       Object.keys(panels).forEach(function (k) {
         var on = k === tab;
         panels[k].hidden = !on;
