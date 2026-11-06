@@ -111,6 +111,20 @@
     }
     [data-theme="dark"] body { color: var(--text, #d6d6e8); }
     .wrap { width: 100%; max-height: calc(100vh - 1.5rem); overflow-y: auto; container-type: inline-size; }
+    /* Scrollbars stay invisible at rest and appear while the widget is
+       being used: :hover / :focus-within cover mouse and keyboard, and
+       the .scrolling class (added by the scroll listener below) covers
+       wheel / touch / keyboard scrolling, fading out ~1s after the last
+       scroll event. Colors only — no widths — so the layout never
+       shifts when the scrollbar appears. Firefox uses scrollbar-color;
+       Chromium/WebKit uses the ::-webkit-scrollbar thumb. */
+    .wrap, #listTabs { scrollbar-color: transparent transparent; }
+    .wrap::-webkit-scrollbar-thumb, #listTabs::-webkit-scrollbar-thumb { background: transparent; }
+    .wrap::-webkit-scrollbar-track, #listTabs::-webkit-scrollbar-track { background: transparent; }
+    .wrap:hover, .wrap:focus-within, .wrap.scrolling,
+    #listTabs:hover, #listTabs:focus-within, #listTabs.scrolling { scrollbar-color: rgba(128,128,128,0.45) transparent; }
+    .wrap:hover::-webkit-scrollbar-thumb, .wrap:focus-within::-webkit-scrollbar-thumb, .wrap.scrolling::-webkit-scrollbar-thumb,
+    #listTabs:hover::-webkit-scrollbar-thumb, #listTabs:focus-within::-webkit-scrollbar-thumb, #listTabs.scrolling::-webkit-scrollbar-thumb { background: rgba(128,128,128,0.45); }
     h2.title { font-size: 1.15rem; font-weight: 800; margin: 0 0 0.25rem 0; }
     .subtitle { font-size: 0.75rem; opacity: 0.75; margin: 0 0 0.75rem 0; }
     .row { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
@@ -1053,6 +1067,24 @@
         window.HomeGlow.on('plugin.storage.changed', function () { refreshFromRemote(false); });
       }
     }
+
+    // ---- auto-hide scrollbars ----
+    // The list and tab scrollbars are transparent at rest (see CSS
+    // above). :hover / :focus-within show them for mouse and keyboard;
+    // this shows them while actively scrolling (wheel, touch, keyboard)
+    // and fades them out ~1s after the last scroll event.
+    (function autoHideScrollbars() {
+      var scrollers = [document.getElementById('wrap'), document.getElementById('listTabs')];
+      var timers = {};
+      scrollers.forEach(function (el, i) {
+        if (!el) return;
+        el.addEventListener('scroll', function () {
+          el.classList.add('scrolling');
+          clearTimeout(timers[i]);
+          timers[i] = setTimeout(function () { el.classList.remove('scrolling'); }, 1000);
+        }, { passive: true });
+      });
+    })();
 
     // ---- boot ----
     // A storage failure must never blank the widget, and must never
