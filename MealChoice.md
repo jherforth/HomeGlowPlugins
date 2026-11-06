@@ -26,13 +26,10 @@ so turning it back on restores them.
   starting at the first shown day after today — tomorrow, or
   Monday when tomorrow falls on a hidden weekend day — since
   today's lunch was packed the night before, so today is not what
-  needs planning, and there is no separate today card. If the
-  forward run from that anchor would cross a Monday-week
-  boundary, the spilling days are replaced with previous shown
-  days from the start week (going backward from the anchor: today,
-  then earlier), so the window stays within one week: 1 day shows
-  just that next day, 5 days shows the current week Monday–Thursday
-  and next week on Friday. A narrow display still
+  needs planning, and there is no separate today card. The window
+  always rolls forward across the week boundary: 1 day shows
+  just that next day, 5 days from Thursday shows Friday plus
+  Monday–Thursday of next week. A narrow display still
   shows fewer when the day cards do not fit. A tall display (height
   at least 1.2x width) stacks the shown days in one vertical list
   instead of side-by-side columns, so a tall widget reads down the
@@ -53,8 +50,8 @@ so turning it back on restores them.
   default 1. It is the TOTAL number of days the week view shows,
   starting at the first shown day after today: 1 shows just that
   next day, 5 shows that day plus the next 4 shown days,
-  backfilled to stay within one week when
-  the forward run would cross into next week (see Week view).
+  rolling forward into next week when
+  the run crosses the week boundary (see Week view).
   A narrow display still shows
   fewer when the day cards do not fit. Like weekends, it is a
   household-wide setting — every display sees the same window. A

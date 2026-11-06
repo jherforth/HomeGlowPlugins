@@ -41,12 +41,10 @@
     day after today — tomorrow, or Monday when tomorrow falls on a
     hidden weekend day — since today's lunch was packed the night
     before, so today is not what needs planning, and there is no
-    separate today card. If the forward run from that anchor would
-    cross a Monday-week boundary, the spilling days are replaced
-    with previous shown days from the start week (going backward
-    from the anchor: today, then earlier), so the window stays
-    within one Monday-week: 1 day shows just that next day; 5 days
-    shows the current week Monday–Thursday, and next week on Friday. Manage's "Days to show" setting (1-5,
+    separate today card. The window always rolls forward across
+    the week boundary: 1 day shows just that next day; 5 days
+    from Thursday shows Friday plus Monday–Thursday of next week.
+    Manage's "Days to show" setting (1-5,
     default 1) is the total count, so a household can ask for just
     tomorrow even on a wide display; narrow displays still show
     fewer when the cards don't fit. Day cards stretch to fill the
@@ -860,35 +858,17 @@
     // daysToShow consecutive shown days starting at the first shown
     // day strictly after today — tomorrow, or Monday when tomorrow
     // falls on a hidden weekend day (today's lunch was packed the
-    // night before, so today is not what needs planning). If the
-    // forward run from that anchor would cross a Monday-week
-    // boundary, the spilling days are replaced with previous shown
-    // days from the start week (going backward from the anchor:
-    // today, then earlier), so the window stays within one
-    // Monday-week at daysToShow days. Worked cases (weekends hidden):
-    // Mon+5 is Mon-Fri of the current week; Wed+3 is Wed/Thu/Fri;
-    // Thu+3 is Wed/Thu/Fri; Fri+3 is Mon-Wed of NEXT week — the
-    // anchor itself is next Monday, the run crosses no boundary, so
-    // there is no backfill; Fri+5 is Mon-Fri of next week.
+    // night before, so today is not what needs planning). The window
+    // always rolls forward across the Monday-week boundary; it never
+    // backfills with earlier days from the start week. Worked cases
+    // (weekends hidden): Mon+5 is Tue-Fri plus Mon of next week;
+    // Wed+3 is Thu/Fri/Mon; Thu+3 is Fri/Mon/Tue; Thu+5 is Fri plus
+    // Mon-Thu of next week; Fri+3 is Mon-Wed of next week; Fri+5 is
+    // Mon-Fri of next week.
     function autoWindowedDays() {
       var total = daysToShow();
       var tomorrow = shownDaysFrom(addDays(startOfDay(new Date()), 1), 1)[0];
-      var startMon = mondayOf(tomorrow);
-      var forward = shownDaysFrom(tomorrow, total);
-      var kept = [];
-      for (var i = 0; i < forward.length; i++) {
-        if (dateKey(mondayOf(forward[i])) === dateKey(startMon)) kept.push(forward[i]);
-        else break;
-      }
-      var need = total - kept.length;
-      var back = [];
-      var d = addDays(tomorrow, -1);
-      while (back.length < need && dateKey(mondayOf(d)) === dateKey(startMon)) {
-        if (isShownDay(d)) back.push(new Date(d.getTime()));
-        d = addDays(d, -1);
-      }
-      var days = back.reverse().concat(kept);
-      return days.slice(0, Math.max(1, Math.min(total, fitCount(total))));
+      return shownDaysFrom(tomorrow, total).slice(0, Math.max(1, Math.min(total, fitCount(total))));
     }
     function windowedDays() {
       if (windowStart) {
