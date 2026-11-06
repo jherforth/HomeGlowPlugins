@@ -207,6 +207,25 @@
     .hour .t { font-weight: 600; font-size: 0.85rem; }
     .hour .temp { font-weight: 700; }
     .hour .wet { color: var(--wg-wet); font-weight: 600; font-size: 0.85rem; }
+
+    /* --- Forecast: the day detail overlay --------------------------------- */
+    .card { font: inherit; color: inherit; cursor: pointer; }
+    .card:focus-visible { outline: 2px solid var(--accent, #00ddeb); outline-offset: 2px; }
+    .detail { position: absolute; inset: 0; z-index: 3; background: var(--card-bg, #fff); overflow-y: auto; padding: 12px 14px 16px; display: flex; flex-direction: column; gap: 12px; }
+    .detail[hidden] { display: none; }
+    .d-head { display: flex; align-items: center; gap: 12px; }
+    .d-head .back { font: inherit; font-size: 0.85rem; font-weight: 600; padding: 6px 12px; border: 0; border-radius: 999px; background: rgba(128, 128, 128, 0.14); color: inherit; cursor: pointer; white-space: nowrap; }
+    .d-head .back:focus-visible { outline: 2px solid var(--accent, #00ddeb); outline-offset: 2px; }
+    .d-head h2 { margin: 0; font-size: 1.15rem; }
+    .d-head .sub { font-size: 0.8rem; opacity: 0.65; }
+    .d-head .cond { margin-left: auto; text-align: right; font-size: 0.9rem; white-space: nowrap; }
+    .d-line { margin: 0; font-size: 1rem; font-weight: 600; }
+    .dhours { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
+    .dhour { flex: 0 0 auto; min-width: 62px; padding: 8px 6px; border-radius: 10px; border: 1px solid var(--card-border, rgba(0,0,0,0.1)); background: rgba(var(--accent-rgb, 0, 221, 235), 0.06); display: flex; flex-direction: column; align-items: center; gap: 2px; text-align: center; }
+    .dhour .t { font-size: 0.8rem; font-weight: 600; }
+    .dhour .temp { font-weight: 700; }
+    .dhour .prob, .dhour .wet { font-size: 0.75rem; color: var(--wg-wet); font-weight: 600; }
+    .d-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 8px; }
   </style>
 </head>
 <body>
@@ -221,6 +240,7 @@
     </div>
     <section class="panel now-panel" id="panel-now" role="tabpanel" aria-labelledby="tab-now"></section>
     <section class="panel list-panel" id="panel-list" role="tabpanel" aria-labelledby="tab-list" hidden></section>
+    <div class="detail" id="detail" hidden></div>
   </div>
 
   <script src="/plugin-sdk/v1.js"></script>
@@ -268,6 +288,16 @@
         windy: 'Windy, {v}',
         trace: 'Trace',
         precipNone: 'None expected',
+        rainLikelyFrom: 'Rain likely from {h}',
+        rainLikelyNow: 'Rain likely right now',
+        rainLikely: 'Rain likely',
+        chanceRainAround: 'Chance of rain around {h}',
+        chanceRain: 'Chance of rain',
+        stayingDry: 'Staying dry',
+        looksDry: 'Looks dry',
+        back: 'Back',
+        highLow: 'High / Low',
+        precipAmount: 'Precipitation',
         updated: 'Updated {t}',
         unavailable: 'Weather is unavailable right now.',
         setLocation: 'Set a location for this plugin in Admin Panel → Widgets → Plugins.',
@@ -309,6 +339,16 @@
         windy: 'Viento fuerte, {v}',
         trace: 'Trazas',
         precipNone: 'No se espera',
+        rainLikelyFrom: 'Lluvia probable desde las {h}',
+        rainLikelyNow: 'Lluvia probable ahora',
+        rainLikely: 'Lluvia probable',
+        chanceRainAround: 'Posibilidad de lluvia alrededor de las {h}',
+        chanceRain: 'Posibilidad de lluvia',
+        stayingDry: 'Sin lluvia',
+        looksDry: 'Parece seco',
+        back: 'Atrás',
+        highLow: 'Máxima / mínima',
+        precipAmount: 'Precipitación',
         updated: 'Actualizado {t}',
         unavailable: 'El clima no está disponible ahora.',
         setLocation: 'Configura una ubicación para este complemento en Panel de administración → Widgets → Complementos.',
@@ -351,6 +391,7 @@
     var weekdayFmt = fmt({ weekday: 'short' });
     var longWeekdayFmt = fmt({ weekday: 'long' });
     var dayNumFmt = fmt({ day: 'numeric' });
+    var monthFmt = fmt({ month: 'short' });
     var hourFmt = fmt({ hour: 'numeric', minute: '2-digit' });
     var shortHourFmt = fmt({ hour: 'numeric' });
     // A forecast date (YYYY-MM-DD) at local noon, so no zone shift moves it a day.
@@ -374,9 +415,11 @@
     var weather = null;
     var updatedAt = null;
     var tab = 'now';
+    var detailDay = -1;
     var stateBox = document.getElementById('state');
     var app = document.getElementById('app');
     var tabsBar = document.getElementById('tabs');
+    var detailEl = document.getElementById('detail');
     var stamp = document.getElementById('stamp');
     var panels = { now: document.getElementById('panel-now'), list: document.getElementById('panel-list') };
     var tabButtons = { now: document.getElementById('tab-now'), list: document.getElementById('tab-list') };
@@ -551,6 +594,56 @@
     // the field is hidden then rather than shown as a misleading 0%.
     var prob = function (value) {
       return Number.isFinite(value) ? Math.round(value) + '%' : '';
+    };
+
+    // The hourly points that fall on a forecast day, by the wall's local
+    // date — the same local-day reading todayKey() uses.
+    var localKey = function (ts) {
+      var d = new Date(ts * 1000);
+      return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    };
+    var dayHours = function (day) {
+      return (weather.hourly || []).filter(function (p) {
+        return Number.isFinite(p.timestamp) && localKey(p.timestamp) === day.date;
+      });
+    };
+
+    // Per-day summary sentence, ported from WeatherScenes' summaryLine: the
+    // first hour at >=50% makes rain likely from that hour, a max >=25% is a
+    // chance around the likeliest hour, otherwise the day stays dry. Future
+    // days have no hourly points (the core ships the next 8 only), so they
+    // fall back to the daily max without an hour. '' when the provider
+    // supplies no probability at all — the sentence is hidden, not guessed.
+    var summaryLine = function (day) {
+      var isToday = day.date === todayKey();
+      var hours = dayHours(day);
+      var probs = hours.map(function (p) {
+        return Number.isFinite(p.precipitationProbability) ? p.precipitationProbability : null;
+      });
+      var known = probs.filter(function (v) { return v !== null; });
+      if (known.length) {
+        var max = Math.max.apply(null, known);
+        var first = -1;
+        for (var n = 0; n < probs.length; n += 1) {
+          if (probs[n] !== null && probs[n] >= 50) { first = n; break; }
+        }
+        if (first >= 0) {
+          var at = hours[first].timestamp;
+          if (isToday && at - Date.now() / 1000 < 3600) return S.rainLikelyNow;
+          return fill(S.rainLikelyFrom, { h: shortHourFmt.format(new Date(at * 1000)) });
+        }
+        if (max >= 25) {
+          var atMax = hours[probs.indexOf(max)].timestamp;
+          return fill(S.chanceRainAround, { h: shortHourFmt.format(new Date(atMax * 1000)) });
+        }
+        return isToday ? S.stayingDry : S.looksDry;
+      }
+      if (Number.isFinite(day.precipitationProbability)) {
+        if (day.precipitationProbability >= 50) return S.rainLikely;
+        if (day.precipitationProbability >= 25) return S.chanceRain;
+        return isToday ? S.stayingDry : S.looksDry;
+      }
+      return '';
     };
 
     // --- Now: the story of the next hours -------------------------------------
@@ -795,19 +888,21 @@
       var bottom = Math.min.apply(null, lows.length ? lows : [0]);
       var span = Math.max(1, top - bottom);
 
-      var cards = weather.forecast.map(function (day) {
+      var cards = weather.forecast.map(function (day, i) {
         var hasRange = Number.isFinite(day.high) && Number.isFinite(day.low);
         var bar = hasRange
           ? '<div class="range" aria-hidden="true"><span style="top:' + ((top - day.high) / span * 100) + '%;bottom:' + ((day.low - bottom) / span * 100) + '%"></span></div>'
           : '';
-        return '<div class="card"><div class="wd">' + esc(dayLabel(day)) + '</div>'
+        var line = summaryLine(day);
+        return '<button type="button" class="card" data-day="' + i + '"' + (line ? ' title="' + esc(line) + '"' : '') + '>'
+          + '<div class="wd">' + esc(dayLabel(day)) + '</div>'
           + '<div class="dn">' + esc(dayNumFmt.format(dateOf(day.date))) + '</div>'
           + '<div class="emoji" aria-hidden="true">' + icon(day.condition) + '</div>'
           + '<div class="hot">' + round(day.high) + '°</div>' + bar
           + '<div class="cold">' + round(day.low) + '°</div>'
           + (prob(day.precipitationProbability) ? '<div class="prob">🌧️ ' + prob(day.precipitationProbability) + '</div>' : '')
           + (wet(day.precipitation) ? '<div class="wet">' + wet(day.precipitation) + '</div>' : '')
-          + '</div>';
+          + '</button>';
       }).join('');
 
       var hours = (weather.hourly || []).map(function (p) {
@@ -828,6 +923,101 @@
       panels.list.scrollTop = scroll;
     };
 
+    // --- Forecast: the day detail overlay ------------------------------------
+    // Tapping a day card opens the day: a summary sentence, an hourly strip
+    // for that day, and tiles. Future days have no hourly points (the core
+    // ships the next 8 only), so they show the sentence and tiles with a
+    // note instead of an empty strip. Like WeatherScenes, the overlay closes
+    // after 60 s idle.
+    var DETAIL_IDLE_MS = 60 * 1000;
+    var detailTimer = null;
+    var closeDetail = function () {
+      detailDay = -1;
+      clearTimeout(detailTimer);
+      detailEl.hidden = true;
+    };
+    var armDetail = function () {
+      clearTimeout(detailTimer);
+      if (detailDay < 0) return;
+      detailTimer = setTimeout(closeDetail, DETAIL_IDLE_MS);
+    };
+    var renderDetail = function (focusAlerts, focusBack) {
+      if (detailDay < 0 || !weather) return;
+      var day = weather.forecast[detailDay];
+      if (!day) { closeDetail(); return; }
+      var isToday = day.date === todayKey();
+      var title = isToday ? S.today : longWeekdayFmt.format(dateOf(day.date));
+      var sub = (isToday ? longWeekdayFmt.format(dateOf(day.date)) + ', ' : '')
+        + monthFmt.format(dateOf(day.date)) + ' ' + dayNumFmt.format(dateOf(day.date));
+      var line = summaryLine(day);
+      var hours = dayHours(day);
+      var strip = hours.map(function (p) {
+        var h = new Date(p.timestamp * 1000).getHours();
+        return '<div class="dhour" data-hour="' + String(h).padStart(2, '0') + '">'
+          + '<div class="t">' + esc(shortHourFmt.format(new Date(p.timestamp * 1000))) + '</div>'
+          + '<div class="temp">' + round(p.temp) + '°</div>'
+          + (prob(p.precipitationProbability) ? '<div class="prob">' + prob(p.precipitationProbability) + '</div>' : '')
+          + (wet(p.precipitation) ? '<div class="wet">' + wet(p.precipitation) + '</div>' : '')
+          + '</div>';
+      }).join('');
+      var dTile = function (k, v, extra) {
+        return '<div class="stat"><div class="k">' + esc(k) + '</div><div class="v">' + v + '</div>' + (extra || '') + '</div>';
+      };
+      var tiles = [];
+      if (Number.isFinite(day.high) || Number.isFinite(day.low)) {
+        tiles.push(dTile(S.highLow, esc(round(day.high) + '° / ' + round(day.low) + '°')));
+      }
+      if (Number.isFinite(day.precipitationProbability)) {
+        tiles.push(dTile(S.rainChance, esc(prob(day.precipitationProbability)),
+          '<div class="muted" style="font-size:0.8rem">' + esc(S.precipAmount + ': ' + (wetAmount(day.precipitation) || S.precipNone)) + '</div>'));
+      } else if (day.precipitation !== null && day.precipitation !== undefined) {
+        tiles.push(dTile(S.precipAmount, esc(wetAmount(day.precipitation) || S.precipNone)));
+      }
+
+      detailEl.innerHTML = '<div class="d-head"><button type="button" class="back" data-action="back">← ' + esc(S.back) + '</button>'
+        + '<div><h2>' + esc(title) + '</h2><div class="sub">' + esc(sub) + '</div></div>'
+        + '<div class="cond">' + icon(day.condition) + ' ' + esc(describe(day)) + '<br>'
+        + '<span class="hot">↑ ' + round(day.high) + '°</span> <span class="cold">↓ ' + round(day.low) + '°</span></div></div>'
+        + (line ? '<p class="d-line">' + esc(line) + '</p>' : '')
+        + '<div><div class="section-title">' + esc(S.nextHours) + '</div>'
+        + (strip ? '<div class="dhours">' + strip + '</div>' : '<div class="muted">' + esc(S.noHours) + '</div>') + '</div>'
+        + '<div class="d-tiles">' + tiles.join('') + '</div>';
+      detailEl.hidden = false;
+      // A fresh open scrolls a future day's strip to 7 AM, as in
+      // WeatherScenes; a background re-render leaves the scroll alone.
+      if (!focusBack) return;
+      var stripEl = detailEl.querySelector('.dhours');
+      if (detailDay !== 0 && stripEl) {
+        var seven = stripEl.querySelector('[data-hour="07"]');
+        if (seven) stripEl.scrollLeft = seven.offsetLeft - stripEl.firstElementChild.offsetLeft;
+      }
+      if (focusAlerts) {
+        var al = detailEl.querySelector('#d-alerts');
+        if (al) al.scrollIntoView({ block: 'start' });
+      }
+      var back = detailEl.querySelector('[data-action="back"]');
+      if (back && focusBack) back.focus({ preventScroll: true });
+    };
+    var openDetail = function (index, focusAlerts) {
+      if (!weather || index < 0 || index >= weather.forecast.length) return;
+      detailDay = index;
+      renderDetail(focusAlerts, true);
+      armDetail();
+    };
+
+    panels.list.addEventListener('click', function (event) {
+      var card = event.target.closest('[data-day]');
+      if (card) openDetail(Number(card.getAttribute('data-day')));
+      var back = event.target.closest('[data-action="back"]');
+      if (back) closeDetail();
+    });
+    detailEl.addEventListener('click', function (event) {
+      if (event.target.closest('[data-action="back"]')) closeDetail();
+    });
+    ['pointerdown', 'keydown', 'wheel', 'touchstart'].forEach(function (type) {
+      document.addEventListener(type, armDetail, { passive: true });
+    });
+
     // --- tabs -------------------------------------------------------------------
     var render = function () {
       if (!weather) return;
@@ -846,6 +1036,7 @@
       // the ribbon is always measured while its panel is showing.
       renderList();
       renderNow();
+      if (detailDay >= 0) renderDetail(false, false);
     };
 
     var select = function (name, focus) {
@@ -862,7 +1053,7 @@
     var returnTimer = null;
     var armReturn = function () {
       clearTimeout(returnTimer);
-      if (tab !== 'now') returnTimer = setTimeout(function () { select('now'); }, RETURN_AFTER);
+      if (tab !== 'now') returnTimer = setTimeout(function () { closeDetail(); select('now'); }, RETURN_AFTER);
     };
     ['pointerdown', 'keydown', 'wheel', 'touchstart'].forEach(function (type) {
       document.addEventListener(type, armReturn, { passive: true });
@@ -885,6 +1076,7 @@
       }
     });
     document.addEventListener('keydown', function (event) {
+      if (event.key === 'Escape' && detailDay >= 0) { closeDetail(); return; }
       if (event.key === 'Escape' && tab !== 'now') select('now', true);
     });
 
