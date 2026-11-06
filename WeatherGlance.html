@@ -20,7 +20,8 @@
       { "key": "units", "label": "Temperature unit", "type": "select",
         "options": ["Fahrenheit", "Celsius"], "default": "Fahrenheit" },
       { "key": "layout", "label": "Layout", "type": "select",
-        "options": ["Automatic", "Compact", "Medium", "Full"], "default": "Automatic", "scope": "device" }
+        "options": ["Automatic", "Compact", "Medium", "Full"], "default": "Automatic", "scope": "device" },
+      { "key": "severeAlerts", "label": "National Weather Service alerts", "type": "boolean", "default": true }
     ]
   }
   </script>
@@ -197,6 +198,7 @@
     .card .dn { font-size: 0.75rem; opacity: 0.65; }
     .card .emoji { font-size: 1.5rem; line-height: 1.1; }
     .card .wet { font-size: 0.75rem; color: var(--wg-wet); font-weight: 600; }
+    .card .prob { font-size: 0.75rem; color: var(--wg-wet); font-weight: 600; }
     /* The day's range on a shared scale, so warmer and colder days read at a glance. */
     .range { width: 6px; height: 46px; border-radius: 3px; background: rgba(128,128,128,0.18); position: relative; }
     .range span { position: absolute; left: 0; right: 0; border-radius: 3px; background: linear-gradient(180deg, var(--wg-hot), var(--wg-cold)); }
@@ -206,6 +208,49 @@
     .hour .t { font-weight: 600; font-size: 0.85rem; }
     .hour .temp { font-weight: 700; }
     .hour .wet { color: var(--wg-wet); font-weight: 600; font-size: 0.85rem; }
+
+    /* --- Forecast: the day detail overlay --------------------------------- */
+    .card { font: inherit; color: inherit; cursor: pointer; }
+    .card:focus-visible { outline: 2px solid var(--accent, #00ddeb); outline-offset: 2px; }
+    .detail { position: absolute; inset: 0; z-index: 3; background: var(--card-bg, #fff); overflow-y: auto; padding: 12px 14px 16px; display: flex; flex-direction: column; gap: 12px; }
+    .detail[hidden] { display: none; }
+    .d-head { display: flex; align-items: center; gap: 12px; }
+    .d-head .back { font: inherit; font-size: 0.85rem; font-weight: 600; padding: 6px 12px; border: 0; border-radius: 999px; background: rgba(128, 128, 128, 0.14); color: inherit; cursor: pointer; white-space: nowrap; }
+    .d-head .back:focus-visible { outline: 2px solid var(--accent, #00ddeb); outline-offset: 2px; }
+    .d-head h2 { margin: 0; font-size: 1.15rem; }
+    .d-head .sub { font-size: 0.8rem; opacity: 0.65; }
+    .d-head .cond { margin-left: auto; text-align: right; font-size: 0.9rem; white-space: nowrap; }
+    .d-line { margin: 0; font-size: 1rem; font-weight: 600; }
+    .dhours { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
+    .dhour { flex: 0 0 auto; min-width: 62px; padding: 8px 6px; border-radius: 10px; border: 1px solid var(--card-border, rgba(0,0,0,0.1)); background: rgba(var(--accent-rgb, 0, 221, 235), 0.06); display: flex; flex-direction: column; align-items: center; gap: 2px; text-align: center; }
+    .dhour .t { font-size: 0.8rem; font-weight: 600; }
+    .dhour .temp { font-weight: 700; }
+    .dhour .prob, .dhour .wet { font-size: 0.75rem; color: var(--wg-wet); font-weight: 600; }
+    .d-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 8px; }
+
+    /* --- NWS severe-weather alerts (US only) -------------------------------- */
+    .alerts { flex: 0 0 auto; padding: 6px 12px 0; position: relative; z-index: 1; }
+    .alerts[hidden] { display: none; }
+    .banner { display: flex; gap: 8px; align-items: center; width: 100%; padding: 8px 12px; border: 0; border-radius: 10px; font: inherit; font-weight: 600; color: #fff; cursor: pointer; text-align: left; }
+    .banner:focus-visible { outline: 2px solid var(--accent, #00ddeb); outline-offset: 2px; }
+    .banner .b-event { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .banner .b-time { margin-left: auto; font-weight: 400; font-size: 0.8rem; white-space: nowrap; }
+    .banner .b-more { font-size: 0.8rem; white-space: nowrap; }
+    .banner.sev-extreme { background: #991b1b; }
+    .banner.sev-severe { background: #dc2626; }
+    .banner.sev-moderate { background: #d97706; }
+    .banner.sev-minor { background: #a16207; }
+    .banner.sev-unknown { background: #6b7280; }
+    .alerts-list { display: flex; flex-direction: column; gap: 10px; }
+    .alert { border: 1px solid var(--card-border, rgba(0,0,0,0.1)); border-left: 4px solid #6b7280; border-radius: 10px; padding: 10px 12px; }
+    .alert.sev-extreme { border-left-color: #991b1b; }
+    .alert.sev-severe { border-left-color: #dc2626; }
+    .alert.sev-moderate { border-left-color: #d97706; }
+    .alert.sev-minor { border-left-color: #a16207; }
+    .alert h3 { margin: 0; font-size: 0.95rem; }
+    .alert .a-time { margin: 2px 0 6px; font-size: 0.8rem; opacity: 0.65; }
+    .alert .a-text { margin: 0; font-size: 0.88rem; white-space: pre-wrap; }
+    .alert .a-more { font: inherit; font-size: 0.8rem; font-weight: 600; margin-top: 6px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--card-border, rgba(0,0,0,0.1)); background: transparent; color: inherit; cursor: pointer; }
   </style>
 </head>
 <body>
@@ -218,8 +263,10 @@
       </div>
       <div class="stamp" id="stamp"></div>
     </div>
+    <div class="alerts" id="alerts" hidden></div>
     <section class="panel now-panel" id="panel-now" role="tabpanel" aria-labelledby="tab-now"></section>
     <section class="panel list-panel" id="panel-list" role="tabpanel" aria-labelledby="tab-list" hidden></section>
+    <div class="detail" id="detail" hidden></div>
   </div>
 
   <script src="/plugin-sdk/v1.js"></script>
@@ -242,6 +289,7 @@
         tabNow: 'Now',
         tabForecast: 'Forecast',
         feelsLike: 'Feels like',
+        rainChance: 'Rain chance',
         humidity: 'Humidity',
         wind: 'Wind',
         airQuality: 'Air quality',
@@ -264,6 +312,22 @@
         warmer: 'Tomorrow: {n}° warmer',
         cooler: 'Tomorrow: {n}° cooler',
         windy: 'Windy, {v}',
+        trace: 'Trace',
+        precipNone: 'None expected',
+        rainLikelyFrom: 'Rain likely from {h}',
+        rainLikelyNow: 'Rain likely right now',
+        rainLikely: 'Rain likely',
+        chanceRainAround: 'Chance of rain around {h}',
+        chanceRain: 'Chance of rain',
+        stayingDry: 'Staying dry',
+        looksDry: 'Looks dry',
+        back: 'Back',
+        highLow: 'High / Low',
+        precipAmount: 'Precipitation',
+        alertDetails: 'Details',
+        readFullAlert: 'Read the full alert',
+        showLess: 'Show less',
+        until: 'Until {t}',
         updated: 'Updated {t}',
         unavailable: 'Weather is unavailable right now.',
         setLocation: 'Set a location for this plugin in Admin Panel → Widgets → Plugins.',
@@ -280,6 +344,7 @@
         tabNow: 'Ahora',
         tabForecast: 'Pronóstico',
         feelsLike: 'Sensación',
+        rainChance: 'Prob. de lluvia',
         humidity: 'Humedad',
         wind: 'Viento',
         airQuality: 'Calidad del aire',
@@ -302,6 +367,22 @@
         warmer: 'Mañana: {n}° más cálido',
         cooler: 'Mañana: {n}° más fresco',
         windy: 'Viento fuerte, {v}',
+        trace: 'Trazas',
+        precipNone: 'No se espera',
+        rainLikelyFrom: 'Lluvia probable desde las {h}',
+        rainLikelyNow: 'Lluvia probable ahora',
+        rainLikely: 'Lluvia probable',
+        chanceRainAround: 'Posibilidad de lluvia alrededor de las {h}',
+        chanceRain: 'Posibilidad de lluvia',
+        stayingDry: 'Sin lluvia',
+        looksDry: 'Parece seco',
+        back: 'Atrás',
+        highLow: 'Máxima / mínima',
+        precipAmount: 'Precipitación',
+        alertDetails: 'Detalles',
+        readFullAlert: 'Leer la alerta completa',
+        showLess: 'Ver menos',
+        until: 'Hasta las {t}',
         updated: 'Actualizado {t}',
         unavailable: 'El clima no está disponible ahora.',
         setLocation: 'Configura una ubicación para este complemento en Panel de administración → Widgets → Complementos.',
@@ -344,6 +425,7 @@
     var weekdayFmt = fmt({ weekday: 'short' });
     var longWeekdayFmt = fmt({ weekday: 'long' });
     var dayNumFmt = fmt({ day: 'numeric' });
+    var monthFmt = fmt({ month: 'short' });
     var hourFmt = fmt({ hour: 'numeric', minute: '2-digit' });
     var shortHourFmt = fmt({ hour: 'numeric' });
     // A forecast date (YYYY-MM-DD) at local noon, so no zone shift moves it a day.
@@ -363,13 +445,19 @@
     };
 
     // --- state ----------------------------------------------------------------
-    var settings = { location: '', units: 'Fahrenheit', layout: 'Automatic' };
+    var settings = { location: '', units: 'Fahrenheit', layout: 'Automatic', severeAlerts: true };
     var weather = null;
     var updatedAt = null;
     var tab = 'now';
+    var detailDay = -1;
+    var alerts = [];
+    var currentAlertTexts = [];
+    var currentAlertShorts = [];
     var stateBox = document.getElementById('state');
     var app = document.getElementById('app');
     var tabsBar = document.getElementById('tabs');
+    var alertsEl = document.getElementById('alerts');
+    var detailEl = document.getElementById('detail');
     var stamp = document.getElementById('stamp');
     var panels = { now: document.getElementById('panel-now'), list: document.getElementById('panel-list') };
     var tabButtons = { now: document.getElementById('tab-now'), list: document.getElementById('tab-list') };
@@ -382,17 +470,32 @@
     var windUnit = function () { return metric() ? 'm/s' : 'mph'; };
     // Providers disagree on precipitation units: OpenWeatherMap reports mm
     // whatever units it was asked for, the demo data inches, and Home Assistant
-    // whatever it is configured with. Label only what is known.
-    var wetUnit = function () {
+    // whatever it is configured with. The amount is converted to the unit the
+    // Temperature setting implies (Fahrenheit → inches, Celsius → mm), the
+    // way WeatherScenes asks for its precipitation unit; a provider whose
+    // unit is unknown (Home Assistant) is left as-is, unlabelled.
+    var wetSourceUnit = function () {
       if (!weather) return '';
-      if (weather.provider === 'openweathermap') return ' mm';
-      if (weather.provider === 'demo') return ' in';
+      if (weather.provider === 'openweathermap') return 'mm';
+      if (weather.provider === 'demo') return 'in';
       return '';
     };
-    var wet = function (amount) {
+    var wetAmount = function (amount) {
       if (!(amount > 0)) return '';
-      var shown = amount < 1 ? amount.toFixed(2).replace(/0$/, '') : amount.toFixed(1);
-      return '💧 ' + shown + wetUnit();
+      var source = wetSourceUnit();
+      var value = amount;
+      var unit = source;
+      if (source === 'mm' && !metric()) { value = amount / 25.4; unit = 'in'; }
+      else if (source === 'in' && metric()) { value = amount * 25.4; unit = 'mm'; }
+      // WeatherScenes' formatting: mm to 1 decimal, inches to 2, with
+      // "Trace" for a measurable-but-tiny imperial amount.
+      if (unit === 'in') return value < 0.01 ? S.trace : value.toFixed(2) + ' in';
+      if (unit === 'mm') return value.toFixed(1) + ' mm';
+      return amount < 1 ? amount.toFixed(2).replace(/0$/, '') : amount.toFixed(1);
+    };
+    var wet = function (amount) {
+      var text = wetAmount(amount);
+      return text ? '💧 ' + text : '';
     };
 
     // --- where to ask about ---------------------------------------------------
@@ -452,6 +555,7 @@
         stateBox.hidden = true;
         app.hidden = false;
         render();
+        loadAlerts();
       }).catch(function (err) {
         // Keep showing the last good reading through a passing failure.
         if (weather) return;
@@ -462,18 +566,32 @@
       });
     };
 
-    // --- sizing -----------------------------------------------------------------
+    // --- sizing: measure the box this plugin renders in -----------------------
+    // The plugin runs in an iframe sized to its widget box, so the box — not
+    // the top-level window — is the right ruler. In mirror mode the window
+    // is the phone's while the box is the wall's, and a window-sized layout
+    // comes out compact on the wall's own dashboard. Same breakpoints and
+    // same three layouts as before; only the measurement source changes.
+    // A box of 0x0 (hidden tab, not yet laid out) keeps the last good size;
+    // the window is only a fallback when the box never reported one.
+    var lastBox = { w: 0, h: 0 };
+    var boxSize = function () {
+      var w = app ? app.clientWidth : 0;
+      var h = app ? app.clientHeight : 0;
+      if (w > 0 && h > 0) { lastBox = { w: w, h: h }; return lastBox; }
+      if (lastBox.w > 0 && lastBox.h > 0) return lastBox;
+      return { w: window.innerWidth, h: window.innerHeight };
+    };
     var layout = function () {
       var choice = settings.layout;
       if (choice === 'Compact' || choice === 'Medium' || choice === 'Full') return choice.toLowerCase();
-      var w = window.innerWidth;
-      var h = window.innerHeight;
-      if (w < 300 || h < 200) return 'compact';
-      if (w >= 620 && h >= 300) return 'full';
+      var size = boxSize();
+      if (size.w < 300 || size.h < 200) return 'compact';
+      if (size.w >= 620 && size.h >= 300) return 'full';
       return 'medium';
     };
     // Too small for a tab bar to leave room for anything: just the reading.
-    var tiny = function () { return window.innerWidth < 200 || window.innerHeight < 140; };
+    var tiny = function () { var size = boxSize(); return size.w < 200 || size.h < 140; };
 
     // --- shared pieces ----------------------------------------------------------
     var dayLabel = function (day) {
@@ -508,6 +626,63 @@
         points.unshift({ timestamp: nowS, temp: c.temp, precipitation: 0, isNow: true });
       }
       return points;
+    };
+
+    // The day's precipitation probability (0-100), when the provider
+    // supplies one. OpenWeatherMap does; Home Assistant and demo do not, and
+    // the field is hidden then rather than shown as a misleading 0%.
+    var prob = function (value) {
+      return Number.isFinite(value) ? Math.round(value) + '%' : '';
+    };
+
+    // The hourly points that fall on a forecast day, by the wall's local
+    // date — the same local-day reading todayKey() uses.
+    var localKey = function (ts) {
+      var d = new Date(ts * 1000);
+      return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    };
+    var dayHours = function (day) {
+      return (weather.hourly || []).filter(function (p) {
+        return Number.isFinite(p.timestamp) && localKey(p.timestamp) === day.date;
+      });
+    };
+
+    // Per-day summary sentence, ported from WeatherScenes' summaryLine: the
+    // first hour at >=50% makes rain likely from that hour, a max >=25% is a
+    // chance around the likeliest hour, otherwise the day stays dry. Future
+    // days have no hourly points (the core ships the next 8 only), so they
+    // fall back to the daily max without an hour. '' when the provider
+    // supplies no probability at all — the sentence is hidden, not guessed.
+    var summaryLine = function (day) {
+      var isToday = day.date === todayKey();
+      var hours = dayHours(day);
+      var probs = hours.map(function (p) {
+        return Number.isFinite(p.precipitationProbability) ? p.precipitationProbability : null;
+      });
+      var known = probs.filter(function (v) { return v !== null; });
+      if (known.length) {
+        var max = Math.max.apply(null, known);
+        var first = -1;
+        for (var n = 0; n < probs.length; n += 1) {
+          if (probs[n] !== null && probs[n] >= 50) { first = n; break; }
+        }
+        if (first >= 0) {
+          var at = hours[first].timestamp;
+          if (isToday && at - Date.now() / 1000 < 3600) return S.rainLikelyNow;
+          return fill(S.rainLikelyFrom, { h: shortHourFmt.format(new Date(at * 1000)) });
+        }
+        if (max >= 25) {
+          var atMax = hours[probs.indexOf(max)].timestamp;
+          return fill(S.chanceRainAround, { h: shortHourFmt.format(new Date(atMax * 1000)) });
+        }
+        return isToday ? S.stayingDry : S.looksDry;
+      }
+      if (Number.isFinite(day.precipitationProbability)) {
+        if (day.precipitationProbability >= 50) return S.rainLikely;
+        if (day.precipitationProbability >= 25) return S.chanceRain;
+        return isToday ? S.stayingDry : S.looksDry;
+      }
+      return '';
     };
 
     // --- Now: the story of the next hours -------------------------------------
@@ -597,6 +772,8 @@
         return '<div class="stat"><div class="k">' + esc(k) + '</div><div class="v">' + v + '</div>' + (extra || '') + '</div>';
       };
       if (Number.isFinite(c.feelsLike)) out.push(tile(S.feelsLike, esc(round(c.feelsLike) + '°')));
+      var todayProb = todayIndex() >= 0 ? weather.forecast[todayIndex()].precipitationProbability : null;
+      if (Number.isFinite(todayProb)) out.push(tile(S.rainChance, esc(prob(todayProb))));
       if (Number.isFinite(c.humidity)) {
         out.push(tile(S.humidity, esc(round(c.humidity) + '%'),
           '<div class="meter"><span style="width:' + Math.max(0, Math.min(100, c.humidity)) + '%"></span></div>'));
@@ -654,7 +831,7 @@
         panel.innerHTML = '<div class="story">' + hero() + noteList(5) + '</div>' + ribbon + stats();
       } else {
         // Medium: what fits, in order of what matters at a glance.
-        var h = window.innerHeight;
+        var h = boxSize().h;
         panel.innerHTML = hero()
           + noteList(h >= 300 ? 3 : h >= 240 ? 2 : 1)
           + (h >= 250 ? ribbon : '')
@@ -750,24 +927,28 @@
       var bottom = Math.min.apply(null, lows.length ? lows : [0]);
       var span = Math.max(1, top - bottom);
 
-      var cards = weather.forecast.map(function (day) {
+      var cards = weather.forecast.map(function (day, i) {
         var hasRange = Number.isFinite(day.high) && Number.isFinite(day.low);
         var bar = hasRange
           ? '<div class="range" aria-hidden="true"><span style="top:' + ((top - day.high) / span * 100) + '%;bottom:' + ((day.low - bottom) / span * 100) + '%"></span></div>'
           : '';
-        return '<div class="card"><div class="wd">' + esc(dayLabel(day)) + '</div>'
+        var line = summaryLine(day);
+        return '<button type="button" class="card" data-day="' + i + '"' + (line ? ' title="' + esc(line) + '"' : '') + '>'
+          + '<div class="wd">' + esc(dayLabel(day)) + '</div>'
           + '<div class="dn">' + esc(dayNumFmt.format(dateOf(day.date))) + '</div>'
           + '<div class="emoji" aria-hidden="true">' + icon(day.condition) + '</div>'
           + '<div class="hot">' + round(day.high) + '°</div>' + bar
           + '<div class="cold">' + round(day.low) + '°</div>'
+          + (prob(day.precipitationProbability) ? '<div class="prob">🌧️ ' + prob(day.precipitationProbability) + '</div>' : '')
           + (wet(day.precipitation) ? '<div class="wet">' + wet(day.precipitation) + '</div>' : '')
-          + '</div>';
+          + '</button>';
       }).join('');
 
       var hours = (weather.hourly || []).map(function (p) {
+        var extra = [prob(p.precipitationProbability), wet(p.precipitation)].filter(function (s) { return s; }).join(' · ');
         return '<div class="hour"><span class="t">' + esc(hourFmt.format(new Date(p.timestamp * 1000))) + '</span>'
           + '<span class="temp">' + round(p.temp) + deg() + '</span>'
-          + '<span class="wet">' + wet(p.precipitation) + '</span></div>';
+          + '<span class="wet">' + extra + '</span></div>';
       }).join('');
 
       var scroll = panels.list.scrollTop;
@@ -781,13 +962,225 @@
       panels.list.scrollTop = scroll;
     };
 
+    // --- Forecast: the day detail overlay ------------------------------------
+    // Tapping a day card opens the day: a summary sentence, an hourly strip
+    // for that day, and tiles. Future days have no hourly points (the core
+    // ships the next 8 only), so they show the sentence and tiles with a
+    // note instead of an empty strip. Like WeatherScenes, the overlay closes
+    // after 60 s idle.
+    var DETAIL_IDLE_MS = 60 * 1000;
+    var detailTimer = null;
+    var closeDetail = function () {
+      detailDay = -1;
+      clearTimeout(detailTimer);
+      detailEl.hidden = true;
+    };
+    var armDetail = function () {
+      clearTimeout(detailTimer);
+      if (detailDay < 0) return;
+      detailTimer = setTimeout(closeDetail, DETAIL_IDLE_MS);
+    };
+    var renderDetail = function (focusAlerts, focusBack) {
+      if (detailDay < 0 || !weather) return;
+      var day = weather.forecast[detailDay];
+      if (!day) { closeDetail(); return; }
+      var isToday = day.date === todayKey();
+      var title = isToday ? S.today : longWeekdayFmt.format(dateOf(day.date));
+      var sub = (isToday ? longWeekdayFmt.format(dateOf(day.date)) + ', ' : '')
+        + monthFmt.format(dateOf(day.date)) + ' ' + dayNumFmt.format(dateOf(day.date));
+      var line = summaryLine(day);
+      var hours = dayHours(day);
+      var strip = hours.map(function (p) {
+        var h = new Date(p.timestamp * 1000).getHours();
+        return '<div class="dhour" data-hour="' + String(h).padStart(2, '0') + '">'
+          + '<div class="t">' + esc(shortHourFmt.format(new Date(p.timestamp * 1000))) + '</div>'
+          + '<div class="temp">' + round(p.temp) + '°</div>'
+          + (prob(p.precipitationProbability) ? '<div class="prob">' + prob(p.precipitationProbability) + '</div>' : '')
+          + (wet(p.precipitation) ? '<div class="wet">' + wet(p.precipitation) + '</div>' : '')
+          + '</div>';
+      }).join('');
+      var dTile = function (k, v, extra) {
+        return '<div class="stat"><div class="k">' + esc(k) + '</div><div class="v">' + v + '</div>' + (extra || '') + '</div>';
+      };
+      var tiles = [];
+      if (Number.isFinite(day.high) || Number.isFinite(day.low)) {
+        tiles.push(dTile(S.highLow, esc(round(day.high) + '° / ' + round(day.low) + '°')));
+      }
+      if (Number.isFinite(day.precipitationProbability)) {
+        tiles.push(dTile(S.rainChance, esc(prob(day.precipitationProbability)),
+          '<div class="muted" style="font-size:0.8rem">' + esc(S.precipAmount + ': ' + (wetAmount(day.precipitation) || S.precipNone)) + '</div>'));
+      } else if (day.precipitation !== null && day.precipitation !== undefined) {
+        tiles.push(dTile(S.precipAmount, esc(wetAmount(day.precipitation) || S.precipNone)));
+      }
+
+      var dayAlerts = settings.severeAlerts ? alertsForDay(detailDay) : [];
+      var alertHTML = dayAlerts.length
+        ? '<div class="alerts-list" id="d-alerts">' + alertArticles(dayAlerts) + '</div>'
+        : '';
+
+      detailEl.innerHTML = '<div class="d-head"><button type="button" class="back" data-action="back">← ' + esc(S.back) + '</button>'
+        + '<div><h2>' + esc(title) + '</h2><div class="sub">' + esc(sub) + '</div></div>'
+        + '<div class="cond">' + icon(day.condition) + ' ' + esc(describe(day)) + '<br>'
+        + '<span class="hot">↑ ' + round(day.high) + '°</span> <span class="cold">↓ ' + round(day.low) + '°</span></div></div>'
+        + (line ? '<p class="d-line">' + esc(line) + '</p>' : '')
+        + '<div><div class="section-title">' + esc(S.nextHours) + '</div>'
+        + (strip ? '<div class="dhours">' + strip + '</div>' : '<div class="muted">' + esc(S.noHours) + '</div>') + '</div>'
+        + alertHTML
+        + '<div class="d-tiles">' + tiles.join('') + '</div>';
+      detailEl.hidden = false;
+      // A fresh open scrolls a future day's strip to 7 AM, as in
+      // WeatherScenes; a background re-render leaves the scroll alone.
+      if (!focusBack) return;
+      var stripEl = detailEl.querySelector('.dhours');
+      if (detailDay !== 0 && stripEl) {
+        var seven = stripEl.querySelector('[data-hour="07"]');
+        if (seven) stripEl.scrollLeft = seven.offsetLeft - stripEl.firstElementChild.offsetLeft;
+      }
+      if (focusAlerts) {
+        var al = detailEl.querySelector('#d-alerts');
+        if (al) al.scrollIntoView({ block: 'start' });
+      }
+      var back = detailEl.querySelector('[data-action="back"]');
+      if (back && focusBack) back.focus({ preventScroll: true });
+    };
+    var openDetail = function (index, focusAlerts) {
+      if (!weather || index < 0 || index >= weather.forecast.length) return;
+      detailDay = index;
+      renderDetail(focusAlerts, true);
+      armDetail();
+    };
+
+    panels.list.addEventListener('click', function (event) {
+      var card = event.target.closest('[data-day]');
+      if (card) openDetail(Number(card.getAttribute('data-day')));
+      var back = event.target.closest('[data-action="back"]');
+      if (back) closeDetail();
+    });
+    detailEl.addEventListener('click', function (event) {
+      if (event.target.closest('[data-action="back"]')) { closeDetail(); return; }
+      var more = event.target.closest('[data-action="more"]');
+      if (more) {
+        var idx = Number(more.getAttribute('data-idx'));
+        var article = more.closest('.alert');
+        var p = article && article.querySelector('.a-text');
+        var expanded = more.getAttribute('data-expanded') === 'true';
+        if (p && currentAlertTexts[idx] !== undefined) {
+          p.textContent = expanded ? currentAlertShorts[idx] : currentAlertTexts[idx];
+          more.textContent = expanded ? S.readFullAlert : S.showLess;
+          more.setAttribute('data-expanded', String(!expanded));
+        }
+      }
+    });
+    ['pointerdown', 'keydown', 'wheel', 'touchstart'].forEach(function (type) {
+      document.addEventListener(type, armDetail, { passive: true });
+    });
+
+    // --- NWS severe-weather alerts (US only) ----------------------------------
+    // Plugin-side, as in WeatherScenes: api.weather.gov/alerts/active for the
+    // payload's own coordinates, refreshed every 5 minutes. The National
+    // Weather Service is keyless and sends permissive CORS headers, so the
+    // frame fetches it directly; the server proxy is the fallback, and it
+    // only answers for hosts on the household's PROXY_WHITELIST. Outside the
+    // US the endpoint answers nothing, so no banner ever appears.
+    var SEV_RANK = { Extreme: 4, Severe: 3, Moderate: 2, Minor: 1, Unknown: 0 };
+    var renderAlerts = function () {
+      var show = settings.severeAlerts && alerts.length > 0 && !tiny();
+      alertsEl.hidden = !show;
+      if (!show) { alertsEl.innerHTML = ''; return; }
+      var top = alerts[0];
+      alertsEl.innerHTML = '<button type="button" class="banner sev-' + top.severity.toLowerCase() + '">'
+        + '<span aria-hidden="true">⚠️</span><span class="b-event">' + esc(top.event) + '</span>'
+        + '<span class="b-time">' + esc(alertTime(top)) + '</span>'
+        + '<span class="b-more">' + esc(alerts.length > 1 ? '+' + (alerts.length - 1) + ' more' : S.alertDetails) + '</span></button>';
+    };
+    var loadAlerts = function () {
+      if (!settings.severeAlerts || !weather || !weather.coordinates
+          || !Number.isFinite(weather.coordinates.lat) || !Number.isFinite(weather.coordinates.lon)) {
+        alerts = [];
+        renderAlerts();
+        return Promise.resolve();
+      }
+      var url = 'https://api.weather.gov/alerts/active?point='
+        + weather.coordinates.lat.toFixed(4) + ',' + weather.coordinates.lon.toFixed(4);
+      var parse = function (d) {
+        return ((d && d.features) || []).map(function (f) { return f.properties || {}; })
+          .filter(function (a) { return a.event && (!a.status || a.status === 'Actual'); })
+          .map(function (a) {
+            return {
+              event: a.event, severity: a.severity || 'Unknown',
+              onset: a.onset || a.effective || null, ends: a.ends || a.expires || null,
+              description: a.description || '', instruction: a.instruction || ''
+            };
+          })
+          .sort(function (a, b) { return (SEV_RANK[b.severity] || 0) - (SEV_RANK[a.severity] || 0); });
+      };
+      return fetch(url, { headers: { Accept: 'application/geo+json' } })
+        .then(function (res) { if (!res.ok) throw new Error('nws ' + res.status); return res.json(); })
+        .catch(function () {
+          return fetch('/api/proxy?targetUrl=' + encodeURIComponent(url)).then(function (res) {
+            if (!res.ok) throw new Error('proxy ' + res.status);
+            return res.json();
+          });
+        })
+        .then(function (d) {
+          alerts = parse(d);
+          renderAlerts();
+          if (detailDay >= 0) renderDetail(false, false);
+        })
+        .catch(function () {
+          // Keep the last good alerts through a passing failure.
+        });
+    };
+    var alertsForDay = function (i) {
+      if (i === 0) return alerts;
+      var day = weather.forecast[i];
+      if (!day) return [];
+      var start = dateOf(day.date).getTime();
+      var end = start + 86400000;
+      return alerts.filter(function (a) {
+        var on = a.onset ? Date.parse(a.onset) : 0;
+        var off = a.ends ? Date.parse(a.ends) : Infinity;
+        return on < end && off > start;
+      });
+    };
+    var alertTime = function (a) {
+      if (!a.ends) return '';
+      var d = new Date(a.ends);
+      var today = new Date();
+      var same = d.toDateString() === today.toDateString();
+      return fill(S.until, { t: (same ? '' : weekdayFmt.format(d) + ' ') + hourFmt.format(d) });
+    };
+    var alertArticles = function (dayAlerts) {
+      currentAlertTexts = dayAlerts.map(function (a) {
+        return a.description + (a.instruction ? '\n\n' + a.instruction : '');
+      });
+      currentAlertShorts = currentAlertTexts.map(function (text) {
+        return text.length > 320 ? text.slice(0, 300).replace(/\s+\S*$/, '') + '…' : text;
+      });
+      return dayAlerts.map(function (a, n) {
+        var short = currentAlertShorts[n];
+        var full = currentAlertTexts[n];
+        return '<article class="alert sev-' + a.severity.toLowerCase() + '">'
+          + '<h3>' + esc(a.event) + '</h3><p class="a-time">' + esc(alertTime(a)) + '</p>'
+          + '<p class="a-text">' + esc(short) + '</p>'
+          + (short !== full ? '<button type="button" class="a-more" data-action="more" data-idx="' + n + '" data-expanded="false">' + esc(S.readFullAlert) + '</button>' : '')
+          + '</article>';
+      }).join('');
+    };
+    alertsEl.addEventListener('click', function () {
+      var today = todayIndex();
+      openDetail(today >= 0 ? today : 0, true);
+    });
+    setInterval(loadAlerts, 5 * 60 * 1000);
+
     // --- tabs -------------------------------------------------------------------
     var render = function () {
       if (!weather) return;
       var small = tiny();
       tabsBar.hidden = small;
       if (small) tab = 'now';
-      stamp.textContent = updatedAt && window.innerWidth >= 340 ? fill(S.updated, { t: hourFmt.format(updatedAt) }) : '';
+      stamp.textContent = updatedAt && boxSize().w >= 340 ? fill(S.updated, { t: hourFmt.format(updatedAt) }) : '';
+      renderAlerts();
       Object.keys(panels).forEach(function (k) {
         var on = k === tab;
         panels[k].hidden = !on;
@@ -799,6 +1192,7 @@
       // the ribbon is always measured while its panel is showing.
       renderList();
       renderNow();
+      if (detailDay >= 0) renderDetail(false, false);
     };
 
     var select = function (name, focus) {
@@ -815,7 +1209,7 @@
     var returnTimer = null;
     var armReturn = function () {
       clearTimeout(returnTimer);
-      if (tab !== 'now') returnTimer = setTimeout(function () { select('now'); }, RETURN_AFTER);
+      if (tab !== 'now') returnTimer = setTimeout(function () { closeDetail(); select('now'); }, RETURN_AFTER);
     };
     ['pointerdown', 'keydown', 'wheel', 'touchstart'].forEach(function (type) {
       document.addEventListener(type, armReturn, { passive: true });
@@ -838,14 +1232,25 @@
       }
     });
     document.addEventListener('keydown', function (event) {
+      if (event.key === 'Escape' && detailDay >= 0) { closeDetail(); return; }
       if (event.key === 'Escape' && tab !== 'now') select('now', true);
     });
 
     var resizeTimer = null;
-    window.addEventListener('resize', function () {
+    var scheduleRender = function () {
       clearTimeout(resizeTimer);
       resizeTimer = setTimeout(render, 120);
-    });
+    };
+    window.addEventListener('resize', scheduleRender);
+    // The box can change without the window resizing (mirror entry settles
+    // the grid after the frame first renders; a tab switch shows a box that
+    // was hidden) — watch the box itself, not just the window. The app fills
+    // the frame (height: 100%), so its own size never moves with content and
+    // this cannot loop: render() only rewrites what is inside the box.
+    if (typeof ResizeObserver !== 'undefined' && app) {
+      var boxObserver = new ResizeObserver(function () { scheduleRender(); });
+      boxObserver.observe(app);
+    }
 
     // --- start --------------------------------------------------------------------
     var readSettings = function () {
