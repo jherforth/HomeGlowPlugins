@@ -212,7 +212,11 @@
     /* --- Forecast: the day detail overlay --------------------------------- */
     .card { font: inherit; color: inherit; cursor: pointer; }
     .card:focus-visible { outline: 2px solid var(--accent, #00ddeb); outline-offset: 2px; }
-    .detail { position: absolute; inset: 0; z-index: 3; background: var(--card-bg, #fff); overflow-y: auto; padding: 12px 14px 16px; display: flex; flex-direction: column; gap: 12px; }
+    /* The detail overlay sits on the theme's opaque surface, not the card
+       color: some themes (autumn) make --card-bg translucent so the
+       wallpaper shows through the tile, and a see-through overlay lets the
+       Now view bleed through the alert text. */
+    .detail { position: absolute; inset: 0; z-index: 3; background: var(--surface, var(--card-bg, #fff)); overflow-y: auto; padding: 12px 14px 16px; display: flex; flex-direction: column; gap: 12px; }
     .detail[hidden] { display: none; }
     .d-head { display: flex; align-items: center; gap: 12px; }
     .d-head .back { font: inherit; font-size: 0.85rem; font-weight: 600; padding: 6px 12px; border: 0; border-radius: 999px; background: rgba(128, 128, 128, 0.14); color: inherit; cursor: pointer; white-space: nowrap; }
@@ -241,6 +245,11 @@
     .banner.sev-moderate { background: #d97706; }
     .banner.sev-minor { background: #a16207; }
     .banner.sev-unknown { background: #6b7280; }
+    /* With the banner up, the Now panel loses ~46px: let the hourly ribbon
+       compress instead of clipping at the panel's bottom edge. The full
+       layout already shrinks its ribbon (min-height 0), so this is for the
+       stacked layouts only. */
+    .now-panel.has-alerts:not(.full):not(.compact) .ribbon-wrap { min-height: 48px; }
     .alerts-list { display: flex; flex-direction: column; gap: 10px; }
     .alert { border: 1px solid var(--card-border, rgba(0,0,0,0.1)); border-left: 4px solid #6b7280; border-radius: 10px; padding: 10px 12px; }
     .alert.sev-extreme { border-left-color: #991b1b; }
@@ -451,6 +460,7 @@
     var tab = 'now';
     var detailDay = -1;
     var alerts = [];
+    var alertsShown = false; // whether the banner is currently up; renderNow re-fits for it
     var currentAlertTexts = [];
     var currentAlertShorts = [];
     var stateBox = document.getElementById('state');
@@ -806,6 +816,7 @@
       var kind = tiny() ? 'compact' : layout();
       var panel = panels.now;
       panel.className = 'panel now-panel ' + kind;
+      panel.classList.toggle('has-alerts', alertsShown);
       document.documentElement.style.setProperty('--wg-tint', TINTS[c.condition] || 'var(--accent-rgb, 0, 221, 235)');
 
       if (kind === 'compact') {
@@ -1086,6 +1097,14 @@
     var renderAlerts = function () {
       var show = settings.severeAlerts && alerts.length > 0 && !tiny();
       alertsEl.hidden = !show;
+      if (show !== alertsShown) {
+        alertsShown = show;
+        // The banner steals ~33px from the Now panel: the .has-alerts class
+        // lets the hourly ribbon compress (min-height 80 -> 48) instead of
+        // clipping at the panel's bottom edge. renderNow keeps the class in
+        // place across weather reloads and resizes.
+        panels.now.classList.toggle('has-alerts', show);
+      }
       if (!show) { alertsEl.innerHTML = ''; return; }
       var top = alerts[0];
       alertsEl.innerHTML = '<button type="button" class="banner sev-' + top.severity.toLowerCase() + '">'
