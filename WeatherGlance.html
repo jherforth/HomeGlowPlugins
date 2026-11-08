@@ -245,11 +245,13 @@
     .banner.sev-moderate { background: #d97706; }
     .banner.sev-minor { background: #a16207; }
     .banner.sev-unknown { background: #6b7280; }
-    /* With the banner up, the Now panel loses ~46px: let the hourly ribbon
-       compress instead of clipping at the panel's bottom edge. The full
-       layout already shrinks its ribbon (min-height 0), so this is for the
-       stacked layouts only. */
-    .now-panel.has-alerts:not(.full):not(.compact) .ribbon-wrap { min-height: 48px; }
+    /* With the banner up, the Now panel loses ~38px: let the hourly ribbon
+       compress instead of clipping at the panel's bottom edge, and give it
+       the heading's room too — the hour labels on the graph say what it is.
+       The full layout already shrinks its ribbon (min-height 0), so this is
+       for the stacked layouts only. */
+    .now-panel.has-alerts:not(.full):not(.compact) .ribbon-wrap { min-height: 32px; }
+    .now-panel.has-alerts .ribbon-wrap .section-title { display: none; }
     .alerts-list { display: flex; flex-direction: column; gap: 10px; }
     .alert { border: 1px solid var(--card-border, rgba(0,0,0,0.1)); border-left: 4px solid #6b7280; border-radius: 10px; padding: 10px 12px; }
     .alert.sev-extreme { border-left-color: #991b1b; }
@@ -843,8 +845,12 @@
       } else {
         // Medium: what fits, in order of what matters at a glance.
         var h = boxSize().h;
+        // While the alert banner is up the panel is ~38px shorter: keep two
+        // notes at most, so the hourly graph keeps its room. The dropped
+        // note is the least important one (notes are ordered by importance).
+        var maxNotes = alertsShown ? 2 : 3;
         panel.innerHTML = hero()
-          + noteList(h >= 300 ? 3 : h >= 240 ? 2 : 1)
+          + noteList(h >= 300 ? maxNotes : h >= 240 ? 2 : 1)
           + (h >= 250 ? ribbon : '')
           + (h >= 420 ? stats() : '');
       }
