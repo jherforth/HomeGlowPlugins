@@ -245,6 +245,16 @@
     .banner.sev-moderate { background: #d97706; }
     .banner.sev-minor { background: #a16207; }
     .banner.sev-unknown { background: #6b7280; }
+    /* The small alert icon lives in the tabs row, so it costs the panels no
+       height at all. Same severity palette as the banner, as a tinted chip
+       instead of a solid bar. */
+    .alert-icon { flex: 0 0 auto; border: 0; font: inherit; font-size: 0.95rem; line-height: 1; padding: 5px 7px; border-radius: 8px; cursor: pointer; background: transparent; }
+    .alert-icon:focus-visible { outline: 2px solid var(--accent, #00ddeb); outline-offset: 2px; }
+    .alert-icon.sev-extreme { color: #991b1b; background: rgba(153, 27, 27, 0.14); }
+    .alert-icon.sev-severe { color: #dc2626; background: rgba(220, 38, 38, 0.14); }
+    .alert-icon.sev-moderate { color: #d97706; background: rgba(217, 119, 6, 0.14); }
+    .alert-icon.sev-minor { color: #a16207; background: rgba(161, 98, 7, 0.14); }
+    .alert-icon.sev-unknown { color: #6b7280; background: rgba(107, 114, 128, 0.14); }
     /* With the banner up, the Now panel loses ~38px: let the hourly ribbon
        compress instead of clipping at the panel's bottom edge, and give it
        the heading's room too — the hour labels on the graph say what it is.
@@ -272,6 +282,7 @@
         <button type="button" class="tab" role="tab" id="tab-now" data-tab="now" aria-controls="panel-now" aria-selected="true"></button>
         <button type="button" class="tab" role="tab" id="tab-list" data-tab="list" aria-controls="panel-list" aria-selected="false" tabindex="-1"></button>
       </div>
+      <button type="button" class="alert-icon" id="alert-icon" hidden></button>
       <div class="stamp" id="stamp"></div>
     </div>
     <div class="alerts" id="alerts" hidden></div>
@@ -469,6 +480,7 @@
     var app = document.getElementById('app');
     var tabsBar = document.getElementById('tabs');
     var alertsEl = document.getElementById('alerts');
+    var iconEl = document.getElementById('alert-icon');
     var detailEl = document.getElementById('detail');
     var stamp = document.getElementById('stamp');
     var panels = { now: document.getElementById('panel-now'), list: document.getElementById('panel-list') };
@@ -1107,22 +1119,38 @@
       return 'sev-' + (Object.prototype.hasOwnProperty.call(SEV_RANK, s) ? s.toLowerCase() : 'unknown');
     };
     var renderAlerts = function () {
-      var show = settings.severeAlerts && alerts.length > 0 && !tiny();
-      alertsEl.hidden = !show;
-      if (show !== alertsShown) {
-        alertsShown = show;
+      var top = alerts.length > 0 ? alerts[0] : null;
+      // Banner threshold: Moderate and above get the full banner. Anything
+      // below it (Minor advisories are the bulk of the year — king-tide
+      // Coastal Flood, Small Craft, Heat) gets a small icon in the tabs row
+      // instead, so it never steals panel height or pushes the graph. The
+      // icon also covers tiny tiles, where the banner never fits. Either way
+      // a tap opens the same detail dialog, which lists every alert.
+      var banner = settings.severeAlerts && !!top && (SEV_RANK[top.severity] || 0) >= 2 && !tiny();
+      var icon = settings.severeAlerts && !!top && !banner;
+      alertsEl.hidden = !banner;
+      iconEl.hidden = !icon;
+      if (banner !== alertsShown) {
+        alertsShown = banner;
         // The banner steals ~33px from the Now panel: the .has-alerts class
-        // lets the hourly ribbon compress (min-height 80 -> 48) instead of
+        // lets the hourly ribbon compress (min-height 80 -> 32) instead of
         // clipping at the panel's bottom edge. renderNow keeps the class in
         // place across weather reloads and resizes.
-        panels.now.classList.toggle('has-alerts', show);
+        panels.now.classList.toggle('has-alerts', banner);
       }
-      if (!show) { alertsEl.innerHTML = ''; return; }
-      var top = alerts[0];
-      alertsEl.innerHTML = '<button type="button" class="banner ' + sevClass(top.severity) + '">'
-        + '<span aria-hidden="true">⚠️</span><span class="b-event">' + esc(top.event) + '</span>'
-        + '<span class="b-time">' + esc(alertTime(top)) + '</span>'
-        + '<span class="b-more">' + esc(alerts.length > 1 ? '+' + (alerts.length - 1) + ' more' : S.alertDetails) + '</span></button>';
+      if (!banner) { alertsEl.innerHTML = ''; }
+      else {
+        alertsEl.innerHTML = '<button type="button" class="banner ' + sevClass(top.severity) + '">'
+          + '<span aria-hidden="true">⚠️</span><span class="b-event">' + esc(top.event) + '</span>'
+          + '<span class="b-time">' + esc(alertTime(top)) + '</span>'
+          + '<span class="b-more">' + esc(alerts.length > 1 ? '+' + (alerts.length - 1) + ' more' : S.alertDetails) + '</span></button>';
+      }
+      if (icon) {
+        iconEl.className = 'alert-icon ' + sevClass(top.severity);
+        iconEl.title = top.event;
+        iconEl.setAttribute('aria-label', 'Weather alert: ' + top.event + '. Open details.');
+        iconEl.textContent = '⚠️';
+      }
     };
     var alertsLoading = false;
     var loadAlerts = function () {
@@ -1208,6 +1236,10 @@
       }).join('');
     };
     alertsEl.addEventListener('click', function () {
+      var today = todayIndex();
+      openDetail(today >= 0 ? today : 0, true);
+    });
+    iconEl.addEventListener('click', function () {
       var today = todayIndex();
       openDetail(today >= 0 ? today : 0, true);
     });
