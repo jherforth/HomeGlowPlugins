@@ -9,7 +9,7 @@
     "manifestVersion": 1,
     "id": "weather-glance",
     "name": "Weather Glance",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "description": "Two tabs: Now tells the story of the next hours at a glance (a temperature ribbon, what's changing, daylight), and Forecast lists the days ahead, the hourly outlook, feels-like, humidity, wind and air quality. Uses the same weather provider as the core weather widget.",
     "category": "news-weather",
     "author": "adamecker",
@@ -1109,8 +1109,12 @@
     // payload's own coordinates, refreshed every 5 minutes. The National
     // Weather Service is keyless and sends permissive CORS headers, so the
     // frame fetches it directly; the server proxy is the fallback, and it
-    // only answers for hosts on the household's PROXY_WHITELIST. Outside the
-    // US the endpoint answers nothing, so no banner ever appears.
+    // only answers for hosts on the household's PROXY_WHITELIST. The proxy
+    // is only for a direct request that fails outright (a network or CORS
+    // error): any HTTP response from NWS, an error included, is NWS's
+    // answer. A 404 means the point isn't covered (outside the US), so
+    // polling stops for that location until it changes — no banner, no icon,
+    // no more requests.
     var SEV_RANK = { Extreme: 4, Severe: 3, Moderate: 2, Minor: 1, Unknown: 0 };
     // NWS severity is one of the SEV_RANK keys, but never build a class name
     // straight from the response: an unexpected value would leave white text
@@ -1153,6 +1157,17 @@
       }
     };
     var alertsLoading = false;
+    // Rounded "lat,lon" of a location NWS says it doesn't cover (a 404 on
+    // /alerts/active?point=). Polling stops for that location until the
+    // coordinates change, so a display outside the US doesn't send two
+    // failing requests every 5 minutes, indefinitely.
+    var alertsUnsupportedFor = null;
+    var markAlertsUnsupported = function (key) {
+      alertsUnsupportedFor = key;
+      alerts = [];
+      renderAlerts();
+      if (detailDay >= 0) renderDetail(false, false);
+    };
     var loadAlerts = function () {
       if (!settings.severeAlerts || !weather || !weather.coordinates
           || !Number.isFinite(weather.coordinates.lat) || !Number.isFinite(weather.coordinates.lon)) {
@@ -1160,15 +1175,16 @@
         renderAlerts();
         return Promise.resolve();
       }
+      // Alerts are zone-based, so 2 decimals (~1 km) returns the same alerts
+      // as 4 decimals (~11 m) without sending a precise location.
+      var coordKey = weather.coordinates.lat.toFixed(2) + ',' + weather.coordinates.lon.toFixed(2);
+      if (alertsUnsupportedFor === coordKey) return Promise.resolve();
       // One request at a time, and none while the page is hidden: the
       // 5-minute timer and the post-weather-load call can otherwise overlap,
       // and hidden displays don't need fresh alerts.
       if (alertsLoading || document.hidden) return Promise.resolve();
       alertsLoading = true;
-      // Alerts are zone-based, so 2 decimals (~1 km) returns the same alerts
-      // as 4 decimals (~11 m) without sending a precise location.
-      var url = 'https://api.weather.gov/alerts/active?point='
-        + weather.coordinates.lat.toFixed(2) + ',' + weather.coordinates.lon.toFixed(2);
+      var url = 'https://api.weather.gov/alerts/active?point=' + coordKey;
       var parse = function (d) {
         return ((d && d.features) || []).map(function (f) { return f.properties || {}; })
           .filter(function (a) { return a.event && (!a.status || a.status === 'Actual'); })
@@ -1181,15 +1197,26 @@
           })
           .sort(function (a, b) { return (SEV_RANK[b.severity] || 0) - (SEV_RANK[a.severity] || 0); });
       };
+      var checkAlertsResponse = function (res, source) {
+        // A 404 is NWS saying the point isn't covered: stop polling for
+        // this location until it changes. Any other HTTP response, error
+        // included, is NWS's answer — keep the last good alerts and retry
+        // next cycle, without falling back to the proxy.
+        if (res.status === 404) { markAlertsUnsupported(coordKey); return null; }
+        if (!res.ok) throw new Error(source + ' ' + res.status);
+        return res.json();
+      };
       return fetch(url, { headers: { Accept: 'application/geo+json' } })
-        .then(function (res) { if (!res.ok) throw new Error('nws ' + res.status); return res.json(); })
-        .catch(function () {
-          return fetch('/api/proxy?targetUrl=' + encodeURIComponent(url)).then(function (res) {
-            if (!res.ok) throw new Error('proxy ' + res.status);
-            return res.json();
-          });
-        })
+        .then(function (res) { return checkAlertsResponse(res, 'nws'); },
+          function () {
+            // Direct request failed outright (a network or CORS error):
+            // only then fall back to the server proxy.
+            return fetch('/api/proxy?targetUrl=' + encodeURIComponent(url)).then(function (res) {
+              return checkAlertsResponse(res, 'proxy');
+            });
+          })
         .then(function (d) {
+          if (d === null) return; // unsupported location: alerts already cleared
           alerts = parse(d);
           renderAlerts();
           if (detailDay >= 0) renderDetail(false, false);
