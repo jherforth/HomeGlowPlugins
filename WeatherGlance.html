@@ -1112,9 +1112,9 @@
     // only answers for hosts on the household's PROXY_WHITELIST. The proxy
     // is only for a direct request that fails outright (a network or CORS
     // error): any HTTP response from NWS, an error included, is NWS's
-    // answer. A 404 means the point isn't covered (outside the US), so
-    // polling stops for that location until it changes — no banner, no icon,
-    // no more requests.
+    // answer. A 400 or 404 means the point isn't covered (outside the US,
+    // NWS answers 400 "out of bounds"), so polling stops for that location
+    // until it changes — no banner, no icon, no more requests.
     var SEV_RANK = { Extreme: 4, Severe: 3, Moderate: 2, Minor: 1, Unknown: 0 };
     // NWS severity is one of the SEV_RANK keys, but never build a class name
     // straight from the response: an unexpected value would leave white text
@@ -1157,10 +1157,10 @@
       }
     };
     var alertsLoading = false;
-    // Rounded "lat,lon" of a location NWS says it doesn't cover (a 404 on
-    // /alerts/active?point=). Polling stops for that location until the
-    // coordinates change, so a display outside the US doesn't send two
-    // failing requests every 5 minutes, indefinitely.
+    // Rounded "lat,lon" of a location NWS says it doesn't cover (a 400 or
+    // 404 on /alerts/active?point=). Polling stops for that location until
+    // the coordinates change, so a display outside the US doesn't send a
+    // failing request every 5 minutes, indefinitely.
     var alertsUnsupportedFor = null;
     var markAlertsUnsupported = function (key) {
       alertsUnsupportedFor = key;
@@ -1198,11 +1198,14 @@
           .sort(function (a, b) { return (SEV_RANK[b.severity] || 0) - (SEV_RANK[a.severity] || 0); });
       };
       var checkAlertsResponse = function (res, source) {
-        // A 404 is NWS saying the point isn't covered: stop polling for
-        // this location until it changes. Any other HTTP response, error
-        // included, is NWS's answer — keep the last good alerts and retry
-        // next cycle, without falling back to the proxy.
-        if (res.status === 404) { markAlertsUnsupported(coordKey); return null; }
+        // A 400 or 404 is NWS saying the point isn't covered: outside the
+        // US it answers 400 "Parameter point is invalid: out of bounds"
+        // (London, Toronto, Sydney). The point is formatted here, so the
+        // same request can't succeed later: stop polling for this location
+        // until it changes. Any other HTTP response, error included, is
+        // NWS's answer — keep the last good alerts and retry next cycle,
+        // without falling back to the proxy.
+        if (res.status === 400 || res.status === 404) { markAlertsUnsupported(coordKey); return null; }
         if (!res.ok) throw new Error(source + ' ' + res.status);
         return res.json();
       };
