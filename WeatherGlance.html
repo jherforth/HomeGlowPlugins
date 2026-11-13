@@ -312,10 +312,12 @@
         tabForecast: 'Forecast',
         feelsLike: 'Feels like',
         rainChance: 'Rain chance',
+        uvIndex: 'UV index',
         humidity: 'Humidity',
         wind: 'Wind',
         airQuality: 'Air quality',
         aqi: ['Good', 'Fair', 'Moderate', 'Poor', 'Very poor'],
+        uv: ['Low', 'Moderate', 'High', 'Very high', 'Extreme'],
         sunrise: 'Sunrise',
         sunset: 'Sunset',
         forecast: 'Forecast',
@@ -367,10 +369,12 @@
         tabForecast: 'Pronóstico',
         feelsLike: 'Sensación',
         rainChance: 'Prob. de lluvia',
+        uvIndex: 'Índice UV',
         humidity: 'Humedad',
         wind: 'Viento',
         airQuality: 'Calidad del aire',
         aqi: ['Buena', 'Aceptable', 'Moderada', 'Mala', 'Muy mala'],
+        uv: ['Bajo', 'Moderado', 'Alto', 'Muy alto', 'Extremo'],
         sunrise: 'Amanecer',
         sunset: 'Atardecer',
         forecast: 'Pronóstico',
@@ -494,7 +498,9 @@
     var windUnit = function () { return metric() ? 'm/s' : 'mph'; };
     // Providers disagree on precipitation units: OpenWeatherMap reports mm
     // whatever units it was asked for, the demo data inches, and Home Assistant
-    // whatever it is configured with. The amount is converted to the unit the
+    // whatever it is configured with. Open-Meteo reports the unit requested —
+    // inch under imperial, mm under metric — so its source unit is the
+    // payload's own units field. The amount is converted to the unit the
     // Temperature setting implies (Fahrenheit → inches, Celsius → mm), the
     // way WeatherScenes asks for its precipitation unit; a provider whose
     // unit is unknown (Home Assistant) is left as-is, unlabelled.
@@ -502,6 +508,7 @@
       if (!weather) return '';
       if (weather.provider === 'openweathermap') return 'mm';
       if (weather.provider === 'demo') return 'in';
+      if (weather.provider === 'openmeteo') return weather.units === 'metric' ? 'mm' : 'in';
       return '';
     };
     var wetAmount = function (amount) {
@@ -659,6 +666,18 @@
       return Number.isFinite(value) ? Math.round(value) + '%' : '';
     };
 
+    // The day's UV index (daily max), when the provider supplies one.
+    // Open-Meteo does; other providers leave it null, and the tile is hidden
+    // then rather than shown as a misleading 0. Bands as in WeatherScenes:
+    // 0-2 Low, 3-5 Moderate, 6-7 High, 8-10 Very high, 11+ Extreme.
+    var uvLabel = function (value) {
+      var v = Math.round(value);
+      return v <= 2 ? S.uv[0] : v <= 5 ? S.uv[1] : v <= 7 ? S.uv[2] : v <= 10 ? S.uv[3] : S.uv[4];
+    };
+    var uv = function (value) {
+      return Number.isFinite(value) ? Math.round(value) + ' · ' + uvLabel(value) : '';
+    };
+
     // The hourly points that fall on a forecast day, by the wall's local
     // date — the same local-day reading todayKey() uses.
     var localKey = function (ts) {
@@ -798,6 +817,8 @@
       if (Number.isFinite(c.feelsLike)) out.push(tile(S.feelsLike, esc(round(c.feelsLike) + '°')));
       var todayProb = todayIndex() >= 0 ? weather.forecast[todayIndex()].precipitationProbability : null;
       if (Number.isFinite(todayProb)) out.push(tile(S.rainChance, esc(prob(todayProb))));
+      var todayUv = todayIndex() >= 0 ? weather.forecast[todayIndex()].uvIndex : null;
+      if (Number.isFinite(todayUv)) out.push(tile(S.uvIndex, esc(uv(todayUv))));
       if (Number.isFinite(c.humidity)) {
         out.push(tile(S.humidity, esc(round(c.humidity) + '%'),
           '<div class="meter"><span style="width:' + Math.max(0, Math.min(100, c.humidity)) + '%"></span></div>'));
@@ -1040,6 +1061,9 @@
           '<div class="muted" style="font-size:0.8rem">' + esc(S.precipAmount + ': ' + (wetAmount(day.precipitation) || S.precipNone)) + '</div>'));
       } else if (day.precipitation !== null && day.precipitation !== undefined) {
         tiles.push(dTile(S.precipAmount, esc(wetAmount(day.precipitation) || S.precipNone)));
+      }
+      if (Number.isFinite(day.uvIndex)) {
+        tiles.push(dTile(S.uvIndex, esc(uv(day.uvIndex))));
       }
 
       var dayAlerts = settings.severeAlerts ? alertsForDay(detailDay) : [];
