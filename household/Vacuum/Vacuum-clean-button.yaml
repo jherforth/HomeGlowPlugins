@@ -12,7 +12,7 @@ blueprint:
     the select's options exactly, as listed under the entity's attributes in
     Developer tools, States.
   domain: script
-  source_url: https://github.com/jherforth/HomeGlowPlugins/blob/main/Vacuum-clean-button.yaml
+  source_url: https://github.com/jherforth/HomeGlowPlugins/blob/main/household/Vacuum/Vacuum-clean-button.yaml
   input:
     vacuum:
       name: Vacuum

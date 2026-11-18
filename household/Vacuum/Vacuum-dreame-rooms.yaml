@@ -10,7 +10,7 @@ blueprint:
 
     If no room matches, you get a notification in Home Assistant instead.
   domain: script
-  source_url: https://github.com/jherforth/HomeGlowPlugins/blob/main/Vacuum-dreame-rooms.yaml
+  source_url: https://github.com/jherforth/HomeGlowPlugins/blob/main/household/Vacuum/Vacuum-dreame-rooms.yaml
   input:
     vacuum:
       name: Vacuum

@@ -49,7 +49,7 @@ A button whose script doesn't exist is hidden, so nothing shows until you make t
 
 The easy way is the blueprint. Click the button, then in Home Assistant make a script from it for each clean button:
 
-[![Import the clean button blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Fjherforth%2FHomeGlowPlugins%2Fblob%2Fmain%2FVacuum-clean-button.yaml)
+[![Import the clean button blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Fjherforth%2FHomeGlowPlugins%2Fblob%2Fmain%2Fhousehold%2FVacuum%2FVacuum-clean-button.yaml)
 
 1. **Settings → Automations & scenes → Blueprints → Vacuum clean button (HomeGlow) → Create script.**
 2. Pick your vacuum, and the mode and suction to use. Leave anything your vacuum doesn't have empty.
@@ -73,7 +73,7 @@ Each button cleans one room with whatever mode and suction the card is set to.
 
 **Dreame vacuums** ([Dreame Vacuum integration](https://github.com/Tasshack/dreame-vacuum)): use this blueprint. It finds rooms by the names in the Dreame app.
 
-[![Import the Dreame rooms blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Fjherforth%2FHomeGlowPlugins%2Fblob%2Fmain%2FVacuum-dreame-rooms.yaml)
+[![Import the Dreame rooms blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Fjherforth%2FHomeGlowPlugins%2Fblob%2Fmain%2Fhousehold%2FVacuum%2FVacuum-dreame-rooms.yaml)
 
 Make a script from it for each room, type the room's name, and set its Entity ID, such as `script.vacuum_kitchen`.
 
