@@ -9,7 +9,7 @@
     "manifestVersion": 1,
     "id": "rolling-weekly-menu",
     "name": "Rolling Weekly Menu",
-    "version": "1.0.1",
+    "version": "1.1.0",
     "description": "A rolling weekly dinner menu. Fill in what is planned for each day in edit mode, and reset the week when it is time to plan again. The menu is saved in shared household plugin storage, so every display in the house shows the same one.",
     "category": "meals",
     "apiVersion": "v1",
@@ -59,26 +59,79 @@
       overflow-y: auto;
     }
 
-    .widget-title {
-      font-size: 1.2rem;
-      font-weight: 700;
-      margin: 0 0 1rem 0;
-      color: inherit;
-      text-align: center;
-    }
-
-    .menu-controls {
+    /* The widget header. A dashboard that has it (HomeGlow's .hg-widget-header,
+       in /index.css) draws it; :where() keeps these copies at no specificity,
+       so they only show on an older dashboard that doesn't. */
+    :where(.hg-widget-header) {
       display: flex;
-      justify-content: center;
-      gap: 0.5rem;
-      margin-bottom: 1rem;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 4px 8px;
+      min-height: 40px;
+      margin-bottom: 12px;
     }
+    :where(.hg-widget-icon) { display: inline-flex; color: var(--accent, #757575); }
+    :where(.hg-widget-icon) svg { width: 22px; height: 22px; }
+    :where(.hg-widget-title) {
+      margin: 0;
+      font-family: var(--hg-font-heading, inherit);
+      text-transform: var(--hg-heading-transform, none);
+      letter-spacing: var(--hg-heading-letter-spacing, normal);
+      font-size: 1.125rem;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    :where(.hg-widget-actions) { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; margin-left: auto; }
+    :where(.hg-widget-action) {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 34px;
+      height: 34px;
+      padding: 0 6px;
+      border: 0;
+      border-radius: var(--hg-radius-md, 8px);
+      color: var(--text-secondary, #A3A3A3);
+      font: inherit;
+      cursor: pointer;
+    }
+    :where(.hg-widget-main) {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      height: 32px;
+      padding: 0 12px;
+      border: 0;
+      border-radius: var(--hg-radius-md, 8px);
+      color: color-mix(in srgb, var(--accent, #757575) 70%, var(--text, #fff));
+      font: 600 0.875rem var(--hg-font-body, inherit);
+      /* Like HomeGlow's own buttons: a theme that sets its headings in
+         capitals sets this in capitals too. */
+      text-transform: var(--hg-heading-transform, none);
+      letter-spacing: var(--hg-heading-letter-spacing, normal);
+      cursor: pointer;
+    }
+    .hg-widget-action svg { width: 20px; height: 20px; flex: none; }
+    /* Every background here is cleared by the rule at the top, so the tints
+       have to say !important too. */
+    .hg-widget-main { background: rgba(var(--accent-rgb, 158, 127, 255), 0.14) !important; }
+    .hg-widget-main:hover { background: rgba(var(--accent-rgb, 158, 127, 255), 0.22) !important; }
+    .hg-widget-action:hover { background: rgba(var(--accent-rgb, 158, 127, 255), 0.08) !important; }
+    /* Reset week after its first tap: it says what the second tap does. */
+    .hg-widget-action.armed {
+      color: var(--hg-error, var(--error, #ef4444));
+      background: rgba(239, 68, 68, 0.14) !important;
+      font-size: 0.8rem;
+      font-weight: 600;
+    }
+    .reset-label { display: none; }
+    .armed .reset-label { display: inline; }
 
     .platform-warning {
       margin: 0 0 0.75rem 0;
       padding: 0.5rem;
-      border-radius: 8px;
-      border: 1px solid rgba(245, 158, 11, 0.5);
+      border-radius: var(--hg-radius-md, 8px);
+      border: 1px solid var(--warning, rgba(245, 158, 11, 0.5));
       background: rgba(245, 158, 11, 0.12) !important;
       color: inherit;
       font-size: 0.75rem;
@@ -104,11 +157,6 @@
       transition: all 0.3s ease;
     }
 
-    /* Reset Week after its first click: the second click clears the week. */
-    .custom-button.armed {
-      background: var(--hg-error, var(--error, #ef4444)) !important;
-    }
-
     .custom-button:hover {
       filter: brightness(1.1);
       transform: translateY(-1px);
@@ -116,7 +164,7 @@
 
     .day-container {
       margin-bottom: 0.75rem;
-      border-radius: 8px;
+      border-radius: var(--hg-radius-md, 8px);
       padding: 0.5rem;
       transition: all 0.3s ease;
     }
@@ -141,8 +189,7 @@
 
     .day-date {
       font-size: 0.75rem;
-      opacity: 0.7;
-      color: inherit;
+      color: var(--text-secondary, inherit);
     }
 
     .menu-items {
@@ -154,7 +201,7 @@
       justify-content: space-between;
       align-items: center;
       padding: 0.25rem 0;
-      border-bottom: 1px solid rgba(128, 128, 128, 0.2);
+      border-bottom: 1px solid var(--border, rgba(128, 128, 128, 0.2));
     }
 
     .menu-item:last-child {
@@ -202,8 +249,8 @@
     .add-item-input {
       width: 100%;
       padding: 0.5rem;
-      border: 1px solid rgba(128, 128, 128, 0.3);
-      border-radius: 6px;
+      border: 1px solid var(--border, rgba(128, 128, 128, 0.3));
+      border-radius: var(--hg-radius-sm, 6px);
       background: transparent !important;
       color: inherit;
       font-size: 0.8rem;
@@ -233,14 +280,21 @@
 
 <body>
   <div class="widget-container">
-    <h1 class="widget-title">🍽️ Rolling Weekly Menu</h1>
-
-    <div class="menu-controls">
-      <button class="custom-button" id="toggle-edit-btn" onclick="toggleEditMode()">
-        <span id="edit-mode-text">Edit Mode</span>
-      </button>
-      <button class="custom-button" id="reset-week-btn" onclick="resetWeek()">Reset Week</button>
-    </div>
+    <header class="hg-widget-header">
+      <span class="hg-widget-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3v8M5 3v5a2 2 0 0 0 4 0V3M7 11v10"/><path d="M17 21V3c-2 1.5-3 4-3 7v3h3"/></svg>
+      </span>
+      <h2 class="hg-widget-title">Rolling weekly menu</h2>
+      <div class="hg-widget-actions">
+        <button type="button" class="hg-widget-action" id="reset-week-btn" onclick="resetWeek()" aria-label="Reset week" title="Reset week">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>
+          <span class="reset-label">Tap again to clear the week</span>
+        </button>
+        <button type="button" class="hg-widget-main" id="toggle-edit-btn" onclick="toggleEditMode()">
+          <span id="edit-mode-text">Edit menu</span>
+        </button>
+      </div>
+    </header>
 
     <div id="platform-warning" class="platform-warning"></div>
 
@@ -516,15 +570,6 @@
      * button at all.
      */
     function applyControlLimits() {
-      // The controls row holds nothing but these two buttons, so hiding both
-      // would leave an empty flex box carrying its own bottom margin. Dropping
-      // the row takes the buttons with it.
-      if (HIDE_EDIT_MENU && HIDE_RESET_WEEK) {
-        const row = document.querySelector('.menu-controls');
-        if (row) row.remove();
-        return;
-      }
-
       if (HIDE_EDIT_MENU) {
         const editBtn = document.getElementById('toggle-edit-btn');
         if (editBtn) editBtn.remove();
@@ -629,10 +674,10 @@
       yesterday.setDate(yesterday.getDate() - 1);
       const yesterdayIndex = yesterday.getDay();
 
-      // Clear yesterday's menu items (they've been "consumed")
+      // Clear yesterday's menu items (they've been "consumed"). The caller
+      // saves once afterwards; saving here as well wrote the menu twice.
       if (menuData[yesterdayIndex]) {
         menuData[yesterdayIndex] = [];
-        saveMenuData();
       }
     }
 
@@ -692,7 +737,7 @@
             </div>
             <button class="custom-button" onclick="showAddItem(${day.index})"
                     id="add-btn-${day.index}" style="margin-top: 0.5rem; font-size: 0.7rem; padding: 4px 8px;">
-              + Add Item
+              Add item
             </button>
           ` : ''}
         `;
@@ -709,7 +754,7 @@
       if (HIDE_EDIT_MENU) return;
 
       editMode = !editMode;
-      document.getElementById('edit-mode-text').textContent = editMode ? 'View Mode' : 'Edit Mode';
+      document.getElementById('edit-mode-text').textContent = editMode ? 'Done' : 'Edit menu';
       renderMenu();
     }
 
@@ -774,8 +819,6 @@
     // The first click arms, the second clears. confirm() is ignored in the
     // sandboxed iframe the dashboard embeds plugins in: it returns false, so
     // the confirm-guarded reset silently did nothing there.
-    const RESET_LABEL = 'Reset Week';
-    const RESET_ARMED_LABEL = 'Tap again to clear the week';
     let resetArmed = false;
     // Set by the click that arms, so the same click bubbling up to the
     // document listener below does not disarm it again at once.
@@ -785,8 +828,9 @@
       resetArmed = armed;
       const button = document.getElementById('reset-week-btn');
       if (!button) return;
-      button.textContent = armed ? RESET_ARMED_LABEL : RESET_LABEL;
+      // The label beside the icon shows only while armed (.armed .reset-label).
       button.classList.toggle('armed', armed);
+      button.setAttribute('aria-label', armed ? 'Tap again to clear the week' : 'Reset week');
     }
 
     // Anything but the armed button disarms it, so a stray first click can
