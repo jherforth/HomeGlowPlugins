@@ -21,6 +21,8 @@
         "default": "", "scope": "device" },
       { "key": "showLocation", "label": "Show event locations", "type": "boolean",
         "default": true, "scope": "device" },
+      { "key": "showDriveTime", "label": "Show drive time", "type": "boolean",
+        "default": true, "scope": "device" },
       { "key": "showCalendarName", "label": "Show which calendar each event came from", "type": "boolean",
         "default": true, "scope": "device" }
     ]
@@ -214,8 +216,15 @@
       events: [],
       notes: [],
       picking: false,
-      settings: { days: '7', sources: '', showLocation: true, showCalendarName: true }
+      settings: { days: '7', sources: '', showLocation: true, showDriveTime: true, showCalendarName: true }
     };
+
+    // Drive times by location string, fetched once per location for this
+    // display's session. null means the server had no drive time for it.
+    var driveTimes = {};
+    // The endpoint is new: an older server answers 404, in which case the
+    // widget stops asking and keeps working exactly as it did before.
+    var driveTimeAvailable = true;
 
     // ---------- helpers ----------
 
@@ -261,6 +270,15 @@
     }
     function shortDate(dateStr) {
       return formatDate(dateStr, { month: 'short', day: 'numeric' });
+    }
+    // Google Calendar shows a long drive as hours, not a three-digit minute
+    // count — "5 hr 30 min" reads at a glance, "330 min" does not.
+    function formatDriveTime(minutes) {
+      var m = Math.round(minutes);
+      if (m < 60) return m + ' min';
+      var h = Math.floor(m / 60);
+      var rest = m % 60;
+      return h + ' hr' + (rest ? ' ' + rest + ' min' : '');
     }
     // The heading carries the weekday, so the date beside it does not repeat it.
     function dayLabel(dateStr) {
@@ -338,7 +356,35 @@
           // Only enabled sources produce events, so only they are offerable.
           state.sources = (res[0] || []).filter(function (s) { return s.enabled; });
           state.events = res[1] || [];
-        });
+        })
+        .then(loadDriveTimes);
+    }
+
+    // Drive time per unique location, once per location for this display's
+    // session. The server caches results too, so a five-minute poll costs
+    // nothing upstream for locations already answered. Any failure leaves the
+    // location unfilled and the row renders exactly as it did before drive
+    // time existed.
+    function loadDriveTimes() {
+      if (!state.settings.showDriveTime || !driveTimeAvailable) return Promise.resolve();
+      var locations = [];
+      state.events.forEach(function (ev) {
+        var loc = ev.location;
+        if (!loc || driveTimes.hasOwnProperty(loc) || locations.indexOf(loc) !== -1) return;
+        locations.push(loc);
+      });
+      if (!locations.length) return Promise.resolve();
+      return Promise.all(locations.map(function (loc) {
+        return fetchJson(API + '/api/calendar/drive-time?location=' + encodeURIComponent(loc))
+          .then(function (res) {
+            driveTimes[loc] = (res && typeof res.minutes === 'number') ? res.minutes : null;
+          })
+          .catch(function (e) {
+            // A 404 means the server predates the endpoint: stop asking.
+            if (/HTTP 404/.test((e && e.message) || '')) driveTimeAvailable = false;
+            driveTimes[loc] = null;
+          });
+      }));
     }
 
     // ---------- shaping ----------
@@ -409,6 +455,9 @@
 
       var sub = [];
       if (state.settings.showLocation && ev.location) sub.push(esc(ev.location));
+      if (state.settings.showDriveTime && typeof driveTimes[ev.location] === 'number') {
+        sub.push('🚗 ' + formatDriveTime(driveTimes[ev.location]));
+      }
       if (state.settings.showCalendarName && ev.source_name) {
         sub.push('<span class="cal">' + esc(ev.source_name) + '</span>');
       }
