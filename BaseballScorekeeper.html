@@ -1,0 +1,799 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Baseball Scorekeeper</title>
+  <script type="application/json" id="homeglow-manifest">
+  {
+    "manifestVersion": 1,
+    "id": "baseball-scorekeeper",
+    "name": "Baseball Scorekeeper",
+    "version": "1.0.2",
+    "category": "games",
+    "description": "A scoreboard for tabletop baseball games. Tap or call out each play (ball, strike, out, single, home run) and it tracks the count, outs, runners, innings and line score by itself. Everything can be corrected by hand, and any play can be undone."
+  }
+  </script>
+  <link rel="stylesheet" href="/index.css">
+  <style>
+    * { box-sizing: border-box; }
+
+    html, body { background: transparent !important; }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      margin: 0;
+      padding: 0.5rem;
+      color: #333;
+      /* Everything below is sized in em, so the board scales with the tile. */
+      font-size: clamp(11px, 2.5vmin, 24px);
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    [data-theme="dark"] body { color: #a6a6d1; }
+
+    .widget-container {
+      background: transparent !important;
+      border: none !important;
+      box-shadow: none !important;
+      width: 100%;
+      max-height: calc(100vh - 1rem);
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 0.6em;
+    }
+
+    button, input, select { font: inherit; color: inherit; }
+
+    /* ── Status row ── */
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 0.6em;
+    }
+
+    .inning-now {
+      font-size: 1.5em;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .inning-now.final { color: #e5484d; }
+
+    .last-play {
+      flex: 1;
+      min-width: 0;
+      font-size: 0.95em;
+      opacity: 0.8;
+      text-align: left;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* ── Line score ── */
+    .linescore-wrap { overflow-x: auto; }
+
+    table.linescore {
+      width: 100%;
+      border-collapse: collapse;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .linescore th, .linescore td {
+      padding: 0.25em 0.35em;
+      text-align: center;
+      border-bottom: 1px solid rgba(128, 128, 128, 0.3);
+      min-width: 1.6em;
+    }
+
+    .linescore th { font-size: 0.8em; font-weight: 600; opacity: 0.7; }
+    .linescore td { font-size: 1.15em; font-weight: 600; }
+
+    .linescore .team {
+      text-align: left;
+      font-weight: 700;
+      white-space: nowrap;
+      max-width: 9em;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .linescore .team .bat { visibility: hidden; margin-right: 0.25em; }
+    .linescore tr.batting .team .bat { visibility: visible; }
+
+    .linescore .tot {
+      font-weight: 800;
+      font-size: 1.5em;
+      border-left: 2px solid rgba(128, 128, 128, 0.45);
+    }
+
+    .linescore .hits { font-weight: 600; opacity: 0.75; }
+    .linescore td.cur { background: rgba(255, 176, 0, 0.28); border-radius: 0.2em; }
+
+    /* ── Diamond + count ── */
+    .field {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 1.5em;
+    }
+
+    .diamond { width: 9.5em; height: 9.5em; flex: none; }
+    .diamond .path { fill: none; stroke: currentColor; stroke-opacity: 0.35; stroke-width: 1.5; }
+    .diamond .base { fill: rgba(128, 128, 128, 0.18); stroke: currentColor; stroke-opacity: 0.6; stroke-width: 1.5; }
+    .diamond .base.on { fill: #ffb000; stroke: #ffb000; stroke-opacity: 1; }
+    .diamond .plate { fill: currentColor; fill-opacity: 0.45; }
+    .diamond .hit { fill: transparent; cursor: pointer; }
+
+    .count { display: flex; flex-direction: column; gap: 0.45em; }
+
+    .count-row { display: flex; align-items: center; gap: 0.5em; }
+
+    .count-row .lbl { width: 1.1em; font-weight: 800; font-size: 1.3em; text-align: center; }
+
+    .dot {
+      width: 1.9em;
+      height: 1.9em;
+      border-radius: 50%;
+      border: 2px solid currentColor;
+      background: rgba(128, 128, 128, 0.12);
+      opacity: 0.45;
+      padding: 0;
+      cursor: pointer;
+    }
+
+    .dot.on { opacity: 1; }
+    .b .dot.on { background: #30a46c; border-color: #30a46c; }
+    .s .dot.on { background: #ffb000; border-color: #ffb000; }
+    .o .dot.on { background: #e5484d; border-color: #e5484d; }
+
+    /* ── Buttons ── */
+    .plays {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0.45em;
+    }
+
+    .btn {
+      background: rgba(128, 128, 128, 0.15);
+      border: 1px solid rgba(128, 128, 128, 0.4);
+      border-radius: 0.6em;
+      padding: 0.75em 0.3em;
+      font-weight: 700;
+      font-size: 1.05em;
+      cursor: pointer;
+      white-space: nowrap;
+      touch-action: manipulation;
+    }
+
+    .btn:active { transform: scale(0.96); filter: brightness(1.2); }
+    .btn:disabled { opacity: 0.35; cursor: default; transform: none; }
+
+    .btn.ball   { border-color: #30a46c; background: rgba(48, 164, 108, 0.2); }
+    .btn.strike { border-color: #ffb000; background: rgba(255, 176, 0, 0.2); }
+    .btn.out    { border-color: #e5484d; background: rgba(229, 72, 77, 0.2); }
+    .btn.hit    { border-color: #3e93f8; background: rgba(62, 147, 248, 0.2); }
+
+    .tools { display: flex; flex-wrap: wrap; gap: 0.45em; }
+    .tools .btn { flex: 1; font-size: 0.9em; padding: 0.55em 0.4em; font-weight: 600; }
+    .btn.active { border-color: #e5484d; background: rgba(229, 72, 77, 0.25); }
+    .btn.warn { border-color: #e5484d; color: #e5484d; }
+
+    #micBtn.active { animation: pulse 1.6s ease-in-out infinite; }
+    @keyframes pulse { 50% { background: rgba(229, 72, 77, 0.5); } }
+
+    /* ── Adjust panel ── */
+    .adjust {
+      display: none;
+      border: 1px solid rgba(128, 128, 128, 0.35);
+      border-radius: 0.6em;
+      padding: 0.6em;
+      text-align: left;
+    }
+
+    .adjust.open { display: block; }
+
+    .adjust h3 { margin: 0.6em 0 0.4em; font-size: 0.85em; text-transform: uppercase; letter-spacing: 0.06em; opacity: 0.65; }
+    .adjust h3:first-child { margin-top: 0; }
+
+    .steps { display: grid; grid-template-columns: repeat(auto-fill, minmax(8.5em, 1fr)); gap: 0.5em; }
+
+    .step {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.2em;
+      border: 1px solid rgba(128, 128, 128, 0.25);
+      border-radius: 0.5em;
+      padding: 0.35em;
+    }
+
+    .step .name { font-size: 0.8em; opacity: 0.75; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .step .ctl { display: flex; align-items: center; gap: 0.4em; }
+    .step .val { min-width: 2.6em; text-align: center; font-weight: 800; font-size: 1.25em; font-variant-numeric: tabular-nums; }
+    .step .btn { padding: 0.35em 0.7em; font-size: 1em; }
+
+    .row { display: flex; flex-wrap: wrap; gap: 0.5em; align-items: center; margin-top: 0.4em; }
+    .row label { font-size: 0.9em; }
+
+    .adjust input[type="text"], .adjust select {
+      background: rgba(128, 128, 128, 0.12);
+      border: 1px solid rgba(128, 128, 128, 0.4);
+      border-radius: 0.4em;
+      padding: 0.4em 0.5em;
+      min-width: 0;
+      flex: 1;
+      user-select: text;
+      -webkit-user-select: text;
+    }
+
+    .adjust select option { color: #333; }
+    .note { font-size: 0.8em; opacity: 0.7; margin: 0.5em 0 0; line-height: 1.4; }
+  </style>
+</head>
+<body>
+  <div class="widget-container">
+
+    <div class="status">
+      <div class="inning-now" id="inningNow"></div>
+      <div class="last-play" id="lastPlay"></div>
+    </div>
+
+    <div class="linescore-wrap">
+      <table class="linescore" id="linescore"></table>
+    </div>
+
+    <div class="field">
+      <svg class="diamond" viewBox="0 0 100 100" aria-label="Bases. Tap a base to add or remove a runner.">
+        <path class="path" d="M50 86 L86 50 L50 14 L14 50 Z"/>
+        <path class="plate" d="M45 82 h10 v5 l-5 5 l-5 -5 Z"/>
+        <rect class="base" id="base1" x="77" y="41" width="18" height="18" transform="rotate(45 86 50)"/>
+        <rect class="base" id="base2" x="41" y="5"  width="18" height="18" transform="rotate(45 50 14)"/>
+        <rect class="base" id="base3" x="5"  y="41" width="18" height="18" transform="rotate(45 14 50)"/>
+        <circle class="hit" data-base="0" cx="86" cy="50" r="17"/>
+        <circle class="hit" data-base="1" cx="50" cy="14" r="17"/>
+        <circle class="hit" data-base="2" cx="14" cy="50" r="17"/>
+      </svg>
+
+      <div class="count">
+        <div class="count-row b"><span class="lbl">B</span><span id="dotsB"></span></div>
+        <div class="count-row s"><span class="lbl">S</span><span id="dotsS"></span></div>
+        <div class="count-row o"><span class="lbl">O</span><span id="dotsO"></span></div>
+      </div>
+    </div>
+
+    <div class="plays" id="plays">
+      <button class="btn ball"   data-play="ball">Ball</button>
+      <button class="btn strike" data-play="strike">Strike</button>
+      <button class="btn strike" data-play="foul">Foul</button>
+      <button class="btn out"    data-play="out">Out</button>
+      <button class="btn hit"    data-play="single">Single</button>
+      <button class="btn hit"    data-play="double">Double</button>
+      <button class="btn hit"    data-play="triple">Triple</button>
+      <button class="btn hit"    data-play="homer">Home run</button>
+    </div>
+
+    <div class="tools">
+      <button class="btn" id="undoBtn">↶ Undo</button>
+      <button class="btn" data-play="walk">Walk</button>
+      <button class="btn" data-play="dp">Double play</button>
+      <button class="btn" id="micBtn" hidden>🎤 Voice</button>
+      <button class="btn" id="adjustBtn">✎ Adjust</button>
+    </div>
+
+    <div class="adjust" id="adjust">
+      <h3>Fix the board</h3>
+      <div class="steps" id="steps"></div>
+      <div class="row">
+        <button class="btn" id="halfBtn"></button>
+        <button class="btn" id="clearBasesBtn">Clear bases</button>
+        <button class="btn warn" id="newBtn">New game</button>
+      </div>
+
+      <h3>Teams</h3>
+      <div class="row">
+        <input type="text" id="name0" maxlength="14" aria-label="Away team name">
+        <input type="text" id="name1" maxlength="14" aria-label="Home team name">
+      </div>
+
+      <h3>Rules</h3>
+      <div class="row">
+        <label for="advanceSel">On a hit, runners</label>
+        <select id="advanceSel">
+          <option value="same">advance as many bases as the batter</option>
+          <option value="forced">advance only when forced</option>
+        </select>
+      </div>
+      <p class="note" id="voiceNote"></p>
+    </div>
+  </div>
+
+  <script>
+    /* ───────────── Game engine (no DOM) ───────────── */
+    const Engine = (() => {
+      function fresh(names) {
+        return {
+          names: names || ['Away', 'Home'],
+          runs: [[], []],          // runs[team][inning - 1]
+          hits: [0, 0],
+          inning: 1,
+          half: 0,                 // 0 = top (away bats), 1 = bottom
+          balls: 0, strikes: 0, outs: 0,
+          bases: [false, false, false],
+          final: false,
+          last: 'Play ball!'
+        };
+      }
+
+      const total = (s, t) => s.runs[t].reduce((a, b) => a + (b || 0), 0);
+
+      function touch(s) {
+        const r = s.runs[s.half], i = s.inning - 1;
+        if (r[i] == null) r[i] = 0;
+      }
+
+      function addRuns(s, cfg, n) {
+        if (!n) return;
+        touch(s);
+        s.runs[s.half][s.inning - 1] += n;
+        // Walk-off: the home team takes the lead in the last inning or later.
+        if (s.half === 1 && s.inning >= cfg.innings && total(s, 1) > total(s, 0)) s.final = true;
+      }
+
+      // Move the batter to base n (4 = home) and the runners with them.
+      function advance(s, n, forcedOnly) {
+        let scored = 0;
+        const nb = [false, false, false];
+        let minFree = n + 1;
+        for (let b = 1; b <= 3; b++) {
+          if (!s.bases[b - 1]) continue;
+          let to;
+          if (forcedOnly) { to = b < minFree ? minFree : b; minFree = to + 1; }
+          else to = b + n;
+          if (to >= 4) scored++; else nb[to - 1] = true;
+        }
+        if (n >= 4) scored++; else nb[n - 1] = true;
+        s.bases = nb;
+        return scored;
+      }
+
+      function resetCount(s) { s.balls = 0; s.strikes = 0; }
+
+      function endHalf(s, cfg) {
+        touch(s);
+        resetCount(s);
+        s.outs = 0;
+        s.bases = [false, false, false];
+        const away = total(s, 0), home = total(s, 1);
+        if (s.half === 0) {
+          if (s.inning >= cfg.innings && home > away) s.final = true;   // no need for the bottom half
+          else s.half = 1;
+        } else if (s.inning >= cfg.innings && home !== away) {
+          s.final = true;
+        } else {
+          s.inning++;
+          s.half = 0;
+        }
+      }
+
+      function recordOuts(s, cfg, n, what) {
+        s.outs += n;
+        resetCount(s);
+        if (s.outs >= 3) {
+          endHalf(s, cfg);
+          s.last = what + ' · side retired';
+        } else {
+          s.last = what + ' · ' + s.outs + ' out';
+        }
+      }
+
+      const runsText = n => n === 0 ? '' : n === 1 ? ' · 1 run scores' : ' · ' + n + ' runs score';
+
+      const HITS = { single: [1, 'Single'], double: [2, 'Double'], triple: [3, 'Triple'], homer: [4, 'Home run'] };
+
+      // Applies one play. Returns false when the play does nothing.
+      function apply(s, cfg, play) {
+        if (s.final) return false;
+        if (play === 'ball') {
+          if (s.balls >= 3) return apply(s, cfg, 'walk');
+          s.balls++;
+          s.last = 'Ball ' + s.balls;
+        } else if (play === 'strike') {
+          if (s.strikes >= 2) recordOuts(s, cfg, 1, 'Strikeout');
+          else { s.strikes++; s.last = 'Strike ' + s.strikes; }
+        } else if (play === 'foul') {
+          if (s.strikes < 2) s.strikes++;
+          s.last = 'Foul ball';
+        } else if (play === 'out') {
+          recordOuts(s, cfg, 1, 'Out');
+        } else if (play === 'dp') {
+          // The lead-off runner goes with the batter; with nobody on it is a plain out.
+          const i = s.bases.indexOf(true);
+          if (i < 0) recordOuts(s, cfg, 1, 'Out');
+          else { s.bases[i] = false; recordOuts(s, cfg, 2, 'Double play'); }
+        } else if (play === 'walk') {
+          const n = advance(s, 1, true);
+          resetCount(s);
+          s.last = 'Walk' + runsText(n);
+          addRuns(s, cfg, n);
+        } else if (HITS[play]) {
+          const [bases, label] = HITS[play];
+          const n = advance(s, bases, cfg.advance === 'forced');
+          s.hits[s.half]++;
+          resetCount(s);
+          s.last = label + runsText(n);
+          addRuns(s, cfg, n);
+        } else {
+          return false;
+        }
+        if (s.final) {
+          s.bases = [false, false, false];
+          resetCount(s);
+          s.outs = 0;
+        }
+        return true;
+      }
+
+      // Turns a spoken phrase into a play name, 'undo', or null.
+      const PHRASES = [
+        ['undo',   /\b(undo|scratch that|take that back|never ?mind)\b/],
+        ['homer',  /\b(home ?run|homer|grand slam|out of the park)\b/],
+        ['dp',     /\bdouble play\b/],
+        ['triple', /\b(triple|(three|3) base hit)\b/],
+        ['double', /\b(double|(two|2) base hit)\b/],
+        ['single', /\b(single|base hit)\b/],
+        ['walk',   /\b(walk|ball (four|4))\b/],
+        ['out',    /\b(strike ?out|struck out|strike (three|3))\b/],
+        ['foul',   /\b(foul|fowl)\b/],
+        ['strike', /\bstrikes?\b/],
+        ['ball',   /\b(ball|bowl)\b/],
+        ['out',    /\bout\b/]
+      ];
+
+      function parse(text) {
+        const t = String(text).toLowerCase().replace(/[^a-z0-9' ]+/g, ' ').replace(/\s+/g, ' ').trim();
+        // Calls are short. Longer sentences are table talk, not a call.
+        if (!t || t.split(' ').length > 5) return null;
+        for (const [play, re] of PHRASES) if (re.test(t)) return play;
+        return null;
+      }
+
+      return { fresh, total, apply, parse };
+    })();
+
+    if (typeof module !== 'undefined') module.exports = Engine;
+  </script>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const params = new URLSearchParams(window.location.search);
+      const theme = params.get('theme');
+      if (theme === 'dark' || theme === 'light') {
+        document.documentElement.setAttribute('data-theme', theme);
+      }
+
+      const STORE = 'baseballScorekeeper.v1';
+      const $ = id => document.getElementById(id);
+      const esc = v => String(v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+      let s = Engine.fresh();
+      let cfg = { innings: 9, advance: 'same' };
+      let hist = [];
+      let micWanted = false;
+      let notice = '';             // a message shown in place of the last play until the next change
+
+      /* ── Persistence ── */
+      try {
+        const saved = JSON.parse(localStorage.getItem(STORE) || 'null');
+        if (saved && saved.s && Array.isArray(saved.s.runs)) {
+          s = Object.assign(Engine.fresh(), saved.s);
+          cfg = Object.assign(cfg, saved.cfg);
+          hist = Array.isArray(saved.hist) ? saved.hist : [];
+          micWanted = !!saved.mic;
+        }
+      } catch (e) { /* start a fresh game */ }
+
+      function save() {
+        try { localStorage.setItem(STORE, JSON.stringify({ s, cfg, hist, mic: micWanted })); } catch (e) {}
+      }
+
+      function snapshot() {
+        hist.push(JSON.stringify(s));
+        if (hist.length > 60) hist.shift();
+      }
+
+      // Runs fn as one undoable change.
+      function change(fn) {
+        snapshot();
+        notice = '';
+        if (fn() === false) hist.pop();
+        save();
+        render();
+      }
+
+      function undo() {
+        if (!hist.length) return;
+        s = JSON.parse(hist.pop());
+        s.last = 'Undone';
+        save();
+        render();
+      }
+
+      const play = name => change(() => Engine.apply(s, cfg, name));
+
+      /* ── Manual corrections ── */
+      // The inning a team's run stepper edits: the one it is batting in, or batted in last.
+      function runIndex(t) {
+        if (t === s.half) return s.inning - 1;
+        return t === 0 ? s.inning - 1 : Math.max(0, s.inning - 2);
+      }
+
+      function bumpRuns(t, d) {
+        const r = s.runs[t];
+        let i = runIndex(t);
+        if (d < 0) {
+          while (i >= 0 && !(r[i] > 0)) i--;
+          if (i < 0) return false;
+        }
+        r[i] = (r[i] || 0) + d;
+        s.final = false;
+        s.last = s.names[t] + ' runs corrected';
+      }
+
+      const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+
+      const STEPS = [
+        { key: 'runs0', name: () => s.names[0] + ' runs', val: () => Engine.total(s, 0), bump: d => bumpRuns(0, d) },
+        { key: 'runs1', name: () => s.names[1] + ' runs', val: () => Engine.total(s, 1), bump: d => bumpRuns(1, d) },
+        { key: 'inning', name: () => 'Inning', val: () => s.inning,
+          bump: d => { s.inning = clamp(s.inning + d, 1, 99); s.final = false; s.last = 'Inning set'; } },
+        { key: 'balls', name: () => 'Balls', val: () => s.balls, bump: d => { s.balls = clamp(s.balls + d, 0, 3); } },
+        { key: 'strikes', name: () => 'Strikes', val: () => s.strikes, bump: d => { s.strikes = clamp(s.strikes + d, 0, 2); } },
+        { key: 'outs', name: () => 'Outs', val: () => s.outs, bump: d => { s.outs = clamp(s.outs + d, 0, 2); } },
+        { key: 'hits0', name: () => s.names[0] + ' hits', val: () => s.hits[0], bump: d => { s.hits[0] = Math.max(0, s.hits[0] + d); } },
+        { key: 'hits1', name: () => s.names[1] + ' hits', val: () => s.hits[1], bump: d => { s.hits[1] = Math.max(0, s.hits[1] + d); } },
+        { key: 'len', name: () => 'Game length', val: () => cfg.innings,
+          bump: d => { cfg.innings = clamp(cfg.innings + d, 1, 15); } }
+      ];
+
+      $('steps').innerHTML = STEPS.map(st => `
+        <div class="step" data-key="${st.key}">
+          <span class="name"></span>
+          <span class="ctl">
+            <button class="btn" data-d="-1" aria-label="Down">▼</button>
+            <span class="val"></span>
+            <button class="btn" data-d="1" aria-label="Up">▲</button>
+          </span>
+        </div>`).join('');
+
+      $('steps').addEventListener('click', e => {
+        const b = e.target.closest('button[data-d]');
+        if (!b) return;
+        const st = STEPS.find(x => x.key === b.closest('.step').dataset.key);
+        change(() => st.bump(Number(b.dataset.d)));
+      });
+
+      /* ── Rendering ── */
+      function dots(el, n, on, key) {
+        let h = '';
+        for (let i = 1; i <= n; i++) {
+          h += `<button class="dot${i <= on ? ' on' : ''}" data-key="${key}" data-i="${i}" aria-label="${key} ${i}"></button> `;
+        }
+        el.innerHTML = h;
+      }
+
+      function render() {
+        const ord = n => n + (['th', 'st', 'nd', 'rd'][n % 100 > 10 && n % 100 < 14 ? 0 : n % 10] || 'th');
+        const now = $('inningNow');
+        now.textContent = s.final ? 'Final' : (s.half === 0 ? '▲ Top ' : '▼ Bottom ') + ord(s.inning);
+        now.classList.toggle('final', s.final);
+
+        const a = Engine.total(s, 0), h = Engine.total(s, 1);
+        $('lastPlay').textContent = notice ? notice : s.final
+          ? (a === h ? 'Tie game' : s.names[a > h ? 0 : 1] + ' win ' + Math.max(a, h) + '–' + Math.min(a, h))
+          : s.last;
+
+        // Line score
+        const cols = Math.max(cfg.innings, s.inning, s.runs[0].length, s.runs[1].length);
+        let head = '<tr><th></th>';
+        for (let i = 1; i <= cols; i++) head += `<th>${i}</th>`;
+        head += '<th>R</th><th>H</th></tr>';
+        const rows = [0, 1].map(t => {
+          let r = `<tr class="${!s.final && s.half === t ? 'batting' : ''}"><td class="team"><span class="bat">⚾</span>${esc(s.names[t])}</td>`;
+          for (let i = 0; i < cols; i++) {
+            const v = s.runs[t][i];
+            const cur = !s.final && s.half === t && i === s.inning - 1;
+            r += `<td class="${cur ? 'cur' : ''}">${v == null ? (cur ? '0' : '') : v}</td>`;
+          }
+          return r + `<td class="tot">${Engine.total(s, t)}</td><td class="hits">${s.hits[t]}</td></tr>`;
+        });
+        $('linescore').innerHTML = head + rows.join('');
+
+        for (let i = 0; i < 3; i++) $('base' + (i + 1)).classList.toggle('on', !!s.bases[i]);
+        dots($('dotsB'), 3, s.balls, 'balls');
+        dots($('dotsS'), 2, s.strikes, 'strikes');
+        dots($('dotsO'), 2, s.outs, 'outs');
+
+        document.querySelectorAll('[data-play]').forEach(b => { b.disabled = s.final; });
+        $('undoBtn').disabled = !hist.length;
+
+        // Adjust panel
+        STEPS.forEach(st => {
+          const el = $('steps').querySelector(`[data-key="${st.key}"]`);
+          el.querySelector('.name').textContent = st.name();
+          el.querySelector('.val').textContent = st.key === 'len' ? st.val() + ' inn' : st.val();
+        });
+        $('halfBtn').textContent = s.half === 0 ? 'Switch to bottom ▼' : 'Switch to top ▲';
+        if (document.activeElement !== $('name0')) $('name0').value = s.names[0];
+        if (document.activeElement !== $('name1')) $('name1').value = s.names[1];
+        $('advanceSel').value = cfg.advance;
+      }
+
+      /* ── Wiring ── */
+      document.querySelector('.widget-container').addEventListener('click', e => {
+        const p = e.target.closest('[data-play]');
+        if (p) { play(p.dataset.play); return; }
+
+        const d = e.target.closest('.dot');
+        if (d) {
+          const k = d.dataset.key, i = Number(d.dataset.i);
+          change(() => { s[k] = s[k] === i ? i - 1 : i; });
+          return;
+        }
+
+        const b = e.target.closest('.hit');
+        if (b) change(() => { const i = Number(b.dataset.base); s.bases[i] = !s.bases[i]; });
+      });
+
+      $('undoBtn').addEventListener('click', undo);
+
+      $('adjustBtn').addEventListener('click', () => {
+        const open = $('adjust').classList.toggle('open');
+        $('adjustBtn').classList.toggle('active', open);
+        if (open) $('adjust').scrollIntoView({ block: 'nearest' });
+      });
+
+      $('halfBtn').addEventListener('click', () => change(() => {
+        s.half = s.half === 0 ? 1 : 0;
+        s.final = false;
+        s.last = 'Half inning set';
+      }));
+
+      $('clearBasesBtn').addEventListener('click', () => change(() => { s.bases = [false, false, false]; }));
+
+      // confirm() is blocked in the sandboxed iframe, so a second tap confirms.
+      let newArmed = null;
+      $('newBtn').addEventListener('click', () => {
+        const btn = $('newBtn');
+        if (!newArmed) {
+          btn.textContent = 'Tap again to reset';
+          newArmed = setTimeout(() => { newArmed = null; btn.textContent = 'New game'; }, 3000);
+          return;
+        }
+        clearTimeout(newArmed);
+        newArmed = null;
+        btn.textContent = 'New game';
+        change(() => { s = Engine.fresh(s.names); });
+      });
+
+      [0, 1].forEach(t => {
+        $('name' + t).addEventListener('input', e => {
+          s.names[t] = e.target.value.trim() || (t === 0 ? 'Away' : 'Home');
+          save();
+          render();
+        });
+      });
+
+      $('advanceSel').addEventListener('change', e => { cfg.advance = e.target.value; save(); });
+
+      /* ── Voice calls ── */
+      const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+      const micBtn = $('micBtn');
+      let rec = null, listening = false, lastCmd = '', lastCmdAt = 0;
+
+      function heard(text) {
+        const cmd = Engine.parse(text);
+        if (!cmd) return;
+        // Some Android builds deliver the same result twice.
+        const t = Date.now();
+        if (cmd === lastCmd && t - lastCmdAt < 1500) return;
+        lastCmd = cmd; lastCmdAt = t;
+        if (cmd === 'undo') undo(); else play(cmd);
+        $('lastPlay').textContent = '🎤 ' + $('lastPlay').textContent;
+      }
+
+      function setMic(on, note) {
+        micWanted = on;
+        micBtn.classList.toggle('active', on);
+        micBtn.textContent = on ? '🎤 Listening' : '🎤 Voice';
+        if (note) $('voiceNote').textContent = note;
+        save();
+        if (on) startRec(); else if (rec) { try { rec.stop(); } catch (e) {} }
+      }
+
+      function startRec() {
+        if (listening) return;
+        if (!rec) {
+          rec = new SR();
+          rec.continuous = true;
+          rec.interimResults = false;
+          rec.lang = 'en-US';
+          rec.onstart = () => { listening = true; };
+          rec.onresult = e => {
+            for (let i = e.resultIndex; i < e.results.length; i++) {
+              if (e.results[i].isFinal) heard(e.results[i][0].transcript);
+            }
+          };
+          rec.onerror = e => {
+            if (e.error === 'not-allowed' || e.error === 'service-not-allowed' || e.error === 'audio-capture') {
+              micProblem(e.error);
+            } else if (e.error === 'network' || e.error === 'language-not-supported') {
+              micProblem(e.error);
+            }
+          };
+          // Recognition stops by itself after a pause; keep it running while wanted.
+          rec.onend = () => { listening = false; if (micWanted) setTimeout(startRec, 400); };
+        }
+        try { rec.start(); } catch (e) { /* already starting */ }
+      }
+
+      // Says why voice cannot run, on the board itself, and switches it off.
+      function micProblem(code) {
+        let why;
+        if (!window.isSecureContext) {
+          why = 'Voice needs HTTPS: this page is on plain http, so the browser will not open the microphone.';
+        } else if (code === 'audio-capture') {
+          why = 'Voice is off: no microphone was found.';
+        } else if (code === 'network') {
+          why = 'Voice is off: speech recognition could not reach its online service.';
+        } else if (code === 'language-not-supported') {
+          why = 'Voice is off: this browser has no English speech recognition.';
+        } else if (window.top !== window) {
+          why = 'Voice is blocked: the dashboard does not pass the microphone to widgets, or permission was denied.';
+        } else {
+          why = 'Voice is blocked: microphone permission was denied for this site.';
+        }
+        setMic(false, why);
+        notice = '🎤 ' + why;
+        $('lastPlay').style.whiteSpace = 'normal';
+        render();
+      }
+
+      const VOICE_HELP = 'Voice calls: say "ball", "strike", "foul", "out", "single", "double", "triple", "home run", "walk", "double play" or "undo". Keep calls short; longer sentences are ignored.';
+
+      // Inside the dashboard the widget frame must be granted the microphone.
+      // Where the browser can tell us it is not, the button stays hidden
+      // instead of offering something that cannot work.
+      let micGranted = true;
+      try {
+        const fp = document.featurePolicy || document.permissionsPolicy;
+        if (window.top !== window && fp && fp.allowsFeature) micGranted = fp.allowsFeature('microphone');
+      } catch (e) { /* unknown: let the button show and explain on failure */ }
+
+      if (SR && !micGranted) {
+        micWanted = false;
+        $('voiceNote').textContent = 'Voice calls are not available inside the dashboard yet, because it does not pass the microphone to widgets. Plays are entered by tapping.';
+      } else if (SR) {
+        micBtn.hidden = false;
+        $('voiceNote').textContent = VOICE_HELP;
+        micBtn.addEventListener('click', () => {
+          $('lastPlay').style.whiteSpace = '';
+          notice = '';
+          if (!micWanted && !window.isSecureContext) { micProblem('insecure'); return; }
+          setMic(!micWanted, VOICE_HELP);
+          render();
+        });
+        if (micWanted) setMic(true);
+      } else {
+        $('voiceNote').textContent = 'Voice calls are not available in this browser, so plays are entered by tapping.';
+      }
+
+      render();
+    });
+  </script>
+</body>
+</html>
