@@ -10,10 +10,11 @@
     "manifestVersion": 1,
     "id": "calendar-agenda",
     "name": "Calendar Agenda",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "description": "An agenda list of what is coming up, read from the calendars already connected in HomeGlow. Pick which of them to show, choose how far ahead to look, and it groups events by day with times, locations and each calendar's colour. No ICS URL to paste.",
     "category": "clock-calendar",
     "apiVersion": "v1",
+    "storage": true,
     "settings": [
       { "key": "days", "label": "How far ahead to look", "type": "select",
         "options": ["3", "7", "14", "30"], "default": "7", "scope": "device" },
@@ -21,6 +22,8 @@
         "default": "", "scope": "device" },
       { "key": "showLocation", "label": "Show event locations", "type": "boolean",
         "default": true, "scope": "device" },
+      { "key": "showDriveTime", "label": "Show drive time (sends home and event locations to OpenStreetMap and OSRM)", "type": "boolean",
+        "default": false, "scope": "device" },
       { "key": "showCalendarName", "label": "Show which calendar each event came from", "type": "boolean",
         "default": true, "scope": "device" }
     ]
@@ -214,8 +217,41 @@
       events: [],
       notes: [],
       picking: false,
-      settings: { days: '7', sources: '', showLocation: true, showCalendarName: true }
+      settings: { days: '7', sources: '', showLocation: true, showDriveTime: false, showCalendarName: true }
     };
+
+    // Drive times by location string, resolved in this plugin for this
+    // display's session. null means no drive time for it. Drive time lives
+    // entirely in the plugin (no core endpoint): home comes from
+    // /api/settings?keys=appearance, Nominatim geocodes the location and
+    // OSRM routes it — both answer Access-Control-Allow-Origin: *, so the
+    // frame calls them directly, with no token and no User-Agent header
+    // (forbidden in a browser; the browser sends its own).
+    var driveTimes = {};
+
+    // Drive-time cache, shared across displays through HomeGlow.storage
+    // (one document, keyed by the normalized location). A miss is stored as
+    // a real entry { minutes: null, cachedAt } — never a bare null — so a
+    // cached miss reads back as a hit until its shorter TTL expires instead
+    // of being re-fetched on every poll.
+    var DRIVE_CACHE_KEY = 'drive-time-cache';
+    var DRIVE_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+    var DRIVE_MISS_TTL_MS = 60 * 60 * 1000;
+    var DRIVE_CACHE_MAX = 128;
+    var driveCache = {};
+    var driveCacheUsable = false;
+
+    // Nominatim's usage policy asks for at most one request per second, so
+    // geocoding is sequential with a pause between calls — never Promise.all.
+    var NOMINATIM_BASE = 'https://nominatim.openstreetmap.org/search';
+    var OSRM_BASE = 'https://router.project-osrm.org/route/v1/driving';
+    var NOMINATIM_MIN_INTERVAL_MS = 1100;
+    var DRIVE_REQUEST_TIMEOUT_MS = 10000;
+    var lastNominatimAt = 0;
+
+    // Bumped on every loadAll so a fill started by an earlier poll stops
+    // once fresher events arrive, instead of writing stale chips.
+    var driveFillGen = 0;
 
     // ---------- helpers ----------
 
@@ -261,6 +297,15 @@
     }
     function shortDate(dateStr) {
       return formatDate(dateStr, { month: 'short', day: 'numeric' });
+    }
+    // Google Calendar shows a long drive as hours, not a three-digit minute
+    // count — "5 hr 30 min" reads at a glance, "330 min" does not.
+    function formatDriveTime(minutes) {
+      var m = Math.round(minutes);
+      if (m < 60) return m + ' min';
+      var h = Math.floor(m / 60);
+      var rest = m % 60;
+      return h + ' hr' + (rest ? ' ' + rest + ' min' : '');
     }
     // The heading carries the weekday, so the date beside it does not repeat it.
     function dayLabel(dateStr) {
@@ -315,6 +360,7 @@
 
     function loadAll() {
       state.notes = [];
+      driveFillGen++;
       if (!usePlatform) {
         note('Choices are saved on this display only.' + (SDK ? '' :
           ' Install the plugin from the Admin Panel to store them with HomeGlow.'));
@@ -339,6 +385,279 @@
           state.sources = (res[0] || []).filter(function (s) { return s.enabled; });
           state.events = res[1] || [];
         });
+    }
+
+    // ---------- drive time (plugin-side) ----------
+
+    function sleep(ms) {
+      return new Promise(function (resolve) { setTimeout(resolve, ms); });
+    }
+
+    function fetchWithTimeout(url, options) {
+      var controller = new AbortController();
+      var timer = setTimeout(function () { controller.abort(); }, DRIVE_REQUEST_TIMEOUT_MS);
+      var opts = Object.assign({}, options || {}, { signal: controller.signal });
+      return fetch(url, opts).then(function (res) {
+        clearTimeout(timer);
+        return res;
+      }, function (e) {
+        clearTimeout(timer);
+        throw e;
+      });
+    }
+
+    function normalizeLocation(location) {
+      return String(location || '').trim().toLowerCase();
+    }
+
+    // Location strings that name a virtual visit, a call, or a room inside a
+    // building rather than a place. Geocoded anyway, they resolve to some
+    // unrelated spot far away and the widget would show a confident nonsense
+    // drive ("Telehealth · 25 hr 4 min"). Only applied to strings with no
+    // comma — a location carrying an address can still fall back to it.
+    var NON_PLACE_PATTERNS = [
+      /telehealth/i,
+      /\bvirtual\b/i,
+      /\bzoom\b/i,
+      /\bonline\b/i,
+      /video\s*call/i,
+      /phone\s*call/i,
+      /^room\s+\d+/i
+    ];
+
+    function isNonPlace(location) {
+      return NON_PLACE_PATTERNS.some(function (re) { return re.test(location); });
+    }
+
+    // Calendar locations often carry trailing notes — "Venue, address -
+    // Court 1 (enter on 63rd & 20th)" — which no geocoder matches. Strip
+    // parenthetical notes and a trailing " - note" suffix before retrying.
+    // A " - " in the middle of the string (as in "Gymnastics Academy -
+    // Ballard, 1415 NW 52nd St") is a venue name, not a suffix, and survives.
+    function cleanQuery(query) {
+      return query
+        .replace(/\([^)]*\)/g, ' ')
+        .replace(/\s+-\s+[^-]*$/, '')
+        .replace(/\s{2,}/g, ' ')
+        .replace(/\s+,/g, ',')
+        .trim()
+        .replace(/,+$/, '');
+    }
+
+    // A calendar location is usually "Venue, street address, city, state" —
+    // and Nominatim often matches the venue name to nothing while the street
+    // address alone resolves fine, so a miss retries with the leading segment
+    // dropped (venue, then street), down to the city. A candidate is only
+    // tried if it still holds at least a street and a city, so a bare "WI"
+    // is never asked for. At most four lookups for one location.
+    function geocodeCandidates(query) {
+      var cleaned = cleanQuery(query);
+      var bases = [];
+      [query, cleaned].forEach(function (b) { if (bases.indexOf(b) === -1) bases.push(b); });
+      var trims = function (base) {
+        var parts = base.split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+        var out = [];
+        for (var i = 1; i < parts.length; i++) {
+          var rest = parts.slice(i).join(', ');
+          if (rest && rest.indexOf(',') !== -1 && rest !== base) out.push(rest);
+        }
+        return out;
+      };
+      // The cleaned string's trims come before the original's: the original's
+      // trims still carry the trailing note ("... - Court 1 (enter ...)"),
+      // which is what failed in the first place.
+      var candidates = bases.slice();
+      bases.slice().reverse().forEach(function (base) {
+        trims(base).forEach(function (t) {
+          if (candidates.indexOf(t) === -1) candidates.push(t);
+        });
+      });
+      return candidates.slice(0, 4);
+    }
+
+    // The shared cache document: { "<normalized location>": { minutes, cachedAt } }.
+    // Returns minutes (a number), null for a cached miss, or undefined when
+    // there is no usable entry.
+    function readDriveCache(location) {
+      var entry = driveCache[normalizeLocation(location)];
+      if (!entry || typeof entry !== 'object') return undefined;
+      var ttl = entry.minutes === null ? DRIVE_MISS_TTL_MS : DRIVE_CACHE_TTL_MS;
+      if (typeof entry.cachedAt !== 'number' || Date.now() - entry.cachedAt > ttl) {
+        delete driveCache[normalizeLocation(location)];
+        return undefined;
+      }
+      return entry.minutes;
+    }
+
+    function writeDriveCache(location, minutes) {
+      var key = normalizeLocation(location);
+      driveCache[key] = { minutes: minutes, cachedAt: Date.now() };
+      var keys = Object.keys(driveCache);
+      if (keys.length > DRIVE_CACHE_MAX) {
+        // Oldest cachedAt first; the map itself is unordered, so sort.
+        keys.sort(function (a, b) {
+          return (driveCache[a].cachedAt || 0) - (driveCache[b].cachedAt || 0);
+        }).slice(0, keys.length - DRIVE_CACHE_MAX).forEach(function (k) { delete driveCache[k]; });
+      }
+      if (!driveCacheUsable || !SDK || !SDK.storage) return Promise.resolve();
+      return SDK.storage.set(DRIVE_CACHE_KEY, driveCache).catch(function () {});
+    }
+
+    function loadDriveCache() {
+      if (!SDK || !SDK.storage) {
+        driveCache = {};
+        driveCacheUsable = false;
+        return Promise.resolve();
+      }
+      return SDK.storage.get(DRIVE_CACHE_KEY).then(function (doc) {
+        driveCache = (doc && typeof doc === 'object') ? doc : {};
+        driveCacheUsable = true;
+      }).catch(function () {
+        driveCache = {};
+        driveCacheUsable = false;
+      });
+    }
+
+    // Home, from the same source the core's getHomeCoordinates reads: the
+    // appearance setting's autoDark lat/lon. No home means no chip.
+    function getHome() {
+      return fetchJson(API + '/api/settings?keys=appearance').then(function (res) {
+        var appearance = res && res.appearance;
+        if (typeof appearance === 'string') {
+          try { appearance = JSON.parse(appearance); } catch (e) { return null; }
+        }
+        var autoDark = appearance && appearance.autoDark;
+        if (autoDark && Number.isFinite(autoDark.lat) && Number.isFinite(autoDark.lon)) {
+          return { lat: autoDark.lat, lon: autoDark.lon };
+        }
+        return null;
+      }).catch(function () { return null; });
+    }
+
+    // One Nominatim call, waiting out the 1 req/sec policy since the last
+    // call first. The delay applies to every geocode call, candidate retries
+    // included.
+    function nominatimFetch(url) {
+      var wait = Math.max(0, NOMINATIM_MIN_INTERVAL_MS - (Date.now() - lastNominatimAt));
+      return sleep(wait).then(function () {
+        lastNominatimAt = Date.now();
+        return fetchWithTimeout(url, { headers: { Accept: 'application/json' } });
+      });
+    }
+
+    function geocodeOne(query) {
+      var url = NOMINATIM_BASE + '?format=jsonv2&limit=1&q=' + encodeURIComponent(query);
+      return nominatimFetch(url).then(function (res) {
+        if (!res.ok) return null;
+        return res.json();
+      }).then(function (results) {
+        var first = Array.isArray(results) ? results[0] : null;
+        var lat = first ? Number(first.lat) : NaN;
+        var lon = first ? Number(first.lon) : NaN;
+        if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+        return { lat: lat, lon: lon };
+      }).catch(function () { return null; });
+    }
+
+    // Candidates one at a time, in order, until one resolves.
+    function geocodeLocation(query) {
+      var candidates = geocodeCandidates(query);
+      var chain = Promise.resolve(null);
+      candidates.forEach(function (candidate) {
+        chain = chain.then(function (found) {
+          if (found) return found;
+          return geocodeOne(candidate);
+        });
+      });
+      return chain;
+    }
+
+    // Free-flow driving minutes between two points, or null when OSRM has no
+    // route. The demo server answers durations in seconds.
+    function routeDurationMinutes(from, to) {
+      var url = OSRM_BASE + '/' + from.lon + ',' + from.lat + ';' + to.lon + ',' + to.lat + '?overview=false';
+      return fetchWithTimeout(url, { headers: { Accept: 'application/json' } })
+        .then(function (res) {
+          if (!res.ok) return null;
+          return res.json();
+        })
+        .then(function (result) {
+          var duration = result && result.routes && result.routes[0] && result.routes[0].duration;
+          if (!result || result.code !== 'Ok' || !Number.isFinite(duration)) return null;
+          // A destination next door still takes a minute to drive to.
+          return Math.max(1, Math.round(duration / 60));
+        })
+        .catch(function () { return null; });
+    }
+
+    // Driving minutes from home to a location string, or null when home is
+    // unknown, the location does not resolve, or there is no route. A
+    // non-place is not cached (it is not a lookup failure, it is not a
+    // place); a real miss is cached briefly, an answer for a day.
+    function resolveDriveTime(location, home) {
+      var query = String(location || '').trim();
+      if (!query) return Promise.resolve(null);
+      if (query.indexOf(',') === -1 && isNonPlace(query)) return Promise.resolve(null);
+
+      var cached = readDriveCache(query);
+      if (cached !== undefined) return Promise.resolve(cached);
+
+      return geocodeLocation(query).then(function (destination) {
+        if (!destination) return writeDriveCache(query, null).then(function () { return null; });
+        return routeDurationMinutes(home, destination).then(function (minutes) {
+          return writeDriveCache(query, minutes).then(function () { return minutes; });
+        });
+      });
+    }
+
+    // Render first, fill chips in as they arrive: the agenda never waits on
+    // a geocode, and a missed location can take ~50s to fail (four
+    // candidates at a 10s timeout each). Locations resolve one at a time so
+    // Nominatim sees at most one request per second. Each chip re-renders
+    // as it lands; a failure leaves the row exactly as it was before drive
+    // time existed.
+    function fillDriveTimes() {
+      if (!state.settings.showDriveTime) return;
+      var gen = driveFillGen;
+
+      var locations = [];
+      state.events.forEach(function (ev) {
+        var loc = ev.location;
+        if (!loc || driveTimes.hasOwnProperty(loc) || locations.indexOf(loc) !== -1) return;
+        locations.push(loc);
+      });
+      if (!locations.length) return;
+
+      loadDriveCache().then(function () {
+        if (gen !== driveFillGen) return;
+        // Cached answers (from this display or any other) show at once.
+        var pending = [];
+        locations.forEach(function (loc) {
+          var cached = readDriveCache(loc);
+          if (cached !== undefined) {
+            driveTimes[loc] = cached;
+          } else {
+            pending.push(loc);
+          }
+        });
+        if (pending.length !== locations.length) render();
+        if (!pending.length) return null;
+        return getHome().then(function (home) {
+          if (gen !== driveFillGen || !home) return;
+          var chain = Promise.resolve();
+          pending.forEach(function (loc) {
+            chain = chain.then(function () {
+              if (gen !== driveFillGen) return;
+              return resolveDriveTime(loc, home).then(function (minutes) {
+                if (gen !== driveFillGen) return;
+                driveTimes[loc] = minutes;
+                render();
+              });
+            });
+          });
+          return chain;
+        });
+      }).catch(function () {});
     }
 
     // ---------- shaping ----------
@@ -409,6 +728,9 @@
 
       var sub = [];
       if (state.settings.showLocation && ev.location) sub.push(esc(ev.location));
+      if (state.settings.showDriveTime && typeof driveTimes[ev.location] === 'number') {
+        sub.push('🚗 ' + formatDriveTime(driveTimes[ev.location]));
+      }
       if (state.settings.showCalendarName && ev.source_name) {
         sub.push('<span class="cal">' + esc(ev.source_name) + '</span>');
       }
@@ -527,7 +849,10 @@
       if (ev.target.id !== 'daysSel') return;
       saveSettings({ days: ev.target.value }).then(function () {
         return loadAll();
-      }).then(renderPicker).catch(function () {});
+      }).then(function () {
+        renderPicker();
+        fillDriveTimes();
+      }).catch(function () {});
     });
 
     // ---------- boot ----------
@@ -540,7 +865,10 @@
 
       loadSettings()
         .then(loadAll)
-        .then(render)
+        .then(function () {
+          render();
+          fillDriveTimes();
+        })
         .catch(function (e) {
           note('Could not load the agenda: ' + e.message);
           render();
@@ -552,11 +880,19 @@
       // reach the browser on every deployment anyway.
       setInterval(function () {
         if (state.picking || document.hidden) return;
-        loadAll().then(render).catch(function () {});
+        loadAll().then(function () {
+          render();
+          fillDriveTimes();
+        }).catch(function () {});
       }, 5 * 60 * 1000);
 
       document.addEventListener('visibilitychange', function () {
-        if (!document.hidden && !state.picking) loadAll().then(render).catch(function () {});
+        if (!document.hidden && !state.picking) {
+          loadAll().then(function () {
+            render();
+            fillDriveTimes();
+          }).catch(function () {});
+        }
       });
     });
   })();
